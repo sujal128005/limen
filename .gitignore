@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Build output
+web/dist/
+dist/
+build/
+
+# Environment. .env.example is committed on purpose.
+.env
+.env.*
+!.env.example
+
+# Test and coverage output
+coverage/
+*.lcov
+.nyc_output/
+
+# Generated documents. Samples in docs/samples are committed deliberately.
+/tmp-documents/
+*.local.pdf
+
+# Local chain and runtime state
+.chain/
+*.log
+npm-debug.log*
+
+# Editor and OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Windows file-lock leftovers
+**/.fuse_hidden*

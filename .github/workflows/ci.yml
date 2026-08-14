@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build:web
+
+      # The API key is server-side only. If it ever reaches the browser bundle,
+      # fail the build rather than shipping it.
+      - name: Check client bundle for secrets
+        run: |
+          if grep -rEl "xai-[A-Za-z0-9]{10,}|XAI_API_KEY|api\.x\.ai" web/dist/assets/ 2>/dev/null; then
+            echo "Secret or model endpoint found in the client bundle"
+            exit 1
+          fi
+          echo "Client bundle is clean"

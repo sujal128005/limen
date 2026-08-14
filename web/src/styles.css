@@ -1,0 +1,1644 @@
+/* ============================================================================
+   COVENANT DESIGN SYSTEM
+   ============================================================================
+
+   The product is a spending mandate. A buyer hands an agent bounded authority,
+   the agent negotiates inside it, and a contract refuses anything outside it.
+   The interface has one job: make that boundary legible, and make the money
+   moving across it feel accountable.
+
+   Principles applied throughout:
+
+   1. Warm paper, not a console. This is read in daylight by people reconciling
+      figures. It also keeps the product away from the default dark-and-violet
+      "AI product" look, which reads as a demo rather than an instrument.
+
+   2. One accent. Pine carries action and success. Crimson carries refusal.
+      Amber carries "held, waiting on you". Nothing else is coloured, ever.
+      A number is not coloured because it is large. It is coloured because it
+      passed or failed something.
+
+   3. Hierarchy comes from scale and space, not from boxes. Most sections are
+      open with a rule; a card is spent only where content genuinely groups.
+
+   4. Depth is physical, not decorative. Surfaces that float are ones that
+      actually sit above the page: the mandate, the drawer, the modal, the
+      floating control. Everything else stays on the paper.
+
+   5. Motion reports state changes. Four durations, two curves, no exceptions.
+      Removing all of it must never remove information.
+
+   6. Numbers are tabular everywhere. Money aligns to the digit or it is not
+      finance software.
+   ========================================================================== */
+
+/* ------------------------------------------------------------------ tokens */
+
+:root {
+  /* ---- surfaces. Warm neutral ramp, never blue-grey. */
+  --canvas:      #F6F5F1;
+  --canvas-deep: #EDEBE5;
+  --surface:     #FFFFFF;
+  --surface-2:   #FBFAF8;
+  --sunk:        #F1EFEA;
+  --ink-surface: #12161A;
+
+  /* ---- ink. Four steps is enough; more invites inconsistency.
+     Measured against every surface they sit on. The two quietest steps were
+     originally lighter and failed WCAG AA at 2.4:1 and 4.0:1, which matters
+     because they carry the uppercase micro-labels on every figure in the
+     product. They are now 4.85:1 and 5.80:1 on the warm canvas. */
+  --ink:    #101418;   /* 16.96:1 on canvas */
+  --ink-2:  #47525C;   /*  7.32:1 */
+  --ink-3:  #576169;   /*  5.80:1 */
+  --ink-4:  #626D76;   /*  4.85:1 */
+  --on-ink:     #F4F3F0;
+  --on-ink-dim: #9BA6AE;
+
+  /* ---- lines */
+  --hair:        #E4E1D9;
+  --hair-strong: #D2CEC4;
+  --hair-dark:   #262D34;
+
+  /* ---- accent: deep pine. Action, focus, success. */
+  --pine:       #0B5F52;
+  --pine-deep:  #084A40;
+  --pine-lift:  #0E7161;
+  --pine-wash:  #E9F1EF;
+  --pine-line:  #B2CCC5;
+
+  /* ---- caution: held, pending, waiting on a human */
+  --amber:      #8A5A00;
+  --amber-wash: #FAF2E2;
+  --amber-line: #E4CFA4;
+
+  /* ---- refusal */
+  --crimson:      #9E1F33;
+  --crimson-wash: #FBEDEF;
+  --crimson-line: #E9C2C8;
+
+  --slate-wash: #EEF0F1;
+
+  /* ---- type. No web font is fetched: the product must run with no network.
+     The modern system UI faces are excellent and load instantly. */
+  --sans: "Inter", "Inter var", -apple-system, BlinkMacSystemFont,
+          "Segoe UI Variable Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+
+  /* ---- radius. Controls read as instruments, panels read as paper. */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+
+  /* ---- elevation. Neutral ink only. No coloured shadows anywhere. */
+  --e1: 0 1px 2px rgba(16,20,24,.05);
+  --e2: 0 1px 2px rgba(16,20,24,.05), 0 6px 16px -8px rgba(16,20,24,.16);
+  --e3: 0 1px 3px rgba(16,20,24,.06), 0 18px 40px -18px rgba(16,20,24,.26);
+  --e4: 0 2px 6px rgba(16,20,24,.07), 0 40px 80px -32px rgba(16,20,24,.34);
+  --lip: inset 0 1px 0 rgba(255,255,255,.7);
+
+  /* ---- motion. Four durations, two curves. */
+  --t-fast:  150ms;   /* hover, focus, press */
+  --t-mid:   260ms;   /* content entering */
+  --t-panel: 380ms;   /* drawers, modals */
+  --t-major: 620ms;   /* a state of the deal actually changed */
+  --ease:      cubic-bezier(.22, .68, .28, 1);
+  --ease-firm: cubic-bezier(.4, 0, .2, 1);
+
+  /* ---- layout */
+  --side-w:   258px;
+  --ledger-w: 316px;
+  --read:     880px;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.55;
+  letter-spacing: -.006em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "cv05" 1, "ss01" 1;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4 { margin: 0; font-weight: 600; letter-spacing: -.021em; line-height: 1.2; }
+p { margin: 0; }
+button { font: inherit; color: inherit; }
+::selection { background: var(--pine); color: #fff; }
+
+.num, .mono, td.num, .fig-v, .money { font-variant-numeric: tabular-nums; }
+.mono {
+  font-family: var(--mono); font-size: .9em;
+  letter-spacing: -.012em; font-feature-settings: "zero" 1;
+}
+
+/* One focus treatment for the whole product. */
+:where(a, button, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--pine);
+  outline-offset: 2px;
+  border-radius: var(--r-xs);
+}
+
+.spacer { flex: 1; }
+.row { display: flex; align-items: center; gap: 10px; }
+.wrap { flex-wrap: wrap; }
+/* Positive figures only. There is deliberately no matching negative utility:
+   a short class name like .neg collides with component classes, and refusal
+   colour should always come from the component that owns the refusal. */
+.pos { color: var(--pine); }
+
+/* ============================================================== the aura ==
+   The liquid layer. Three very large, very soft fields drifting on long
+   cycles behind everything. It is tinted by the stage the run has reached, so
+   the background quietly reports where you are without adding a single pixel
+   of interface. Peak opacity is 7 percent: it should be felt, not noticed.
+   ========================================================================== */
+
+/*
+ * Built from radial gradients rather than blurred shapes. A soft gradient stop
+ * is already diffuse, so it needs no blur filter: the earlier version used
+ * filter: blur(90px) on three large fixed layers and Chrome intermittently
+ * failed to repaint the column underneath after a programmatic scroll, which
+ * flashed an empty page. Gradients cost nothing to composite and cannot do
+ * that. Stage tinting moves opacity only, because opacity transitions and
+ * background-image does not.
+ */
+.aura { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.aura i {
+  position: absolute; inset: -45%; display: block;
+  transition: opacity 1.4s var(--ease);
+}
+.aura .a1 {
+  background: radial-gradient(closest-side circle at 26% 28%,
+    rgba(11,95,82,.10), rgba(11,95,82,.035) 55%, rgba(11,95,82,0) 78%);
+  opacity: .85;
+  animation: drift1 54s var(--ease) infinite alternate;
+}
+.aura .a2 {
+  background: radial-gradient(closest-side circle at 78% 26%,
+    rgba(158,128,74,.11), rgba(158,128,74,.04) 55%, rgba(158,128,74,0) 78%);
+  opacity: .55;
+  animation: drift2 68s var(--ease) infinite alternate;
+}
+.aura .a3 {
+  background: radial-gradient(closest-side circle at 56% 96%,
+    rgba(84,104,118,.09), rgba(84,104,118,.03) 55%, rgba(84,104,118,0) 78%);
+  opacity: .7;
+  animation: drift3 61s var(--ease) infinite alternate;
+}
+@keyframes drift1 {
+  from { transform: translate3d(0,0,0) scale(1); }
+  to   { transform: translate3d(4%, 3%, 0) scale(1.1); }
+}
+@keyframes drift2 {
+  from { transform: translate3d(0,0,0) scale(1.05); }
+  to   { transform: translate3d(-4%, 5%, 0) scale(.95); }
+}
+@keyframes drift3 {
+  from { transform: translate3d(0,0,0) scale(.97); }
+  to   { transform: translate3d(-5%, -4%, 0) scale(1.08); }
+}
+
+/* Negotiation and approval warm the room. Settlement resolves it to pine. */
+[data-stage="negotiate"] .aura .a2 { opacity: .8; }
+[data-stage="approve"]   .aura .a2 { opacity: 1; }
+[data-stage="approve"]   .aura .a1 { opacity: .55; }
+[data-stage="escrow"]    .aura .a2 { opacity: .9; }
+[data-stage="settle"]    .aura .a1 { opacity: 1; }
+[data-stage="settle"]    .aura .a2 { opacity: .25; }
+
+/* ================================================================= shell == */
+
+.root {
+  position: relative; z-index: 1;
+  display: grid;
+  grid-template-columns: var(--side-w) minmax(0, 1fr) var(--ledger-w);
+  min-height: 100%;
+  align-items: start;
+}
+
+/* ------------------------------------------------------------- sidebar --- */
+
+.sidebar {
+  position: sticky; top: 0; height: 100vh;
+  display: flex; flex-direction: column;
+  padding: 20px 16px 16px 20px;
+  border-right: 1px solid var(--hair);
+  background: linear-gradient(180deg, rgba(255,255,255,.62), rgba(255,255,255,.30));
+  backdrop-filter: blur(8px);
+}
+
+.side-brand { display: flex; align-items: center; gap: 10px; padding: 2px 4px 22px; }
+.brand-mark {
+  width: 26px; height: 26px; flex: none; border-radius: var(--r-sm);
+  background: var(--ink-surface); color: var(--on-ink);
+  display: grid; place-items: center;
+  font-size: 13px; font-weight: 650; letter-spacing: -.03em;
+  box-shadow: var(--e1);
+}
+.brand-name { display: block; font-size: 15.5px; font-weight: 620; letter-spacing: -.026em; line-height: 1.1; }
+.brand-role { display: block; font-size: 12px; color: var(--ink-3); letter-spacing: -.004em; margin-top: 2px; }
+
+.rail-head {
+  font-size: 12px; font-weight: 620; text-transform: uppercase; letter-spacing: .09em;
+  color: var(--ink-4); padding: 0 4px 10px;
+}
+
+.rail { list-style: none; margin: 0; padding: 0; }
+
+/* A stage is a row with a marker, a name and the party responsible for it.
+   The three actors (you, the agent, the contract) are the spine of the story,
+   so the actor tag is never dropped, even at narrow widths. */
+.rail-item {
+  position: relative;
+  display: grid; grid-template-columns: 26px minmax(0,1fr); gap: 11px;
+  align-items: center;
+  padding: 7px 8px; margin: 1px 0;
+  border-radius: var(--r-sm);
+  color: var(--ink-4);
+  transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+}
+/* connector between markers */
+.rail-item::before {
+  content: ""; position: absolute; left: 20.5px; top: 34px; bottom: -2px;
+  width: 2px; background: var(--hair-strong); border-radius: 1px;
+  transition: background var(--t-major) var(--ease);
+}
+.rail-item:last-child::before { display: none; }
+
+.rail-idx {
+  width: 26px; height: 26px; border-radius: 50%; flex: none;
+  display: grid; place-items: center; position: relative;
+  border: 1.5px dashed var(--hair-strong); background: var(--canvas);
+  font-size: 11.5px; font-weight: 650; color: var(--ink-4);
+  font-variant-numeric: tabular-nums; letter-spacing: -.02em;
+  transition: background var(--t-mid) var(--ease), border-color var(--t-mid) var(--ease),
+              color var(--t-mid) var(--ease), box-shadow var(--t-mid) var(--ease);
+}
+.rail-name { display: block; font-size: 14px; font-weight: 500; line-height: 1.25; }
+.rail-actor {
+  display: block;
+  font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--ink-4); margin-top: 2px; line-height: 1.2;
+}
+
+.rail-item.done { color: var(--ink-2); }
+.rail-item.done .rail-idx {
+  background: var(--pine); border: 1.5px solid var(--pine); color: #fff;
+  animation: markSet var(--t-major) var(--ease) both;
+}
+.rail-item.done::before { background: var(--pine-line); }
+@keyframes markSet {
+  0%   { transform: scale(.86); }
+  55%  { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+
+.rail-item.current { color: var(--ink); background: rgba(255,255,255,.72); box-shadow: var(--e1); }
+.rail-item.current .rail-name { font-weight: 620; }
+.rail-item.current .rail-actor { color: var(--pine); }
+.rail-item.current .rail-idx {
+  border: 1.5px solid var(--pine); color: var(--pine); background: var(--pine-wash);
+}
+/* One quiet ring on the live stage. It breathes; it does not spin. */
+.rail-item.current .rail-idx::after {
+  content: ""; position: absolute; inset: -5px; border-radius: 50%;
+  border: 1.5px solid var(--pine); opacity: 0;
+  animation: ring 2.6s var(--ease) infinite;
+}
+@keyframes ring {
+  0%   { opacity: .34; transform: scale(.9); }
+  70%  { opacity: 0;   transform: scale(1.14); }
+  100% { opacity: 0;   transform: scale(1.14); }
+}
+
+/* A stage the contract controls is marked, because that is the claim. */
+.rail-item.enforced .rail-actor { color: var(--ink-2); }
+.rail-item.enforced.current .rail-actor { color: var(--pine); }
+
+.side-foot { margin-top: auto; padding-top: 16px; display: grid; gap: 8px; }
+
+.netchip {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: var(--r-sm);
+  background: rgba(255,255,255,.62); border: 1px solid var(--hair);
+  font-size: 12.5px; color: var(--ink-2); font-variant-numeric: tabular-nums;
+}
+.netdot { width: 7px; height: 7px; border-radius: 50%; background: var(--pine); flex: none; }
+.netdot.idle { background: var(--ink-4); }
+.netdot.live { animation: breathe 2s var(--ease) infinite; }
+@keyframes breathe { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+
+.idchip {
+  display: grid; gap: 2px; padding: 9px 10px; border-radius: var(--r-sm);
+  background: rgba(255,255,255,.62); border: 1px solid var(--hair);
+}
+.id-mode {
+  display: block;
+  font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--ink-4);
+}
+.id-addr { display: block; font-size: 12.5px; color: var(--ink-2); }
+.id-bal { display: block; font-size: 15px; font-weight: 620; font-variant-numeric: tabular-nums; letter-spacing: -.018em; }
+
+/* -------------------------------------------------------------- canvas --- */
+
+.canvas { min-width: 0; padding: 30px 34px 120px; }
+.canvas-inner { max-width: var(--read); margin: 0 auto; display: grid; gap: 34px; }
+
+/* Section heads carry the whole hierarchy, so they are typographic, not boxed. */
+.view-head { display: grid; gap: 5px; }
+.eyebrow {
+  font-size: 12px; font-weight: 650; text-transform: uppercase; letter-spacing: .09em;
+  color: var(--ink-4);
+}
+.view-head h2 { font-size: 23px; letter-spacing: -.026em; }
+.view-head .sub { font-size: 14.5px; color: var(--ink-2); line-height: 1.55; max-width: 68ch; }
+
+.section { display: grid; gap: 16px; animation: enter var(--t-mid) var(--ease) both; }
+@keyframes enter {
+  from { opacity: 0; transform: translate3d(0, 8px, 0); }
+  to   { opacity: 1; transform: none; }
+}
+
+.divider { height: 1px; background: var(--hair); }
+
+/* ---------------------------------------------------------------- panel -- */
+/* Used only where content genuinely groups. Open layouts are the default. */
+
+.panel {
+  background: var(--surface); border: 1px solid var(--hair);
+  border-radius: var(--r-md); box-shadow: var(--e1);
+  overflow: hidden;
+}
+.panel.lift { box-shadow: var(--e2); }
+.panel-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 13px 18px; border-bottom: 1px solid var(--hair);
+  background: linear-gradient(180deg, var(--surface), var(--surface-2));
+}
+.panel-title { font-size: 14px; font-weight: 620; letter-spacing: -.014em; }
+.panel-body { padding: 18px; }
+
+/* =============================================================== controls = */
+
+.btn {
+  position: relative;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 9px 15px; border-radius: var(--r-sm); cursor: pointer;
+  border: 1px solid transparent; font-size: 13.5px; font-weight: 560;
+  letter-spacing: -.008em; white-space: nowrap; isolation: isolate;
+  transition: transform var(--t-fast) var(--ease),
+              box-shadow var(--t-fast) var(--ease),
+              background var(--t-fast) var(--ease),
+              border-color var(--t-fast) var(--ease),
+              color var(--t-fast) var(--ease);
+}
+/* A button is not just a colour swap. It lifts, catches a top light, and
+   settles back on press. That is most of what separates polished from plain. */
+.btn::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; z-index: -1;
+  background: linear-gradient(180deg, rgba(255,255,255,.16), rgba(255,255,255,0));
+  opacity: 0; transition: opacity var(--t-fast) var(--ease);
+}
+.btn:hover:not(:disabled)::after { opacity: 1; }
+
+.btn-primary {
+  background: var(--pine); color: #fff; border-color: var(--pine-deep);
+  box-shadow: var(--e1), inset 0 1px 0 rgba(255,255,255,.14);
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--pine-lift); transform: translateY(-1px);
+  box-shadow: var(--e2), inset 0 1px 0 rgba(255,255,255,.18);
+}
+.btn-primary:active:not(:disabled) { transform: translateY(0); box-shadow: var(--e1); }
+
+.btn-secondary {
+  background: var(--surface); color: var(--ink); border-color: var(--hair-strong);
+  box-shadow: var(--e1);
+}
+.btn-secondary:hover:not(:disabled) {
+  border-color: var(--ink-4); transform: translateY(-1px); box-shadow: var(--e2);
+}
+.btn-secondary:active:not(:disabled) { transform: translateY(0); box-shadow: none; }
+
+.btn-quiet { background: transparent; color: var(--ink-2); padding: 7px 10px; }
+.btn-quiet:hover:not(:disabled) { color: var(--ink); background: var(--sunk); }
+
+/* Deliberately not styled as danger. These run a real attack and the outcome
+   is a success for the buyer, so they should not read as a warning. */
+.btn-probe {
+  background: var(--surface); color: var(--ink-2);
+  border-color: var(--hair-strong); border-style: dashed; box-shadow: none;
+}
+.btn-probe:hover:not(:disabled) { color: var(--ink); border-color: var(--ink-4); border-style: solid; }
+
+.btn:disabled { opacity: .4; cursor: not-allowed; transform: none !important; box-shadow: none; }
+.btn-sm { padding: 6px 11px; font-size: 12.5px; }
+.btn-lg { padding: 11px 19px; font-size: 14.5px; }
+.btn-xl { padding: 13px 24px; font-size: 15px; border-radius: var(--r-sm); }
+
+/* In-button progress. Replaces a spinner: it reports that the thing is
+   underway without the cartoon of a rotating ring on a financial action. */
+.btn.loading { pointer-events: none; }
+.btn.loading::before {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px;
+  border-radius: 0 0 var(--r-sm) var(--r-sm);
+  background: currentColor; opacity: .5;
+  transform-origin: left;
+  animation: fill 1.6s var(--ease-firm) infinite;
+}
+@keyframes fill {
+  0%   { transform: scaleX(0); opacity: .5; }
+  70%  { transform: scaleX(1); opacity: .5; }
+  100% { transform: scaleX(1); opacity: 0; }
+}
+
+/* ---------------------------------------------------------------- inputs - */
+
+.field {
+  width: 100%; border: 1px solid var(--hair-strong); border-radius: var(--r-sm);
+  padding: 10px 13px; font: inherit; font-size: 14.5px; color: var(--ink);
+  background: var(--surface); box-shadow: var(--e1);
+  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+.field::placeholder { color: var(--ink-4); }
+.field:hover:not(:focus) { border-color: var(--ink-4); }
+.field:focus {
+  outline: none; border-color: var(--pine);
+  box-shadow: 0 0 0 3px var(--pine-wash);
+}
+
+.composer {
+  background: var(--surface); border: 1px solid var(--hair-strong);
+  border-radius: var(--r-md); box-shadow: var(--e2); overflow: hidden;
+  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+.composer:focus-within { border-color: var(--pine); box-shadow: var(--e2), 0 0 0 3px var(--pine-wash); }
+.composer textarea {
+  width: 100%; border: 0; resize: vertical; min-height: 104px; display: block;
+  padding: 17px 18px; font: inherit; font-size: 15.5px; line-height: 1.55;
+  color: var(--ink); background: transparent; letter-spacing: -.008em;
+}
+.composer textarea:focus { outline: none; }
+.composer textarea::placeholder { color: var(--ink-4); }
+.composer-foot {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 12px 11px 18px; border-top: 1px solid var(--hair);
+  background: var(--surface-2);
+}
+.hint { font-size: 13px; color: var(--ink-3); }
+
+.chips { display: grid; gap: 6px; margin-top: 12px; }
+.chip {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  border: 1px solid var(--hair); background: rgba(255,255,255,.6);
+  padding: 9px 12px; border-radius: var(--r-sm); font-size: 13px; color: var(--ink-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease),
+              color var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+}
+.chip:hover { border-color: var(--hair-strong); background: var(--surface); color: var(--ink); transform: translateX(2px); }
+
+/* ================================================================ badges == */
+
+.badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 9px; border-radius: 100px; font-size: 12px; font-weight: 580;
+  border: 1px solid; white-space: nowrap; line-height: 1.5; letter-spacing: -.004em;
+}
+.badge.ok      { background: var(--pine-wash);    color: var(--pine);    border-color: var(--pine-line); }
+.badge.warn    { background: var(--amber-wash);   color: var(--amber);   border-color: var(--amber-line); }
+.badge.bad     { background: var(--crimson-wash); color: var(--crimson); border-color: var(--crimson-line); }
+.badge.neutral { background: var(--slate-wash);   color: var(--ink-2);   border-color: var(--hair-strong); }
+
+/* ============================================================== figures ==
+   Money is the point of this product, so figures get real size and never sit
+   in a small grey cell. A figure states the number, then what the number is
+   measured against. A total with no denominator is not information.
+   ========================================================================== */
+
+.figures { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 2px;
+  background: var(--hair); border: 1px solid var(--hair); border-radius: var(--r-md); overflow: hidden; }
+.figure { background: var(--surface); padding: 15px 17px; }
+.fig-k {
+  font-size: 12px; font-weight: 620; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--ink-4);
+}
+.fig-v {
+  font-size: 27px; font-weight: 620; letter-spacing: -.032em; line-height: 1.14;
+  margin-top: 5px; font-variant-numeric: tabular-nums;
+}
+.fig-v small { font-size: 14px; font-weight: 520; color: var(--ink-3); margin-left: 5px; letter-spacing: -.01em; }
+.fig-note { font-size: 12.5px; color: var(--ink-3); margin-top: 4px; line-height: 1.45; }
+.figure.accent { background: var(--pine-wash); }
+.figure.accent .fig-v { color: var(--pine); }
+.figure.accent .fig-k { color: var(--pine); opacity: .8; }
+.figure.hold { background: var(--amber-wash); }
+.figure.hold .fig-v { color: var(--amber); }
+.figure.refuse { background: var(--crimson-wash); }
+.figure.refuse .fig-v { color: var(--crimson); }
+.figure.quiet .fig-v { color: var(--ink-3); font-weight: 560; }
+
+/* Numbers that changed because of an action settle rather than snap. */
+.settled-num { transition: color var(--t-major) var(--ease); }
+
+/* =============================================================== mandate ==
+   The signature component. Authority flows downward and narrows as it goes:
+   the buyer holds everything, the mandate is a bounded slice of it, the agent
+   receives only that slice, and the escrow holds the money for both parties.
+
+   The visual argument is the width. Each node is narrower than the one above
+   it, so "the agent has less power than you" is read before any label is.
+   ========================================================================== */
+
+.mandate { display: grid; justify-items: stretch; }
+
+.mnode {
+  position: relative;
+  border-radius: var(--r-md);
+  padding: 14px 17px;
+  /* Translucent so the aura reads through it, but no backdrop-filter: the
+     chain renders several of these at once and a blur pass per surface is
+     paid on every frame for an effect a flat alpha already gives. */
+  background: rgba(255,255,255,.80);
+  border: 1px solid var(--hair);
+  box-shadow: var(--e1), var(--lip);
+  transition: transform var(--t-panel) var(--ease), box-shadow var(--t-panel) var(--ease),
+              border-color var(--t-panel) var(--ease);
+}
+.mnode-top { display: flex; align-items: baseline; gap: 10px; }
+.mnode-role {
+  font-size: 12px; font-weight: 650; text-transform: uppercase; letter-spacing: .09em;
+  color: var(--ink-4);
+}
+.mnode-tag {
+  margin-left: auto; font-size: 11.5px; font-weight: 600; color: var(--ink-3);
+  border: 1px solid var(--hair); background: var(--surface-2);
+  padding: 1px 8px; border-radius: 100px;
+}
+.mnode-name { font-size: 16px; font-weight: 620; letter-spacing: -.02em; margin-top: 3px; }
+.mnode-id { font-size: 12.5px; color: var(--ink-3); margin-top: 1px; }
+
+/* The mandate itself is the one inverted surface in the product. It is the
+   object the whole system is built to protect, so it reads as the object. */
+.mnode.grant {
+  background: var(--ink-surface); border-color: var(--ink-surface); color: var(--on-ink);
+  box-shadow: var(--e3); z-index: 2;
+  margin-inline: 14px;
+}
+.mnode.grant .mnode-role { color: var(--on-ink-dim); }
+.mnode.grant .mnode-id { color: var(--on-ink-dim); }
+.mnode.grant .mnode-tag {
+  color: var(--on-ink); background: rgba(255,255,255,.09); border-color: rgba(255,255,255,.16);
+}
+.mnode.grant .mnode-amount {
+  font-size: 30px; font-weight: 640; letter-spacing: -.035em;
+  font-variant-numeric: tabular-nums; margin-top: 4px; line-height: 1.1;
+}
+.mnode.grant .mnode-amount small {
+  display: block; font-size: 13px; font-weight: 500; color: var(--on-ink-dim);
+  letter-spacing: -.006em; margin-top: 3px; line-height: 1.4;
+}
+
+.mnode.agent { margin-inline: 28px; z-index: 1; }
+.mnode.party { margin-inline: 42px; }
+.mnode.vault { margin-inline: 42px; }
+.mnode.buyer { z-index: 1; }
+
+/* connector between nodes: a hairline with a label sitting on it */
+.mconn {
+  position: relative; height: 30px; margin-inline: auto; width: 100%;
+  display: grid; place-items: center;
+}
+.mconn::before {
+  content: ""; position: absolute; top: -2px; bottom: -2px; left: 50%;
+  width: 1.5px; margin-left: -.75px; background: var(--hair-strong); border-radius: 1px;
+}
+.mconn span {
+  position: relative; z-index: 1;
+  font-size: 11.5px; font-weight: 620; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--ink-4); background: var(--canvas); padding: 2px 10px; border-radius: 100px;
+}
+/* A slow travelling pulse shows the direction authority moves. */
+.mconn.flowing::after {
+  content: ""; position: absolute; left: 50%; top: 0; margin-left: -2.5px;
+  width: 5px; height: 5px; border-radius: 50%; background: var(--pine);
+  animation: travel 2.4s var(--ease-firm) infinite;
+}
+@keyframes travel {
+  0%   { transform: translateY(-4px); opacity: 0; }
+  25%  { opacity: 1; }
+  75%  { opacity: 1; }
+  100% { transform: translateY(28px); opacity: 0; }
+}
+
+/* The can / cannot split. This is the core innovation, so it is the one place
+   in the product where two colours sit directly against each other. */
+.mcaps { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; margin-top: 13px;
+  border: 1px solid var(--hair); border-radius: var(--r-sm); overflow: hidden; background: var(--hair); }
+.mcap { padding: 11px 13px; background: var(--surface); }
+.mcap-h {
+  font-size: 11.5px; font-weight: 650; text-transform: uppercase; letter-spacing: .08em;
+  display: flex; align-items: center; gap: 6px; margin-bottom: 7px;
+}
+.mcap.can    { background: var(--pine-wash); }
+.mcap.can .mcap-h { color: var(--pine); }
+.mcap.cannot { background: var(--crimson-wash); }
+.mcap.cannot .mcap-h { color: var(--crimson); }
+.mcap ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
+.mcap li {
+  display: grid; grid-template-columns: 13px 1fr; gap: 8px;
+  font-size: 13px; line-height: 1.4; color: var(--ink-2);
+}
+.mcap.can li i    { font-style: normal; color: var(--pine); font-weight: 700; }
+.mcap.cannot li   { color: var(--ink); font-weight: 540; }
+.mcap.cannot li i { font-style: normal; color: var(--crimson); font-weight: 700; }
+.mcap-foot { font-size: 12px; color: var(--ink-3); margin-top: 8px; line-height: 1.45; }
+
+.mnode.agent .mcaps { margin-inline: -1px; }
+
+/* On the entry screen the chain is the product shot, so it gets real depth. */
+.mandate.showcase { perspective: 1400px; }
+.mandate.showcase .mnode { animation: settleIn var(--t-major) var(--ease) both; }
+.mandate.showcase .mnode:nth-of-type(1) { animation-delay: 60ms; }
+.mandate.showcase .mnode:nth-of-type(2) { animation-delay: 180ms; }
+.mandate.showcase .mnode:nth-of-type(3) { animation-delay: 300ms; }
+.mandate.showcase .mnode:nth-of-type(4) { animation-delay: 420ms; }
+@keyframes settleIn {
+  from { opacity: 0; transform: translate3d(0, 16px, -40px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ========================================================== requirements == */
+
+.specs {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 1px;
+  background: var(--hair); border: 1px solid var(--hair); border-radius: var(--r-md); overflow: hidden;
+}
+.spec { background: var(--surface); padding: 12px 14px; }
+.spec-k { font-size: 11.5px; font-weight: 620; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-4); }
+.spec-v { font-size: 16.5px; font-weight: 580; margin-top: 3px; font-variant-numeric: tabular-nums; letter-spacing: -.018em; }
+.spec.binding { box-shadow: inset 2px 0 0 var(--ink); }
+.spec.cert    { box-shadow: inset 2px 0 0 var(--pine); }
+
+.weights { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; }
+.weight {
+  display: inline-flex; align-items: baseline; gap: 7px;
+  border: 1px solid var(--hair); border-radius: 100px;
+  padding: 4px 11px; font-size: 12.5px; background: var(--surface); color: var(--ink-2);
+}
+.weight b { font-weight: 620; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* =============================================================== screening */
+
+.sheet {
+  border: 1px solid var(--hair); border-radius: var(--r-md);
+  background: var(--surface); box-shadow: var(--e1); overflow: hidden;
+}
+.sheet-scroll { overflow-x: auto; }
+table.grid { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 780px; }
+table.grid th {
+  text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--ink-4); font-weight: 650; padding: 11px 14px;
+  border-bottom: 1px solid var(--hair); background: var(--surface-2); white-space: nowrap;
+}
+table.grid td { padding: 13px 14px; border-bottom: 1px solid var(--hair); vertical-align: top; }
+table.grid tr:last-child td { border-bottom: 0; }
+table.grid th.right, table.grid td.right { text-align: right; }
+table.grid tbody tr { transition: background var(--t-fast) var(--ease); }
+table.grid tbody tr:hover td { background: var(--surface-2); }
+table.grid tr.excluded td { color: var(--ink-4); background: var(--sunk); }
+table.grid tr.excluded:hover td { background: var(--sunk); }
+table.grid tr.winner td { background: var(--pine-wash); }
+table.grid tr.winner:hover td { background: var(--pine-wash); }
+table.grid tr.winner td:first-child { box-shadow: inset 3px 0 0 var(--pine); }
+
+.sup-name { font-weight: 580; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sup-meta { color: var(--ink-3); font-size: 12.5px; margin-top: 2px; }
+.violation { font-size: 12.5px; color: var(--crimson); display: flex; gap: 6px; margin-top: 4px; }
+.violation .marker { flex: none; font-weight: 700; }
+.satisfied { font-size: 12.5px; color: var(--ink-3); display: flex; gap: 6px; margin-top: 4px; }
+
+.screen-stats { display: flex; gap: 26px; flex-wrap: wrap; }
+.sstat .k { font-size: 11.5px; font-weight: 620; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-4); }
+.sstat .v { font-size: 21px; font-weight: 620; letter-spacing: -.026em; font-variant-numeric: tabular-nums; margin-top: 1px; }
+
+/* ============================================================ negotiation = */
+
+.negs { display: grid; gap: 14px; }
+
+.neg {
+  border: 1px solid var(--hair); border-radius: var(--r-md); background: var(--surface);
+  box-shadow: var(--e1); overflow: hidden;
+  transition: border-color var(--t-panel) var(--ease), box-shadow var(--t-panel) var(--ease);
+}
+.neg.agreed { border-color: var(--pine-line); box-shadow: var(--e2); }
+.neg.live   { border-color: var(--hair-strong); }
+/* A walk-away is a good outcome for the buyer, so a failed negotiation is
+   quietened rather than alarmed. Only the reason itself is coloured. */
+.neg.failed { background: var(--surface-2); box-shadow: none; }
+.neg.failed .neg-head { background: var(--sunk); }
+.neg.failed .turn-msg, .neg.failed .turn-price { color: var(--ink-2); }
+.neg.failed .turn.reject .turn-msg { color: var(--crimson); }
+
+.neg-head {
+  display: flex; align-items: center; gap: 12px; padding: 13px 17px;
+  border-bottom: 1px solid var(--hair); background: var(--surface-2);
+}
+.neg-who { font-weight: 620; font-size: 14.5px; letter-spacing: -.015em; }
+.neg-meta { color: var(--ink-3); font-size: 12px; margin-top: 1px; }
+.neg-state { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+
+.thread { padding: 4px 17px 10px; }
+.turn {
+  display: grid; grid-template-columns: 74px minmax(0,1fr) auto; gap: 14px;
+  padding: 11px 0; border-bottom: 1px solid var(--hair);
+  animation: turnIn var(--t-mid) var(--ease) both;
+}
+.turn:last-child { border-bottom: 0; }
+@keyframes turnIn {
+  from { opacity: 0; transform: translate3d(-4px, 0, 0); }
+  to   { opacity: 1; transform: none; }
+}
+.turn-side {
+  font-size: 11.5px; text-transform: uppercase; letter-spacing: .07em;
+  font-weight: 660; padding-top: 2px;
+}
+.turn-side.agent { color: var(--pine); }
+.turn-side.supplier { color: var(--ink-4); }
+.turn-msg { font-size: 14.5px; line-height: 1.5; }
+.turn-why { font-size: 12.5px; color: var(--ink-3); margin-top: 3px; line-height: 1.45; }
+.turn-price {
+  font-family: var(--mono); font-size: 14px; font-weight: 600;
+  font-variant-numeric: tabular-nums; white-space: nowrap; padding-top: 2px;
+}
+.turn.settle .turn-msg { font-weight: 580; }
+.turn.reject .turn-msg { color: var(--crimson); }
+
+.neg-foot {
+  display: flex; gap: 26px; padding: 13px 17px; flex-wrap: wrap;
+  border-top: 1px solid var(--hair); background: var(--surface-2);
+}
+.neg-foot .k { font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-4); font-weight: 620; }
+.neg-foot .v { font-size: 17px; font-weight: 620; letter-spacing: -.022em; font-variant-numeric: tabular-nums; margin-top: 1px; }
+
+/* A live negotiation gets a moving hairline, not a spinner. */
+.negpulse { position: relative; height: 2px; background: var(--hair); overflow: hidden; border-radius: 1px; width: 56px; }
+.negpulse::after {
+  content: ""; position: absolute; inset: 0; width: 40%;
+  background: var(--pine); border-radius: 1px;
+  animation: sweep 1.25s var(--ease-firm) infinite;
+}
+@keyframes sweep {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(250%); }
+}
+
+/* ========================================================= recommendation = */
+
+.award { border-radius: var(--r-md); overflow: hidden; box-shadow: var(--e2); border: 1px solid var(--pine-line); }
+.award-head {
+  padding: 20px 22px; background: var(--pine); color: #fff;
+  display: flex; align-items: flex-end; gap: 18px; flex-wrap: wrap;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12);
+}
+.award-head .eyebrow { color: rgba(255,255,255,.68); }
+.award-sup { font-size: 22px; font-weight: 620; letter-spacing: -.026em; margin-top: 3px; }
+.award-loc { font-size: 13px; color: rgba(255,255,255,.72); margin-top: 2px; }
+.award-amt { margin-left: auto; text-align: right; }
+.award-amt .v { font-size: 40px; font-weight: 630; letter-spacing: -.04em; line-height: 1; font-variant-numeric: tabular-nums; }
+.award-amt .k { font-size: 13px; color: rgba(255,255,255,.72); margin-top: 5px; }
+
+.award-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px;
+  background: var(--hair); border-bottom: 1px solid var(--hair);
+}
+.award-cell { background: var(--surface); padding: 14px 16px; }
+.award-cell .k { font-size: 11.5px; font-weight: 620; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-4); }
+.award-cell .v { font-size: 21px; font-weight: 620; margin-top: 2px; letter-spacing: -.026em; font-variant-numeric: tabular-nums; }
+.award-cell .v small { font-size: 12.5px; font-weight: 520; color: var(--ink-3); margin-left: 4px; }
+
+.why { padding: 17px 22px; background: var(--surface); }
+.why ul { list-style: none; margin: 9px 0 0; padding: 0; display: grid; gap: 8px; }
+.why li { display: grid; grid-template-columns: 16px 1fr; gap: 10px; font-size: 14.5px; line-height: 1.5; }
+.why .t { color: var(--pine); font-weight: 700; }
+.why .kind {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--ink-4); font-weight: 650; margin-right: 7px;
+}
+.notpicked {
+  margin: 0 22px 20px; padding: 12px 14px; border-radius: var(--r-sm);
+  background: var(--sunk); border: 1px solid var(--hair);
+  font-size: 13px; color: var(--ink-2);
+}
+.notpicked .r { display: flex; gap: 8px; padding: 3px 0; }
+.notpicked .x { color: var(--crimson); font-weight: 700; flex: none; }
+
+/* =============================================================== approval = */
+/* The pause. Everything above ran without a human. Nothing below moves
+   without one, so this section is the only place with a held, amber surface. */
+
+.gate {
+  border: 1px solid var(--amber-line); border-radius: var(--r-md);
+  background: var(--amber-wash); box-shadow: var(--e1); overflow: hidden;
+}
+.gate-head {
+  display: flex; align-items: center; gap: 12px; padding: 13px 18px;
+  border-bottom: 1px solid var(--amber-line);
+}
+.gate-body { padding: 18px; background: var(--surface); }
+
+.terms { border: 1px solid var(--hair); border-radius: var(--r-sm); overflow: hidden; }
+.term {
+  display: grid; grid-template-columns: 190px minmax(0,1fr); gap: 16px;
+  padding: 12px 15px; border-bottom: 1px solid var(--hair); font-size: 14px;
+}
+.term:last-child { border-bottom: 0; }
+.term:nth-child(odd) { background: var(--surface-2); }
+.term .k { color: var(--ink-3); }
+.term .v { font-weight: 560; font-variant-numeric: tabular-nums; word-break: break-word; }
+.term .v.mono { word-break: break-all; font-weight: 500; font-size: 13px; line-height: 1.5; }
+
+.commit-bar {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--hair);
+}
+.commit-bar .amount { font-size: 12.5px; color: var(--ink-3); }
+.commit-bar .amount b {
+  display: block; font-size: 24px; font-weight: 630; color: var(--ink);
+  letter-spacing: -.03em; font-variant-numeric: tabular-nums; margin-top: 1px;
+}
+
+/* ----------------------------------------------------------- limit meter - */
+/* The attack. A bar advances toward a hard stop and is refused there. The
+   figures stay readable the whole time: motion never covers the result. */
+
+.limit { margin-top: 18px; }
+.lm-track {
+  position: relative; height: 42px; border-radius: var(--r-sm);
+  background: var(--surface); border: 1px solid var(--hair-strong);
+  overflow: hidden; box-shadow: inset 0 1px 3px rgba(16,20,24,.05);
+}
+.lm-fill {
+  position: absolute; inset: 0 auto 0 0; width: 0;
+  background: var(--pine-wash); border-right: 2px solid var(--pine);
+  transition: width var(--t-major) var(--ease);
+}
+.lm-attempt {
+  position: absolute; inset: 0 auto 0 0; width: 0;
+  background: repeating-linear-gradient(-45deg,
+    var(--crimson-wash), var(--crimson-wash) 7px, transparent 7px, transparent 14px);
+  border-right: 2px solid var(--crimson);
+}
+.lm-attempt.run { animation: refuse 1200ms var(--ease-firm) forwards; }
+@keyframes refuse {
+  0%   { width: 0; }
+  58%  { width: var(--stop-at); }
+  72%  { width: calc(var(--stop-at) + 7px); }
+  100% { width: var(--stop-at); }
+}
+.lm-wall {
+  position: absolute; top: -4px; bottom: -4px; width: 3px;
+  background: var(--ink); border-radius: 2px;
+}
+.lm-wall.struck { animation: shake 400ms var(--ease-firm); }
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  28% { transform: translateX(2.5px); }
+  64% { transform: translateX(-1.5px); }
+}
+.lm-legend { display: flex; gap: 26px; margin-top: 11px; flex-wrap: wrap; }
+.lm-legend .k { font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-4); font-weight: 620; }
+.lm-legend .v { font-size: 18px; font-weight: 620; letter-spacing: -.024em; font-variant-numeric: tabular-nums; margin-top: 1px; }
+.lm-legend .cap .v { color: var(--ink); }
+.lm-legend .over .v { color: var(--crimson); }
+
+/* rejection proof */
+.proof {
+  margin-top: 14px; border: 1px solid var(--crimson-line);
+  background: var(--crimson-wash); border-radius: var(--r-md); overflow: hidden;
+  animation: enter var(--t-mid) var(--ease) both;
+}
+.proof-head {
+  display: flex; align-items: center; gap: 9px;
+  padding: 11px 15px; border-bottom: 1px solid var(--crimson-line);
+  font-weight: 620; font-size: 13.5px; color: var(--crimson);
+}
+.proof-grid { padding: 6px 15px 12px; }
+.proof-grid > div {
+  display: grid; grid-template-columns: 132px minmax(0,1fr); gap: 12px;
+  padding: 6px 0; font-size: 13px; border-bottom: 1px dashed var(--crimson-line);
+}
+.proof-grid > div:last-child { border-bottom: 0; }
+.proof-grid .k { color: var(--ink-3); }
+.proof-grid .v { font-weight: 560; word-break: break-word; }
+.proof-note {
+  font-size: 12.5px; color: var(--ink-2); line-height: 1.55;
+  padding: 12px 15px; background: rgba(255,255,255,.6);
+  border-top: 1px solid var(--crimson-line);
+}
+
+/* escalation: two records side by side, one moved, one did not */
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+.split-card {
+  border: 1px solid var(--hair); border-radius: var(--r-md);
+  background: var(--surface); padding: 15px 17px; box-shadow: var(--e1);
+}
+.split-card .k { font-size: 11.5px; font-weight: 620; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-4); }
+.split-card .v { font-size: 26px; font-weight: 630; margin-top: 3px; letter-spacing: -.032em; font-variant-numeric: tabular-nums; }
+.split-card .n { font-size: 12.5px; color: var(--ink-3); margin-top: 6px; line-height: 1.45; }
+.split-card.moved { border-color: var(--crimson-line); background: var(--crimson-wash); }
+.split-card.moved .v { color: var(--crimson); }
+.split-card.held { border-color: var(--pine-line); background: var(--pine-wash); }
+.split-card.held .v { color: var(--pine); }
+.split-card.held.firm { animation: holdFirm var(--t-major) var(--ease); }
+@keyframes holdFirm {
+  0%, 100% { transform: none; }
+  45% { transform: scale(1.015); }
+}
+
+/* ================================================================= escrow = */
+/* Three planes at different depths. The middle one sits back while it holds
+   the money and returns level on release. It is the clearest way to show that
+   funds left the buyer without reaching the supplier yet. */
+
+.vaultflow { perspective: 1200px; padding: 4px 0 6px; }
+.vaultflow-stage { display: grid; gap: 14px; transform-style: preserve-3d; }
+.vplane {
+  display: flex; align-items: center; gap: 14px;
+  border: 1px solid var(--hair); border-radius: var(--r-md);
+  background: var(--surface); padding: 15px 18px; box-shadow: var(--e1);
+  transition: transform var(--t-major) var(--ease), box-shadow var(--t-major) var(--ease),
+              background var(--t-major) var(--ease), border-color var(--t-major) var(--ease),
+              opacity var(--t-major) var(--ease);
+}
+.vplane .k { font-size: 11.5px; font-weight: 620; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-4); }
+.vplane .n { font-size: 14.5px; font-weight: 550; margin-top: 2px; }
+.vplane .amt {
+  margin-left: auto; font-size: 20px; font-weight: 620;
+  letter-spacing: -.026em; font-variant-numeric: tabular-nums;
+}
+.vplane.holding {
+  transform: translateZ(-34px) translateY(3px);
+  border-color: var(--amber-line); background: var(--amber-wash);
+  box-shadow: var(--lip);
+}
+.vplane.released { transform: none; border-color: var(--pine-line); background: var(--pine-wash); box-shadow: var(--e2); }
+.vplane.paid { border-color: var(--pine-line); background: var(--pine-wash); }
+.vplane.dim { opacity: .5; }
+
+.vlink { height: 20px; margin-left: 26px; border-left: 1.5px solid var(--hair-strong); position: relative; }
+.vlink.active::after {
+  content: ""; position: absolute; left: -3.5px; top: 0;
+  width: 6px; height: 6px; border-radius: 50%; background: var(--pine);
+  animation: drop 1.1s var(--ease-firm) infinite;
+}
+@keyframes drop {
+  from { transform: translateY(-2px); opacity: 0; }
+  30%  { opacity: 1; }
+  to   { transform: translateY(18px); opacity: 0; }
+}
+.lockchip {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 7px;
+  font-size: 12.5px; font-weight: 620; color: var(--amber);
+}
+.lockchip.released { color: var(--pine); }
+
+.steps { display: grid; margin-top: 18px; }
+.step {
+  position: relative;
+  display: grid; grid-template-columns: 28px minmax(0,1fr) auto; gap: 14px;
+  padding: 12px 0; align-items: start;
+}
+.step::before {
+  content: ""; position: absolute; left: 13px; top: 34px; bottom: -12px;
+  width: 1.5px; background: var(--hair);
+}
+.step:last-child::before { display: none; }
+.step-node {
+  width: 27px; height: 27px; border-radius: 50%; flex: none; z-index: 1;
+  border: 1.5px solid var(--hair-strong); background: var(--surface);
+  display: grid; place-items: center; font-size: 12px; color: var(--ink-4); font-weight: 620;
+  transition: background var(--t-mid) var(--ease), border-color var(--t-mid) var(--ease), color var(--t-mid) var(--ease);
+}
+.step.done .step-node { background: var(--pine); border-color: var(--pine); color: #fff; }
+.step.done::before { background: var(--pine-line); }
+.step.current .step-node { border-color: var(--pine); color: var(--pine); background: var(--pine-wash); }
+.step.pending { opacity: .48; }
+.step-label { font-size: 14.5px; font-weight: 560; }
+.step-detail { font-size: 13px; color: var(--ink-3); margin-top: 2px; }
+
+.txchip {
+  font-family: var(--mono); font-size: 12px; color: var(--ink-2);
+  background: var(--surface-2); border: 1px solid var(--hair);
+  padding: 3px 8px; border-radius: var(--r-xs); display: inline-block;
+}
+
+/* ============================================================= settlement = */
+
+.rep-line { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+.rep-num { font-size: 34px; font-weight: 630; letter-spacing: -.036em; font-variant-numeric: tabular-nums; line-height: 1; }
+.rep-num.before { color: var(--ink-4); }
+.rep-num.after { color: var(--pine); }
+.rep-arrow { color: var(--ink-4); font-size: 18px; }
+.rep-gain {
+  font-size: 13px; font-weight: 620; color: var(--pine);
+  background: var(--pine-wash); border: 1px solid var(--pine-line);
+  padding: 3px 10px; border-radius: 100px; font-variant-numeric: tabular-nums;
+}
+.rep-bar {
+  height: 7px; background: var(--sunk); border: 1px solid var(--hair);
+  border-radius: 100px; overflow: hidden; margin-top: 14px;
+}
+.rep-fill { height: 100%; background: var(--pine); border-radius: 100px; transition: width 1.2s var(--ease); }
+
+/* ================================================================ ledger == */
+
+.ledger {
+  position: sticky; top: 0; align-self: start;
+  height: 100vh; overflow-y: auto;
+  padding: 30px 22px 130px 8px;
+  display: flex; flex-direction: column; gap: 14px;
+  scrollbar-width: thin;
+}
+.ledger::-webkit-scrollbar { width: 6px; }
+.ledger::-webkit-scrollbar-thumb { background: var(--hair-strong); border-radius: 3px; }
+.ledger::-webkit-scrollbar-track { background: transparent; }
+
+.lcard {
+  background: rgba(255,255,255,.78); border: 1px solid var(--hair);
+  border-radius: var(--r-md); padding: 14px 16px; box-shadow: var(--e1);
+}
+.lcard-t {
+  font-size: 11.5px; font-weight: 650; text-transform: uppercase; letter-spacing: .09em;
+  color: var(--ink-4); margin-bottom: 10px;
+}
+.lrow { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; font-size: 13.5px; }
+.lrow .k { color: var(--ink-3); }
+.lrow .v { font-weight: 560; font-variant-numeric: tabular-nums; text-align: right; }
+.lrow .v.mono { font-weight: 500; font-size: 12px; }
+.lsep { height: 1px; background: var(--hair); margin: 10px -16px; }
+.lempty { font-size: 12.5px; color: var(--ink-3); line-height: 1.55; }
+
+.lbig { font-size: 24px; font-weight: 630; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.lbig.pos { color: var(--pine); }
+
+.meter { height: 6px; background: var(--sunk); border: 1px solid var(--hair); border-radius: 100px; overflow: hidden; margin-top: 9px; }
+.meter-fill { height: 100%; background: var(--ink); transition: width var(--t-major) var(--ease); }
+.meter-fill.warn { background: var(--amber); }
+
+/* ================================================================= states = */
+
+/* Loading is a description of the work, not a spinner. It names what the
+   system is doing so a first-time viewer follows the run. */
+.working {
+  display: grid; gap: 10px; padding: 18px 20px;
+  border: 1px solid var(--hair); border-radius: var(--r-md);
+  background: rgba(255,255,255,.66); box-shadow: var(--e1);
+}
+.working-top { display: flex; align-items: center; gap: 11px; font-size: 14.5px; font-weight: 550; }
+.working-sub { font-size: 13px; color: var(--ink-3); }
+.workbar { height: 2px; background: var(--hair); border-radius: 1px; overflow: hidden; }
+.workbar::after {
+  content: ""; display: block; height: 100%; width: 34%; background: var(--pine); border-radius: 1px;
+  animation: sweep 1.4s var(--ease-firm) infinite;
+}
+
+.empty {
+  border: 1px dashed var(--hair-strong); border-radius: var(--r-md);
+  padding: 34px 24px; text-align: center; color: var(--ink-3); font-size: 13.5px;
+  background: rgba(255,255,255,.5);
+}
+
+.banner {
+  display: flex; align-items: flex-start; gap: 10px; padding: 12px 15px;
+  border-radius: var(--r-sm); font-size: 13.5px; border: 1px solid; line-height: 1.5;
+  animation: enter var(--t-mid) var(--ease) both;
+}
+.banner.err  { background: var(--crimson-wash); border-color: var(--crimson-line); color: var(--crimson); }
+.banner.info { background: var(--surface); border-color: var(--hair-strong); color: var(--ink-2); box-shadow: var(--e1); }
+.banner.ok   { background: var(--pine-wash); border-color: var(--pine-line); color: var(--ink-2); }
+.banner b { font-weight: 620; }
+
+.disclosure {
+  padding: 16px 18px; border: 1px solid var(--hair); border-left: 3px solid var(--hair-strong);
+  border-radius: var(--r-sm); background: rgba(255,255,255,.6);
+  font-size: 13px; color: var(--ink-3); line-height: 1.65;
+}
+.disclosure b { color: var(--ink-2); font-weight: 620; }
+
+.tick { width: 20px; height: 20px; flex: none; }
+.tick path {
+  fill: none; stroke: currentColor; stroke-width: 2.4;
+  stroke-linecap: round; stroke-linejoin: round;
+  stroke-dasharray: 26; stroke-dashoffset: 26;
+  animation: drawTick 460ms var(--ease) 90ms forwards;
+}
+@keyframes drawTick { to { stroke-dashoffset: 0; } }
+
+/* ================================================================== entry = */
+
+.entry {
+  position: relative; z-index: 1; min-height: 100vh;
+  display: grid; grid-template-columns: minmax(0, 1.02fr) minmax(400px, .98fr);
+  gap: 60px; align-items: center;
+  padding: 44px clamp(24px, 5.5vw, 88px);
+}
+.entry-copy { max-width: 560px; }
+.entry-brand {
+  display: flex; align-items: center; gap: 11px;
+  font-size: 16px; font-weight: 620; letter-spacing: -.026em; margin-bottom: 30px;
+}
+.entry h1 {
+  font-size: clamp(32px, 3.7vw, 48px); line-height: 1.06; letter-spacing: -.038em;
+  max-width: 15ch;
+}
+.entry-sub {
+  font-size: 16.5px; line-height: 1.55; color: var(--ink-2);
+  margin-top: 17px; max-width: 50ch; letter-spacing: -.008em;
+}
+.entry-actions { display: flex; gap: 12px; margin-top: 28px; flex-wrap: wrap; }
+.entry-err {
+  margin-top: 18px; font-size: 13.5px; color: var(--crimson);
+  background: var(--crimson-wash); border: 1px solid var(--crimson-line);
+  padding: 11px 14px; border-radius: var(--r-sm);
+}
+.entry-note {
+  margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--hair);
+  font-size: 13.5px; color: var(--ink-3); line-height: 1.6; max-width: 52ch;
+}
+.entry-facts { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 7px; max-width: 52ch; }
+.entry-facts li { font-size: 13.5px; color: var(--ink-3); line-height: 1.5; }
+.entry-facts b { color: var(--ink-2); font-weight: 620; }
+
+.entry-visual { position: relative; }
+.entry-visual-cap {
+  font-size: 12px; font-weight: 650; text-transform: uppercase; letter-spacing: .09em;
+  color: var(--ink-4); margin-bottom: 16px; text-align: center;
+}
+
+/* ============================================== rationale: the AI control ==
+   A circular control with a mark built for this product: an open C orbit
+   (Covenant), a smaller inner arc, and a solid node at the centre. It is not a
+   robot, a sparkle, or a speech bubble. Collapsed it is only the mark; the
+   label appears on hover.
+   ========================================================================== */
+
+.rationale-fab {
+  position: fixed; right: 26px; bottom: 26px; z-index: 60;
+  width: 54px; height: 54px; border-radius: 50%; padding: 0; cursor: pointer;
+  display: grid; place-items: center;
+  background: var(--ink-surface); color: var(--on-ink);
+  border: 1px solid rgba(255,255,255,.10);
+  box-shadow: var(--e3), inset 0 1px 0 rgba(255,255,255,.14);
+  transition: transform var(--t-mid) var(--ease), background var(--t-mid) var(--ease),
+              box-shadow var(--t-mid) var(--ease);
+  animation: hover 6s var(--ease) infinite;
+}
+@keyframes hover {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-3.5px); }
+}
+/* Ambient ring. Ink, not neon: it reads as presence, not as a glow effect. */
+.rf-halo {
+  position: absolute; inset: -7px; border-radius: 50%;
+  border: 1px solid rgba(16,20,24,.16); pointer-events: none;
+  animation: halo 4.4s var(--ease) infinite;
+}
+@keyframes halo {
+  0%   { opacity: .5; transform: scale(.94); }
+  60%  { opacity: 0;  transform: scale(1.1); }
+  100% { opacity: 0;  transform: scale(1.1); }
+}
+.rationale-fab:hover { background: #1B2229; animation-play-state: paused; transform: translateY(-2px) scale(1.04); }
+.rationale-fab:active { transform: translateY(0) scale(.98); }
+/* While the drawer is open the control would sit on top of the drawer's own
+   input row, so it recedes into the panel it opened. The drawer keeps its own
+   close button, the scrim closes on click, and Escape closes from anywhere. */
+.rationale-fab.on {
+  opacity: 0; transform: scale(.6); visibility: hidden;
+  animation: none; pointer-events: none;
+  transition: transform var(--t-panel) var(--ease), opacity var(--t-panel) var(--ease),
+              visibility var(--t-panel);
+}
+.rationale-fab.on .rf-halo { animation: none; opacity: 0; }
+
+/* the mark reacts to hover: the outer orbit completes a quarter turn */
+.rf-mark { width: 26px; height: 26px; display: block; }
+.rf-orbit { transition: transform var(--t-major) var(--ease); transform-origin: 12px 12px; }
+.rationale-fab:hover .rf-orbit { transform: rotate(90deg); }
+.rf-core { transition: transform var(--t-mid) var(--ease); transform-origin: 12px 12px; }
+.rationale-fab:hover .rf-core { transform: scale(1.18); }
+
+.rf-tip {
+  position: absolute; right: 64px; top: 50%; transform: translate(6px, -50%);
+  background: var(--ink-surface); color: var(--on-ink);
+  font-size: 12.5px; font-weight: 560; padding: 5px 11px; border-radius: var(--r-xs);
+  white-space: nowrap; opacity: 0; pointer-events: none; box-shadow: var(--e2);
+  transition: opacity var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+}
+.rationale-fab:hover .rf-tip, .rationale-fab:focus-visible .rf-tip {
+  opacity: 1; transform: translate(0, -50%);
+}
+
+/* ---- drawer. Opens from the control, not from the screen edge. */
+
+.rat-scrim {
+  position: fixed; inset: 0; z-index: 55; background: rgba(16,20,24,.20);
+  opacity: 0; pointer-events: none; transition: opacity var(--t-panel) var(--ease);
+  backdrop-filter: blur(1.5px);
+}
+.rat-scrim.on { opacity: 1; pointer-events: auto; }
+
+.rationale {
+  position: fixed; top: 16px; right: 16px; bottom: 16px; width: 428px; z-index: 58;
+  background: var(--surface); border: 1px solid var(--hair-strong);
+  border-radius: var(--r-lg); box-shadow: var(--e4);
+  display: flex; flex-direction: column; overflow: hidden;
+  transform-origin: calc(100% - 22px) calc(100% - 22px);
+  transform: scale(.90) translateY(12px); opacity: 0; visibility: hidden;
+  transition: transform var(--t-panel) var(--ease), opacity var(--t-panel) var(--ease),
+              visibility var(--t-panel);
+}
+.rationale.open { transform: none; opacity: 1; visibility: visible; }
+
+.rat-head {
+  display: flex; align-items: flex-start; gap: 13px;
+  padding: 17px 18px; border-bottom: 1px solid var(--hair);
+  background: linear-gradient(180deg, var(--surface), var(--surface-2));
+}
+.rat-mark {
+  width: 34px; height: 34px; border-radius: var(--r-sm); flex: none;
+  display: grid; place-items: center; background: var(--ink-surface); color: var(--on-ink);
+  box-shadow: var(--e1);
+}
+.rat-title { font-size: 15.5px; font-weight: 620; letter-spacing: -.02em; }
+.rat-sub { font-size: 12.5px; color: var(--ink-3); margin-top: 2px; }
+.rat-head .btn { margin-left: auto; }
+
+.rat-body { flex: 1; overflow-y: auto; padding: 18px; display: flex; flex-direction: column; gap: 16px; }
+.rat-body::-webkit-scrollbar { width: 6px; }
+.rat-body::-webkit-scrollbar-thumb { background: var(--hair-strong); border-radius: 3px; }
+
+/* Empty state is a set of decision topics, not a blank chat window. */
+.rat-intro { font-size: 13.5px; color: var(--ink-2); line-height: 1.6; }
+.rat-bound {
+  font-size: 12.5px; color: var(--ink-3); line-height: 1.55;
+  border-left: 2px solid var(--hair-strong); padding: 9px 0 9px 12px;
+  background: var(--sunk); border-radius: 0 var(--r-xs) var(--r-xs) 0;
+}
+.rat-topics { display: grid; gap: 7px; }
+.rat-topic {
+  text-align: left; cursor: pointer; display: grid; grid-template-columns: 1fr auto; gap: 10px;
+  align-items: center;
+  border: 1px solid var(--hair); background: var(--surface); box-shadow: var(--e1);
+  padding: 12px 14px; border-radius: var(--r-sm); font-size: 13.5px; color: var(--ink);
+  transition: border-color var(--t-fast) var(--ease), transform var(--t-fast) var(--ease),
+              box-shadow var(--t-fast) var(--ease);
+}
+.rat-topic:hover:not(:disabled) { border-color: var(--ink-4); transform: translateY(-1px); box-shadow: var(--e2); }
+.rat-topic:disabled { opacity: .5; cursor: not-allowed; }
+.rat-topic .arr { color: var(--ink-4); font-size: 15px; }
+
+/* Answers read as notes on the file. Questions are quiet and right-aligned. */
+.rat-q {
+  align-self: flex-end; max-width: 86%;
+  background: var(--ink-surface); color: var(--on-ink);
+  padding: 9px 13px; border-radius: var(--r-sm) var(--r-sm) 2px var(--r-sm);
+  font-size: 13.5px; line-height: 1.5;
+  animation: enter var(--t-mid) var(--ease) both;
+}
+.rat-a { animation: enter var(--t-mid) var(--ease) both; }
+.rat-a-who {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .09em;
+  color: var(--ink-4); font-weight: 660; margin-bottom: 6px;
+  display: flex; align-items: center; gap: 7px;
+}
+.rat-a-who::after { content: ""; flex: 1; height: 1px; background: var(--hair); }
+.rat-a-text p { font-size: 14.5px; line-height: 1.62; margin-bottom: 9px; }
+.rat-a-text p:last-child { margin-bottom: 0; }
+.rat-a.refused .rat-a-text {
+  border-left: 2px solid var(--crimson); padding: 10px 0 10px 12px;
+  background: var(--crimson-wash); border-radius: 0 var(--r-xs) var(--r-xs) 0;
+}
+.rat-a.err .rat-a-text { color: var(--crimson); }
+.rat-src {
+  font-size: 11.5px; color: var(--ink-4); margin-top: 8px;
+  font-family: var(--mono); letter-spacing: -.012em; word-break: break-word;
+}
+
+/* Answer provenance. Quiet by design: it is a receipt, not a headline. */
+.rat-meta {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  margin-top: 8px; padding-top: 7px; border-top: 1px dashed var(--hair);
+  font-size: 11.5px; color: var(--ink-4); font-variant-numeric: tabular-nums;
+}
+.rat-mode { font-weight: 620; color: var(--ink-3); }
+.rat-mode.model { color: var(--pine); }
+.rat-dot { opacity: .5; }
+
+.rat-sugg { display: grid; gap: 6px; padding: 12px 18px; border-top: 1px solid var(--hair); background: var(--surface-2); }
+.rat-ask { display: flex; gap: 9px; padding: 14px 18px; border-top: 1px solid var(--hair); }
+.rat-ask .field { font-size: 13.5px; padding: 9px 12px; }
+
+/* ================================================================== modal = */
+
+.modal-scrim {
+  position: fixed; inset: 0; z-index: 70; background: rgba(16,20,24,.34);
+  display: grid; place-items: center; padding: 28px;
+  animation: fadeIn var(--t-panel) var(--ease) both; backdrop-filter: blur(2px);
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.modal {
+  width: min(940px, 100%); height: min(100%, 1040px);
+  display: flex; flex-direction: column;
+  background: var(--surface); border-radius: var(--r-lg); box-shadow: var(--e4);
+  overflow: hidden; animation: modalIn var(--t-panel) var(--ease) both;
+}
+@keyframes modalIn {
+  from { opacity: 0; transform: translate3d(0, 14px, 0) scale(.985); }
+  to   { opacity: 1; transform: none; }
+}
+.modal-head { display: flex; align-items: center; gap: 14px; padding: 15px 18px; border-bottom: 1px solid var(--hair); }
+.modal-title { font-size: 15px; font-weight: 620; letter-spacing: -.018em; }
+.modal-sub { font-size: 12.5px; color: var(--ink-3); margin-top: 1px; }
+.modal-body { flex: 1; min-height: 0; background: var(--canvas-deep); display: flex; }
+.modal-body iframe { flex: 1; width: 100%; border: 0; display: block; }
+.modal-body .empty { margin: auto; border: 0; background: transparent; }
+.modal-foot { display: flex; align-items: center; gap: 12px; padding: 13px 18px; border-top: 1px solid var(--hair); background: var(--surface-2); }
+.modal-note { font-size: 12.5px; color: var(--ink-3); }
+
+/* =============================================================== document =
+   Deliberately quieter than the rest of the interface. White sheet, hairline
+   rules, tabular figures, no accent fills except the authorisation block. It
+   should read as something a finance team files, not as another product card.
+   ========================================================================== */
+
+.doc {
+  background: #fff; border: 1px solid var(--hair-strong); border-radius: var(--r-sm);
+  padding: 38px 42px; color: var(--ink); box-shadow: var(--e2);
+}
+
+.doc-letterhead {
+  display: flex; align-items: center; gap: 11px;
+  padding-bottom: 20px; border-bottom: 1px solid var(--hair);
+}
+.doc-lh-name { font-size: 15px; font-weight: 640; letter-spacing: -.024em; line-height: 1.1; }
+.doc-lh-sub { font-size: 11.5px; color: var(--ink-4); margin-top: 1px; }
+
+.doc-head { display: flex; align-items: flex-start; gap: 22px; padding: 22px 0 20px; border-bottom: 2px solid var(--ink); }
+.doc-title { font-size: 25px; font-weight: 640; letter-spacing: -.028em; }
+.doc-sub { font-size: 13.5px; color: var(--ink-3); margin-top: 4px; }
+.doc-stamp {
+  margin-left: auto; flex: none; align-self: flex-start;
+  font-size: 11.5px; font-weight: 660; text-transform: uppercase; letter-spacing: .08em;
+  padding: 7px 13px; border: 1.5px solid; border-radius: var(--r-xs); white-space: nowrap;
+}
+.doc-stamp.pending { color: var(--amber); border-color: var(--amber); background: var(--amber-wash); }
+.doc-stamp.done { color: var(--pine); border-color: var(--pine); background: var(--pine-wash); }
+
+.doc-meta { display: flex; flex-wrap: wrap; gap: 34px; padding: 20px 0; }
+.doc-meta > div { display: grid; gap: 3px; }
+.dm-k { font-size: 11px; text-transform: uppercase; letter-spacing: .09em; color: var(--ink-4); font-weight: 650; }
+.dm-v { font-size: 13.5px; font-weight: 560; font-variant-numeric: tabular-nums; font-family: var(--mono); }
+
+.doc-parties {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 34px;
+  padding: 22px 0; border-top: 1px solid var(--hair); border-bottom: 1px solid var(--hair);
+}
+.dp-role { font-size: 11px; text-transform: uppercase; letter-spacing: .09em; color: var(--ink-4); font-weight: 650; margin-bottom: 6px; }
+.dp-name { font-size: 16px; font-weight: 620; letter-spacing: -.018em; }
+.dp-line { font-size: 12.5px; color: var(--ink-2); margin-top: 3px; word-break: break-all; }
+
+.doc-table { width: 100%; border-collapse: collapse; margin: 26px 0; }
+.doc-table th {
+  text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .09em;
+  color: var(--ink-4); font-weight: 650; padding: 0 0 10px; border-bottom: 1px solid var(--hair-strong);
+}
+.doc-table td { padding: 14px 0; border-bottom: 1px solid var(--hair); font-size: 14.5px; vertical-align: top; }
+.doc-table .right { text-align: right; }
+.doc-table tfoot td { border-bottom: 0; padding: 8px 0; color: var(--ink-2); font-size: 14px; }
+.doc-table tfoot tr:first-child td { padding-top: 16px; }
+.doc-table .doc-total td {
+  border-top: 2px solid var(--ink); padding-top: 14px;
+  font-size: 21px; font-weight: 640; color: var(--ink); letter-spacing: -.026em;
+}
+.doc-table .doc-strike td { color: var(--ink-4); }
+.doc-table .doc-strike td:last-child { text-decoration: line-through; }
+.doc-fine { font-size: 12px; color: var(--ink-4); margin-top: 3px; font-family: var(--mono); }
+.doc-table .pos { color: var(--pine); }
+
+.doc-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 36px; margin-bottom: 26px; }
+.doc-h {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .09em;
+  color: var(--ink-4); font-weight: 650; padding-bottom: 8px;
+  border-bottom: 1px solid var(--hair); margin-bottom: 12px;
+}
+.doc-dl { display: grid; grid-template-columns: 116px minmax(0,1fr); gap: 7px 16px; margin: 0; }
+.doc-dl dt { font-size: 13.5px; color: var(--ink-3); }
+.doc-dl dd { font-size: 13.5px; margin: 0; color: var(--ink); }
+.doc-dl dd.mono { font-family: var(--mono); font-size: 12.5px; word-break: break-all; }
+
+.doc-checks ul { list-style: none; margin: 0; padding: 0; }
+.doc-checks li {
+  display: grid; grid-template-columns: 18px auto 1fr; gap: 12px; align-items: baseline;
+  font-size: 14px; padding: 9px 0; border-bottom: 1px dashed var(--hair);
+}
+.doc-checks li:last-child { border-bottom: 0; }
+.doc-checks .ck { font-weight: 700; }
+.doc-checks li.pass .ck { color: var(--pine); }
+.doc-checks li.fail .ck { color: var(--crimson); }
+.doc-checks li.pending { color: var(--ink-3); }
+.doc-checks li.pending .ck { color: var(--ink-4); }
+.doc-checks .ck-detail { color: var(--ink-3); font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* The authorisation block. Named for what the system actually does. */
+.doc-auth {
+  margin: 26px 0 0; padding: 20px 22px;
+  border: 1px solid var(--pine-line); background: var(--pine-wash); border-radius: var(--r-sm);
+}
+.doc-auth-h {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .09em;
+  color: var(--pine); font-weight: 660; margin-bottom: 14px;
+}
+.doc-auth-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 18px; }
+.doc-auth-grid .k { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-3); font-weight: 620; }
+.doc-auth-grid .v { font-size: 15px; font-weight: 600; margin-top: 3px; font-variant-numeric: tabular-nums; word-break: break-all; }
+.doc-auth-grid .v.mono { font-size: 12px; font-weight: 500; }
+.doc-auth-note { font-size: 12.5px; color: var(--ink-2); margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--pine-line); line-height: 1.55; }
+
+.doc-foot {
+  display: flex; align-items: flex-start; gap: 22px; margin-top: 26px;
+  padding-top: 18px; border-top: 1px solid var(--hair);
+  font-size: 12.5px; color: var(--ink-3); line-height: 1.6;
+}
+.doc-actions { margin-left: auto; flex: none; display: flex; gap: 9px; }
+
+/* ---------------------------------------------------------------- signing */
+
+.signbox {
+  border: 1px solid var(--hair-strong); border-radius: var(--r-md);
+  background: var(--surface); padding: 20px 22px; box-shadow: var(--e2);
+}
+.signbox-head { font-size: 11.5px; text-transform: uppercase; letter-spacing: .09em; color: var(--ink-4); font-weight: 650; margin-bottom: 14px; }
+.signbox-terms { border: 1px solid var(--hair); border-radius: var(--r-sm); overflow: hidden; margin-bottom: 16px; }
+.signbox-terms > div {
+  display: flex; justify-content: space-between; gap: 18px;
+  padding: 11px 15px; border-bottom: 1px solid var(--hair); font-size: 14px;
+}
+.signbox-terms > div:last-child { border-bottom: 0; }
+.signbox-terms > div:nth-child(odd) { background: var(--surface-2); }
+.signbox-terms .k { color: var(--ink-3); }
+.signbox-terms .v { font-weight: 560; font-variant-numeric: tabular-nums; text-align: right; }
+.signbox-terms .v.strong { font-size: 18px; font-weight: 640; letter-spacing: -.022em; }
+
+.signbox-check {
+  display: flex; align-items: flex-start; gap: 11px; cursor: pointer;
+  font-size: 14px; color: var(--ink-2); margin-bottom: 16px; line-height: 1.5;
+}
+.signbox-check input { margin-top: 3px; width: 16px; height: 16px; accent-color: var(--pine); flex: none; }
+.signbox-sign { display: flex; gap: 11px; flex-wrap: wrap; }
+.signbox-sign .field { flex: 1; min-width: 230px; }
+.signbox-note { font-size: 12.5px; color: var(--ink-4); margin-top: 13px; }
+
+.signed {
+  border: 1px solid var(--pine-line); border-radius: var(--r-md);
+  background: var(--pine-wash); padding: 18px 20px; box-shadow: var(--e1);
+}
+.signed-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.signed-seal {
+  width: 38px; height: 38px; border-radius: 50%; flex: none; display: grid; place-items: center;
+  border: 1.5px solid var(--pine); color: var(--pine); background: var(--surface);
+}
+.signed-title { font-size: 15.5px; font-weight: 620; letter-spacing: -.018em; }
+.signed-sub { font-size: 13px; color: var(--ink-2); margin-top: 1px; }
+.signed-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px;
+  margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--pine-line);
+}
+.signed-grid .k { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-3); font-weight: 620; }
+.signed-grid .v { font-size: 13px; margin-top: 3px; word-break: break-all; }
+.signed-note { font-size: 12.5px; color: var(--ink-2); margin-top: 14px; line-height: 1.55; }
+
+/* ============================================================= responsive = */
+
+@media (min-width: 1700px) {
+  :root { --side-w: 282px; --ledger-w: 348px; --read: 940px; }
+  .canvas { padding: 38px 48px 130px; }
+}
+
+@media (max-width: 1400px) {
+  :root { --side-w: 234px; --ledger-w: 288px; }
+  .canvas { padding: 26px 26px 120px; }
+}
+
+/* Ledger folds under the canvas. It is context, not primary action. */
+@media (max-width: 1200px) {
+  .root { grid-template-columns: var(--side-w) minmax(0, 1fr); }
+  .ledger {
+    grid-column: 1 / -1; position: static; height: auto; overflow: visible;
+    flex-direction: row; flex-wrap: wrap; padding: 0 26px 40px;
+  }
+  .ledger .lcard { flex: 1 1 250px; }
+  .award-grid { grid-template-columns: repeat(2, 1fr); }
+  .entry { grid-template-columns: minmax(0,1fr); gap: 44px; padding-block: 44px; }
+  .entry-copy { max-width: none; }
+  .entry-visual { max-width: 560px; }
+}
+
+/* Sidebar becomes a horizontal progress strip. The actor tags survive. */
+@media (max-width: 900px) {
+  .root { grid-template-columns: minmax(0, 1fr); }
+  .sidebar {
+    position: sticky; top: 0; height: auto; z-index: 30;
+    flex-direction: row; align-items: center; gap: 20px;
+    padding: 12px 16px; border-right: 0; border-bottom: 1px solid var(--hair);
+    background: rgba(246,245,241,.9); backdrop-filter: blur(12px);
+    overflow-x: auto;
+  }
+  .side-brand { padding: 0; flex: none; }
+  .brand-role { display: none; }
+  .rail-head { display: none; }
+  .rail { display: flex; gap: 6px; min-width: max-content; }
+  .rail-item { padding: 5px 9px; }
+  .rail-item::before { left: auto; right: -4px; top: 19px; bottom: auto; width: 8px; height: 1.5px; }
+  .side-foot { margin: 0; padding: 0; flex: none; display: flex; gap: 8px; }
+  .idchip { display: none; }
+  .canvas { padding: 22px 18px 120px; }
+  .canvas-inner { gap: 28px; }
+  .ledger { padding: 0 18px 36px; }
+  .doc { padding: 24px 20px; }
+  .doc-parties, .doc-cols { grid-template-columns: 1fr; gap: 22px; }
+  .term { grid-template-columns: 1fr; gap: 3px; }
+  .split { grid-template-columns: 1fr; }
+  .mcaps { grid-template-columns: 1fr; }
+  .mnode.grant, .mnode.agent, .mnode.party, .mnode.vault { margin-inline: 0; }
+  .rationale { top: 0; right: 0; bottom: 0; left: 0; width: auto; border-radius: 0; border: 0; }
+  .turn { grid-template-columns: 1fr; gap: 4px; }
+  .turn-price { grid-row: 1; justify-self: end; margin-top: -22px; }
+  .award-head { flex-direction: column; align-items: flex-start; gap: 14px; }
+  .award-amt { margin-left: 0; text-align: left; }
+  .doc-checks li { grid-template-columns: 18px 1fr; }
+  .doc-checks .ck-detail { grid-column: 2; text-align: left; }
+  .modal-scrim { padding: 0; }
+  .modal { border-radius: 0; height: 100%; max-height: none; }
+}
+
+@media (max-width: 620px) {
+  .award-grid { grid-template-columns: 1fr; }
+  .figures { grid-template-columns: 1fr; }
+  .signbox-terms > div { flex-direction: column; gap: 3px; }
+  .signbox-terms .v { text-align: left; }
+  .rationale-fab { right: 16px; bottom: 16px; }
+  .entry { padding-inline: 20px; }
+
+  /* The sign field carried a 230px floor that left almost no room beside the
+     signbox padding on a narrow phone. Both come down together. */
+  .signbox { padding: 16px; }
+  .signbox-sign .field { min-width: 0; }
+  .doc { padding: 20px 16px; }
+
+  /* A 116px label column plus a break-all hash in the remainder is unreadable
+     at this width. Stack the term over its value instead. */
+  .doc-dl { grid-template-columns: 1fr; gap: 2px; }
+  .doc-dl dt { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; font-weight: 620; }
+  .doc-dl dd { margin-bottom: 10px; }
+  .doc-meta { gap: 18px; }
+}
+
+/* =========================================================== reduced motion
+   Motion sits on top of a working interface. Removing it removes no
+   information: every animated element has a resolved resting state.
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+  .aura i { animation: none !important; }
+  .rationale-fab { animation: none !important; transform: none !important; }
+  .rf-halo { display: none; }
+  .lm-attempt.run { width: var(--stop-at); }
+  .tick path { stroke-dashoffset: 0; }
+  .vplane, .vplane.holding { transform: none !important; }
+  .mandate.showcase .mnode { transform: none !important; opacity: 1 !important; }
+  .rationale { transform: none; }
+  .mconn.flowing::after, .rail-item.current .rail-idx::after,
+  .vlink.active::after { display: none; }
+  .workbar::after, .negpulse::after { animation: none; width: 100%; opacity: .4; }
+  /* The in-button progress bar animates to zero opacity, so pin it visible
+     instead. The button label already reads "Running", but the control should
+     still look occupied rather than idle. */
+  .btn.loading::before { animation: none; transform: none; opacity: .45; }
+}

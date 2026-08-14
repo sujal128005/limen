@@ -1,0 +1,29 @@
+{
+  "name": "covenant",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Procurement agents that source and negotiate, with spending authority enforced by contract.",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "node server/index.js",
+    "start": "node server/index.js",
+    "test": "node test/run.js",
+    "build:web": "cd web && vite build",
+    "dev:web": "cd web && vite",
+    "prestart": "npm run build:web"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "ethers": "^6.13.4",
+    "express": "^4.21.2",
+    "ganache": "^7.9.2",
+    "pdfkit": "^0.15.0",
+    "solc": "0.8.24"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^5.4.11",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}
