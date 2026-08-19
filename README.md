@@ -1,124 +1,59 @@
 # Covenant
 
-An AI procurement agent that sources suppliers and negotiates deals, where the spending limit is enforced by a smart contract rather than by the agent's own code. Built for B2B teams that buy physical goods: manufacturers, distributors, import and export businesses, and SMEs sourcing across borders.
+**AI procurement agent with on-chain spending controls.**
 
-Vertical in this build: packaging raw materials, PET resin and HDPE.
+Covenant helps businesses source physical goods, compare suppliers, negotiate prices, and execute purchases while keeping the spending limit outside the agent's control.
+
+The core idea is simple:
+
+> **The agent can negotiate a deal, but it cannot change how much it is allowed to spend.**
+
+Covenant combines deterministic procurement logic, optional LLM assistance, and smart-contract-enforced spending limits.
+
+The seeded catalogue holds **15 suppliers across 13 countries, offering 39 listings in 13 materials**, from PET resin and kraft paper through aluminium, steel, copper and silicone. **17 worked scenarios** ship with the app, spanning packaging, metals, mechanical, electrical, electronics, medical and aerospace buying.
+
+**Live demo:** https://covenant-j1op.onrender.com
+
+> The hosted demo runs on a free instance and may take up to a minute to wake from sleep. Local startup takes around 15 seconds.
 
 ---
 
-## Try the demo in 60 seconds
+## What Covenant does
 
-```bash
-npm install
-npm start
+A buyer gives Covenant a sourcing request such as:
+
+```text
+500 kg bottle-grade PET resin
+Budget: $1,200
+Delivery: within 14 days
+Certification: FDA food-contact
 ```
 
-Open <http://localhost:4000>. No API key, no wallet, no faucet, no second terminal.
+Covenant then:
 
-1. Click **Try demo workspace**.
-2. Leave the prefilled request as it is and click **Run sourcing**.
-   `500 kg bottle-grade PET resin, budget $1,200, within 14 days, FDA food-contact certified`
-3. Watch the screening step. **Gujarat Polychem is the cheapest listing at $1,090 and is rejected**, for wrong grade, minimum order too large, and missing certification. Price is negotiable; a missing certificate is not.
-4. Watch three negotiations. Baltic fails on schedule, Meridian fails on price and the agent **walks away rather than overspending**, Anhui agrees at **$1,175 over 3 rounds**.
-5. Read the recommendation, then the **Negotiated Purchase Agreement** below it.
-6. Tick the box, type a name, click **Approve and sign**. The document locks and shows a content hash.
-7. Click **Publish spending policy on-chain**, then **Force the agent to spend $1,250**.
-   The transaction reverts with `ExceedsPerDealCap`. No deal is created and no funds move.
-8. Click **Now let the agent raise its own limit**. The agent writes itself a $1,000,000 policy and the transaction *succeeds*. Your ceiling still reads $1,200 and the next spend still fails.
-9. Approve and fund the real deal, confirm delivery, release payment. Supplier reputation moves `50.00 → 56.25`, written on-chain by the escrow contract.
-10. Download both PDFs.
+1. Parses the requirements.
+2. Screens suppliers against the request.
+3. Rejects suppliers that fail mandatory requirements.
+4. Negotiates with eligible suppliers.
+5. Walks away when a negotiation exceeds the buyer's budget.
+6. Recommends the best available deal.
+7. Generates a purchase agreement from canonical server state.
+8. Requires buyer approval before payment.
+9. Executes the purchase through the escrow contract.
+10. Records the settlement and supplier reputation on-chain.
 
-Step 8 is the point of the project. The agent can change its own record and it buys nothing.
+The LLM is used for **phrasing**, not for deciding prices, eligibility, spending limits, or settlement figures.
 
 ---
 
-## What is different here
+## Try it locally
 
-**Buyer and agent are separate keys.** `setAgentPolicy` keys off `msg.sender`, so the agent can only ever write a policy for itself while it spends against the buyer's. Privilege escalation is not blocked by a check, it is unrepresentable.
+### Requirements
 
-**The spending ceiling is contract state.** The cap is the buyer's own stated budget. `createDeal` reverts above it. The backend deliberately does not pre-check the amount, so the rejection provably comes from the EVM.
+* Node.js 18+
+* Nothing else
 
-**Documents are derived server-side from canonical state.** The routes read nothing from the request body, so no client can alter an amount, a hash, or a settlement figure.
-
-**Workspaces are isolated server-side.** One buyer's request, shortlist, negotiations and documents are never served to another.
-
----
-
-## The AI pipeline
-
-Two stages, and the order is the design.
-
-**Stage 1, grounded answer.** Deterministic, computed from a frozen projection of
-the run. It produces every figure in the reply and cites where each came from.
-
-**Stage 2, phrasing.** The grounded answer is sent to `grok-3-mini` with a system
-prompt that forbids introducing any number, name, date or claim that is not in
-the input, and forbids removing any figure that is. The model rewrites; it never
-computes. It never sees supplier reservation prices, and it never sees a refusal,
-because refusals return before Stage 2 is reached.
-
-Output is validated before use: HTTP status, response shape, a minimum length
-(a truncated rewrite of a financial answer is discarded rather than shipped), and
-sanitisation. Every failure is named and falls back to the grounded answer.
-
-| Failure | Reported as |
-| --- | --- |
-| No API key | `no-key` |
-| Over 8000 ms | `timeout`, via `AbortController` |
-| Non-200 | `http-429`, `http-500`, code preserved |
-| Host unreachable | `network` |
-| Unusable completion | `malformed-completion` |
-| Refusal | `refusal-not-sent`, model skipped |
-
-Latency is measured on every call including failures, both stages are timed
-separately, and `POST /api/counsel` returns a `pipeline` object with `mode`,
-`model`, `localMs`, `modelMs`, `totalMs`, `timeoutMs`, `fallback` and `usage`.
-The interface prints it under every answer, so a reader can tell whether a
-sentence came from a deterministic function or a language model.
-
-```bash
-node scripts/llm-check.js            # live call, latency, figure preservation, all four failure paths
-node scripts/llm-check.js --models   # list what the configured provider will serve
-```
-
-Screening, negotiation, ranking and every figure in the documents are
-deterministic code, not model output. The same request produces the same
-transcript every time, and the test suite asserts it.
-
----
-
-## Architecture
-
-```mermaid
-flowchart TD
-    B[Buyer] -->|sets policy, approves, signs| API
-    API[Express API] --> ENG[Engine: parse, match, negotiate, recommend]
-    API --> DOC[documents.js: canonical document state]
-    DOC --> PDF[pdf.js: pdfkit binary]
-    API --> AG[Agent key]
-    AG -->|createDeal| ESC[ProcurementEscrow]
-    ESC -->|authority check| ESC
-    ESC -->|settlement only| REG[SupplierRegistry]
-    API -.frozen snapshot.-> CN[Rationale: read only, zero imports]
-    CN -.optional phrasing.-> XAI[xAI API]
-```
-
-The authority check sits inside `ProcurementEscrow.createDeal`, not in the API layer. Document generation runs `session state -> documents.js -> pdf.js -> PDF binary` with no client input at any step.
-
-| Component | Role |
-| --- | --- |
-| `server/engine/` | Requirement parsing, supplier matching, bounded negotiation, recommendation. Deterministic. |
-| `server/documents.js` | Builds both documents from session and chain state. Signing, versioning, content hash. |
-| `server/pdf.js` | Renders real PDF binaries with pdfkit. |
-| `server/counsel.js` | Rationale: explains a run. Zero imports, so it holds no capability to act. The module and its `/api/counsel` route keep an earlier name; the feature is called Rationale in the interface. |
-| `server/workspace.js` | Per-workspace session isolation. |
-| `contracts/` | `ProcurementEscrow`, `SupplierRegistry`, `MockUSDC`. |
-
----
-
-## Quickstart
-
-Requires **Node.js 18 or newer**. Nothing else.
+### Run
 
 ```bash
 git clone https://github.com/sujal128005/Covenant.git
@@ -127,122 +62,413 @@ npm install
 npm start
 ```
 
-Open <http://localhost:4000>.
+Then open:
 
-First boot takes 10 to 25 seconds: the server compiles the Solidity contracts with solc-js, starts an in-process EVM, deploys, registers suppliers on-chain, and funds the buyer. There is no separate seed step.
+```text
+http://localhost:4000
+```
+
+There is no separate database, wallet, faucet, or second terminal required for the local demo.
+
+### Quick demo
+
+1. Select **Try the demo workspace**.
+2. Keep the pre-filled sourcing request.
+3. Click **Run sourcing**.
+4. Follow the supplier screening and negotiation.
+5. Review the recommended deal and purchase agreement.
+6. Approve and sign the agreement.
+7. Publish the spending policy.
+8. Try to make the agent spend **$1,250** against a **$1,200** ceiling.
+9. The transaction reverts with `ExceedsPerDealCap`.
+10. Let the agent increase its own policy and try again.
+11. The buyer's $1,200 ceiling still applies.
+12. Approve and fund the valid deal, confirm delivery, and release payment.
+
+The important part of the demo is that **changing the agent's own policy does not change the buyer's spending ceiling**.
 
 ---
 
-## Environment variables
+## Why the spending limit matters
 
-The product runs fully with none of these set.
+An autonomous procurement agent may eventually be exposed to bad data, prompt injection, bugs, or a compromised model.
 
-| Name | Required | Default | Description |
-| --- | --- | --- | --- |
-| `LLM_API_KEY` | Optional | none | Lets Rationale phrase its answers through a model. Server-side only. Without it Rationale runs locally and behaves identically. |
-| `LLM_BASE_URL` | Optional | `https://api.x.ai/v1` | Any OpenAI-compatible chat completions API. Point it at Groq, OpenAI or OpenRouter without a code change. |
-| `LLM_MODEL` | Optional | `grok-3-mini` | Model used when a key is present. |
-| `XAI_API_KEY`, `XAI_MODEL` | Optional | none | Legacy names, still honoured. |
-| `PORT` | Optional | `4000` | Application port. |
-| `RPC_URL` | Optional | none | Point at any EVM JSON-RPC endpoint, for example Base Sepolia, instead of the in-process chain. |
-| `DEPLOYER_KEY` | Optional | none | Required when `RPC_URL` is set. |
-| `AGENT_KEY` | Optional | none | Gives the agent its own key on a public network. On the local chain it already has a separate account. |
+Covenant therefore does not rely on the agent behaving correctly to enforce the budget.
 
-Copy `.env.example` to `.env` to set any of them. Never put real values in `.env.example`.
+There are two separate identities:
+
+* **Buyer**: controls the spending ceiling.
+* **Agent**: negotiates and executes purchases within that ceiling.
+
+The contract enforces the final authority.
+
+```text
+Buyer
+  │
+  │ spending policy
+  ▼
+ProcurementEscrow
+  │
+  │ authorised purchase
+  ▼
+Agent
+```
+
+The agent can modify its own policy, but it cannot modify the buyer's ceiling.
+
+---
+
+## Architecture
+
+```mermaid
+flowchart TD
+    B[Buyer] -->|policy, approval, signing| API[Express API]
+
+    API --> ENG[Procurement Engine]
+    API --> DOC[Document Builder]
+    API --> WS[Workspace]
+
+    ENG -->|parse / match / negotiate / recommend| RESULT[Procurement Result]
+
+    DOC --> PDF[PDF Generator]
+
+    API --> AG[Agent Key]
+    AG -->|createDeal| ESC[ProcurementEscrow]
+
+    ESC --> REG[SupplierRegistry]
+
+    API -. frozen snapshot .-> R[Rationale]
+    R -. optional phrasing .-> LLM[Language Model]
+```
+
+### Main components
+
+| Component             | Responsibility                                                         |
+| --------------------- | ---------------------------------------------------------------------- |
+| `server/engine/`      | Requirement parsing, supplier matching, negotiation and recommendation |
+| `server/documents.js` | Builds purchase and settlement documents from canonical state          |
+| `server/pdf.js`       | Generates PDF binaries using pdfkit                                    |
+| `server/counsel.js`   | Generates procurement rationale; has no capability to execute actions  |
+| `server/grok.js`      | Optional LLM phrasing layer                                            |
+| `server/workspace.js` | Server-side workspace isolation                                        |
+| `contracts/`          | `ProcurementEscrow`, `SupplierRegistry`, `MockUSDC`                    |
+
+---
+
+## AI pipeline
+
+Covenant separates **decision-making from language generation**.
+
+### 1. Grounded procurement result
+
+The procurement engine computes:
+
+* Supplier eligibility
+* Prices
+* Negotiation outcomes
+* Recommendation
+* Spending figures
+* Document values
+
+These values come from deterministic application logic and canonical state.
+
+### 2. Optional language generation
+
+The grounded result can then be passed to an OpenAI-compatible language model to make the explanation more natural.
+
+The model is instructed not to introduce:
+
+* New prices
+* New supplier names
+* New dates
+* New claims
+* Different financial figures
+
+The generated response is validated before it reaches the UI.
+
+If the model fails, the grounded result is returned instead.
+
+### LLM failure handling
+
+| Condition          | Result                 |
+| ------------------ | ---------------------- |
+| No API key         | `no-key`               |
+| Timeout (>8s)      | `timeout`              |
+| HTTP error         | `http-<status>`        |
+| Network failure    | `network`              |
+| Invalid completion | `malformed-completion` |
+| Model refusal      | `refusal-not-sent`     |
+
+Latency is measured for every request, including failures.
+
+```bash
+node scripts/llm-check.js
+node scripts/llm-check.js --models
+```
+
+---
+
+## Smart contracts
+
+The procurement flow uses three contracts:
+
+### `ProcurementEscrow`
+
+Responsible for:
+
+* Buyer spending ceiling
+* Agent authorisation
+* Deal creation
+* Escrow settlement
+* Access control
+
+The spending ceiling is enforced directly inside `createDeal`.
+
+If the requested amount exceeds the buyer's limit, the transaction reverts with:
+
+```text
+ExceedsPerDealCap
+```
+
+### `SupplierRegistry`
+
+Stores supplier reputation and restricts reputation updates to the escrow contract.
+
+### `MockUSDC`
+
+A local 6-decimal ERC-20 used for the procurement demo.
 
 ---
 
 ## Documents
 
-Two documents bracket the money, both generated programmatically server-side with **pdfkit**. There is no browser printing, no print stylesheet, and no HTML-to-PDF conversion anywhere in the path.
+Covenant generates the actual documents server-side rather than rendering HTML and asking the browser to print it.
 
-**Negotiated Purchase Agreement**, issued after negotiation and before payment. Carries the line item with the list price struck through against the negotiated price, delivery terms, a framed spending authority panel showing authorised limit, commitment and remaining headroom, the suppliers that were not selected with reasons, ruled signature blocks, and a verification section with document ID, version, status and content hash.
+### Negotiated Purchase Agreement
 
-**Settlement Record**, issued only after funds leave escrow. Carries the final amount, platform fee, saving against list, delivery confirmation, all three transaction hashes, the terms hash, and the reputation move.
+Generated after negotiation and before payment.
 
-Both documents render in the workspace as a document sheet with a letterhead, line items, an authority panel and an approval block. **Preview PDF** opens the real generated binary inside the app, so what you inspect before downloading is the file itself rather than an HTML mock of it.
+Includes:
 
-Sample files generated from seed data:
+* Negotiated price
+* Delivery terms
+* Spending authority
+* Remaining budget
+* Non-selected suppliers and rejection reasons
+* Signature section
+* Document ID
+* Version
+* Status
+* Content hash
 
-- [docs/samples/sample-purchase-agreement.pdf](docs/samples/sample-purchase-agreement.pdf)
-- [docs/samples/sample-invoice.pdf](docs/samples/sample-invoice.pdf)
+### Settlement Record
 
-Regenerate them with `node scripts/samples.js`. They come from the real engine and the real renderer, not from a mockup.
+Generated after funds leave escrow.
 
-Both are byte-deterministic: regenerating the same document produces an identical file, so a content hash is meaningful. Both remain legible when printed in grayscale.
+Includes:
+
+* Final amount
+* Platform fee
+* Savings
+* Delivery confirmation
+* Transaction hashes
+* Terms hash
+* Supplier reputation change
+
+PDFs are generated with `pdfkit`.
+
+Sample documents:
+
+* `docs/samples/sample-purchase-agreement.pdf`
+* `docs/samples/sample-invoice.pdf`
+
+Regenerate them with:
+
+```bash
+node scripts/samples.js
+```
+
+The same input state produces byte-identical documents, making the content hash reproducible.
+
+---
+
+## The interface
+
+The desk is a single scrolling run. Each stage writes its result and the view
+moves with the agent while it works, then stops.
+
+**A live island reports what is happening.** A capsule pinned to the top of the
+viewport names the current phase, counts it as `3 / 5`, runs a clock and fills a
+bar as phases complete. It opens to full width when the phase changes and
+settles back to a compact form while the work continues, so a change of state
+reads as the same object taking a new shape rather than as a new notification.
+It appears the moment you click, before the first request returns, and it stays
+up for the whole run including the negotiation replay. Every figure on it is
+real: the phase count comes from the phase list, the seconds from a clock, and
+the counts from the catalogue.
+
+**The mark in the corner goes home.** Covenant in the top left is a button back
+to the landing page, and it leaves the run untouched.
+
+**A wallet gate, for a workspace of your own.** "Sign in with a wallet" opens a
+dedicated screen rather than firing a bare wallet prompt. It states what the
+connection reads (the address, nothing else), what it never asks for (no seed
+phrase, no private key, and no screen in the product has a field for either),
+and that no transaction is requested at sign-in. The demo workspace is always
+one click away from that screen. The address becomes the workspace key, which
+is what separates one buyer's requests, shortlists and transcripts from
+another's. This is isolation rather than authentication: there is no account,
+no password and no credential stored.
+
+**The run stops before money moves.** When a recommendation is ready and nothing
+is signed, the page dims every step above the approval card and scrolls to the
+card rather than past it. Nothing auto-scrolls after that point, because from
+there the person is choosing rather than watching.
+
+**A brief before every irreversible decision.** Publishing the policy, funding
+escrow, confirming delivery and releasing payment each get a written brief first:
+what happened, what changes, what deserves attention, and whether the step can be
+undone. Attention items are conditional, so nothing is listed unless it is true
+of that run. Built in `server/decisionbrief.js`, which has no imports and so
+cannot act.
+
+**Rationale** answers questions about the run in the panel or by voice, grounded
+in a frozen snapshot. It repairs typos and speech-to-text noise before
+classifying, so "whyy ws ths supllier choosen" is answered and "increse the
+limit" is still refused. It cannot sign, approve, move funds or change a limit,
+and that is enforced by the import list rather than by a prompt.
+
+**Light, dark and system themes**, switchable from the home screen or the
+sidebar. Every text and background pair in both themes measures at or above the
+WCAG AA contrast ratio.
+
+**A command palette** on `Ctrl K`, `Cmd K` or `/` for jumping between scenarios and actions, and
+a live capsule that reports what the agent is doing without stealing focus.
 
 ---
 
 ## Security model
 
-The threat is an agent that is buggy, jailbroken, prompt-injected, or outright compromised, and a client that lies. The design assumes the agent will eventually misbehave and places the spending limit somewhere the agent cannot reach: contract state written by a different key.
+Covenant is designed around the assumption that the agent may eventually behave incorrectly.
 
-| Enforced | Where |
-| --- | --- |
-| Spending ceiling | `ProcurementEscrow.createDeal`, reverts with `ExceedsPerDealCap` |
-| Agent cannot widen the buyer's mandate | `setAgentPolicy` keys off `msg.sender` |
-| Only the nominated agent may spend | `NotAuthorisedAgent` |
-| Reputation writes | `SupplierRegistry`, callable only by the escrow |
-| Document values | Server-derived, request body ignored |
-| Workspace data | `server/workspace.js`, server-side check |
-| Rationale cannot act | `server/counsel.js` has zero imports |
+| Protection                          | Enforcement                                  |
+| ----------------------------------- | -------------------------------------------- |
+| Spending ceiling                    | `ProcurementEscrow.createDeal`               |
+| Agent cannot increase buyer ceiling | Separate buyer and agent policies            |
+| Only authorised agent can spend     | `NotAuthorisedAgent`                         |
+| Reputation writes                   | `SupplierRegistry` restricted to escrow      |
+| Document values                     | Derived from server-side canonical state     |
+| Workspace isolation                 | `server/workspace.js`                        |
+| Rationale cannot execute actions    | No capability imports in `server/counsel.js` |
 
-```bash
-npm test              # includes contract, red team, and adversarial input suites
-node scripts/e2e.js   # live security assertions against a running server
-```
+The API does not act as the final authority for the spending limit. The contract does.
 
 ---
 
 ## Testing
 
 ```bash
-npm test                   # 96 tests
-node scripts/e2e.js        # ~100 assertions against a live server and chain
-node scripts/llm-check.js  # live LLM call, latency, and all four failure paths
+npm test                 # 106 unit and contract tests, no server needed
+npm start                # in one terminal
+npm run sweep            # in another: 101 checks against the live HTTP API
+node scripts/e2e.js
+node scripts/llm-check.js
 ```
 
-- **Contracts, 36.** Escrow lifecycle, policy caps, expiry, revocation, reputation math, access control.
-- **Red team, 13.** Cross-buyer spending, agent replacement, stale policies, double confirmation, non-existent deals.
-- **Engine, 20.** Parsing, structural versus negotiable failures, ceiling adherence, walk-away, determinism.
-- **Adversarial, 4.** Prompt injection in the request, hostile supplier text, doctored caller figures.
-- **Rationale, 18.** Capability boundary, frozen snapshot, refusals, canonical figures.
-- **LLM pipeline, 7.** Named fallbacks, timeout distinct from network, non-200 codes, unusable completions, latency always reported.
-- **PDF, 15.** Real binaries, metadata, signing, versioning, hash stability, footers on every page.
+`npm test` covers the engine, the contracts and the documents in isolation.
+`npm run sweep` walks the HTTP surface in the order a person actually uses it,
+which is what catches state leaking between two runs in the same workspace.
+
+Current test coverage includes:
+
+* **23 contract tests**: escrow lifecycle, policy limits, expiry, revocation, reputation and access control
+* **13 red-team tests**: cross-buyer spending, agent replacement, stale policies and invalid deals
+* **16 engine tests**: requirement parsing, supplier matching, negotiation and recommendation
+* **4 adversarial tests**: prompt injection, hostile supplier text and manipulated figures
+* **28 rationale tests**: capability boundaries, compound instructions, imperfect input and fallback behaviour
+* **7 LLM pipeline tests**: timeouts, HTTP failures, malformed responses and latency reporting
+* **15 document tests**: binary output, metadata, signing, hashing and page structure
+
+The route sweep adds 101 checks on top of those, covering all 23 endpoints: the
+full sourcing run, the spending-ceiling refusals, settlement, the four decision
+briefs at the step each one belongs to, a run where no supplier can meet the
+budget, and a second run in the same workspace.
 
 ---
 
-## What is demo-grade
+## Environment variables
 
-Stated plainly, because these are the first things a careful reviewer will ask.
+Covenant works without any environment variables.
 
-- **The e-signature is not legally binding.** It records a typed name, a timestamp and a content hash. It is not a qualified electronic signature and makes no compliance claim.
-- **The chain is local.** A real EVM with real gas, reverts and transaction hashes, but not a public network, so there is no block explorer link. `RPC_URL` switches it to Base Sepolia unchanged.
-- **Supplier data is seeded.** Eight suppliers shaped like a directory API response, not a live feed.
-- **Supplier negotiating behaviour is simulated.** Counterparties hold private reservation prices the agent cannot read, which makes the bargaining real, but they are not real firms.
-- **Delivery is confirmed by the buyer**, not by a carrier or inspector. This bounds the reputation claim: the contract controls *when* reputation is written, but a buyer and supplier acting together could still settle a deal that never shipped. Oracle-backed proof of delivery is the fix and it is not in this build.
-- **USDC is a mock 6-decimal ERC-20** on the local chain.
-- **One buyer identity per deployment.** Workspaces isolate off-chain data; the on-chain buyer is shared in this build.
+| Variable       | Required | Default               | Description                        |
+| -------------- | -------- | --------------------- | ---------------------------------- |
+| `LLM_API_KEY`  | No       | not set               | Enables model-based phrasing       |
+| `LLM_BASE_URL` | No       | `https://api.x.ai/v1` | OpenAI-compatible API endpoint     |
+| `LLM_MODEL`    | No       | `grok-3-mini`         | Model used for phrasing            |
+| `PORT`         | No       | `4000`                | Application port                   |
+| `RPC_URL`      | No       | not set               | External EVM JSON-RPC endpoint     |
+| `DEPLOYER_KEY` | No       | not set               | Required when using `RPC_URL`      |
+| `AGENT_KEY`    | No       | not set               | Agent account for a public network |
+
+To configure them:
+
+```bash
+cp .env.example .env
+```
+
+Never commit real credentials to `.env.example`.
+
+---
+
+## Demo limitations
+
+This build is intentionally transparent about what is and isn't production-ready.
+
+* The e-signature records a name, timestamp and document hash. It is **not a legally binding electronic signature**.
+* The default blockchain is an in-process EVM rather than a public network.
+* Supplier information is seeded rather than retrieved from a live supplier marketplace.
+* Supplier negotiation behaviour is simulated.
+* Delivery is confirmed by the buyer. There is currently no external proof-of-delivery oracle.
+* `MockUSDC` is used for the local environment.
+* A deployment currently has one on-chain buyer identity, although workspaces isolate the off-chain session data.
+
+For a public-network deployment, `RPC_URL` can be used to connect to an EVM network such as Base Sepolia.
 
 ---
 
 ## Roadmap
 
-Oracle-backed delivery attestation, additional sourcing verticals, per-workspace buyer wallets, and supplier-side agents so both parties negotiate under their own mandates.
+The next priorities are:
 
-## Documentation
+1. Oracle-backed delivery verification
+2. Per-workspace buyer wallets
+3. Additional procurement verticals
+4. Supplier-side agents
+5. Public-network deployment
 
-- [TECHNICAL_DOCUMENTATION.md](TECHNICAL_DOCUMENTATION.md), architecture, the AI pipeline, the security model, testing and limitations.
-- [DEMO_SCRIPT.md](DEMO_SCRIPT.md), the walkthrough used for the demo video.
-- [PROJECT_STATE.md](PROJECT_STATE.md), engineering handoff notes and the decisions that must not be reversed.
+---
+
+## Technical documentation
+
+More detailed architecture, security and implementation notes are available in:
+
+`docs/Covenant_Technical_Documentation.pdf`
+
+---
 
 ## Team
 
-**Nexara9**
+### Nexara9
 
-- M. Navya, 124CS0001, IIITDM Kurnool
-- Sujal Negi, 123ME0023, IIITDM Kurnool
+| | | |
+| --- | --- | --- |
+| **M. Navya** | 124CS0001, IIITDM Kurnool | [@crimson17-debug](https://github.com/crimson17-debug) |
+| **Sujal Negi** | 123ME0023, IIITDM Kurnool | [@sujal128005](https://github.com/sujal128005) |
+
+Built for the RizeOS Hackathon, Round 2, AI Track by **Nexara9**
+
+---
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE).

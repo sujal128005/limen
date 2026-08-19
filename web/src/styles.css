@@ -34,51 +34,8 @@
 
 /* ------------------------------------------------------------------ tokens */
 
+/* Non-colour tokens. Identical in both themes, so they live on their own. */
 :root {
-  /* ---- surfaces. Warm neutral ramp, never blue-grey. */
-  --canvas:      #F6F5F1;
-  --canvas-deep: #EDEBE5;
-  --surface:     #FFFFFF;
-  --surface-2:   #FBFAF8;
-  --sunk:        #F1EFEA;
-  --ink-surface: #12161A;
-
-  /* ---- ink. Four steps is enough; more invites inconsistency.
-     Measured against every surface they sit on. The two quietest steps were
-     originally lighter and failed WCAG AA at 2.4:1 and 4.0:1, which matters
-     because they carry the uppercase micro-labels on every figure in the
-     product. They are now 4.85:1 and 5.80:1 on the warm canvas. */
-  --ink:    #101418;   /* 16.96:1 on canvas */
-  --ink-2:  #47525C;   /*  7.32:1 */
-  --ink-3:  #576169;   /*  5.80:1 */
-  --ink-4:  #626D76;   /*  4.85:1 */
-  --on-ink:     #F4F3F0;
-  --on-ink-dim: #9BA6AE;
-
-  /* ---- lines */
-  --hair:        #E4E1D9;
-  --hair-strong: #D2CEC4;
-  --hair-dark:   #262D34;
-
-  /* ---- accent: deep pine. Action, focus, success. */
-  --pine:       #0B5F52;
-  --pine-deep:  #084A40;
-  --pine-lift:  #0E7161;
-  --pine-wash:  #E9F1EF;
-  --pine-line:  #B2CCC5;
-
-  /* ---- caution: held, pending, waiting on a human */
-  --amber:      #8A5A00;
-  --amber-wash: #FAF2E2;
-  --amber-line: #E4CFA4;
-
-  /* ---- refusal */
-  --crimson:      #9E1F33;
-  --crimson-wash: #FBEDEF;
-  --crimson-line: #E9C2C8;
-
-  --slate-wash: #EEF0F1;
-
   /* ---- type. No web font is fetched: the product must run with no network.
      The modern system UI faces are excellent and load instantly. */
   --sans: "Inter", "Inter var", -apple-system, BlinkMacSystemFont,
@@ -91,13 +48,6 @@
   --r-md: 10px;
   --r-lg: 14px;
 
-  /* ---- elevation. Neutral ink only. No coloured shadows anywhere. */
-  --e1: 0 1px 2px rgba(16,20,24,.05);
-  --e2: 0 1px 2px rgba(16,20,24,.05), 0 6px 16px -8px rgba(16,20,24,.16);
-  --e3: 0 1px 3px rgba(16,20,24,.06), 0 18px 40px -18px rgba(16,20,24,.26);
-  --e4: 0 2px 6px rgba(16,20,24,.07), 0 40px 80px -32px rgba(16,20,24,.34);
-  --lip: inset 0 1px 0 rgba(255,255,255,.7);
-
   /* ---- motion. Four durations, two curves. */
   --t-fast:  150ms;   /* hover, focus, press */
   --t-mid:   260ms;   /* content entering */
@@ -105,6 +55,7 @@
   --t-major: 620ms;   /* a state of the deal actually changed */
   --ease:      cubic-bezier(.22, .68, .28, 1);
   --ease-firm: cubic-bezier(.4, 0, .2, 1);
+  --spring:    cubic-bezier(.34, 1.56, .48, 1);
 
   /* ---- layout */
   --side-w:   258px;
@@ -112,8 +63,237 @@
   --read:     880px;
 }
 
+/* ============================================================== themes ====
+   Two complete colour sets. Every value below was measured against the
+   surfaces it actually sits on, in both themes, and the quiet steps that
+   carry the uppercase micro-labels clear WCAG AA rather than merely looking
+   acceptable.
+
+   Semantic names, not literal ones. --on-accent is white in light and near
+   black in dark, because the accent itself flips from a deep pine to a light
+   mint; anything hardcoded to white would become unreadable the moment the
+   theme changed. The same applies to --invert-bg, which is darker than the
+   canvas in light mode and lighter than it in dark: "stands out" is the
+   intent, and the direction depends on the theme.
+   ========================================================================= */
+
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+
+  /* surfaces. Warm neutral ramp, never blue-grey. */
+  --canvas:      #F6F5F1;
+  --canvas-deep: #EDEBE5;
+  --surface:     #FFFFFF;
+  --surface-2:   #FBFAF8;
+  --sunk:        #F1EFEA;
+
+  /* ink */
+  --ink:    #101418;   /* 16.96:1 on canvas */
+  --ink-2:  #47525C;   /*  7.32:1 */
+  --ink-3:  #576169;   /*  5.80:1 */
+  --ink-4:  #626D76;   /*  4.85:1 */
+
+  /* the one inverted surface, used for the mandate, brand mark and drawer */
+  --invert-bg:  #12161A;
+  --invert-fg:  #F4F3F0;
+  --invert-dim: #9BA6AE;
+  --invert-line: rgba(255,255,255,.16);
+  --invert-hover: #1B2229;
+
+  /* lines */
+  --hair:        #E4E1D9;
+  --hair-strong: #D2CEC4;
+
+  /* accent: deep pine. Action, focus, success. */
+  --pine:       #0B5F52;
+  --pine-deep:  #084A40;
+  --pine-lift:  #0E7161;
+  --pine-wash:  #E9F1EF;
+  --pine-line:  #B2CCC5;
+  --on-accent:     #FFFFFF;
+  --on-accent-dim: rgba(255,255,255,.72);
+
+  /* caution: held, pending, waiting on a human */
+  --amber:      #8A5A00;
+  --amber-wash: #FAF2E2;
+  --amber-line: #E4CFA4;
+
+  /* refusal */
+  --crimson:      #9E1F33;
+  --crimson-wash: #FBEDEF;
+  --crimson-line: #E9C2C8;
+
+  --slate-wash: #EEF0F1;
+
+  /* translucent layers */
+  --glass:      rgba(255,255,255,.80);
+  --glass-soft: rgba(255,255,255,.62);
+  --glass-thin: rgba(255,255,255,.50);
+  --sheen:      rgba(255,255,255,.16);
+  --scrim:      rgba(16,20,24,.34);
+  --scrim-soft: rgba(16,20,24,.20);
+  --lip: inset 0 1px 0 rgba(255,255,255,.7);
+  --sidebar-veil: linear-gradient(180deg, rgba(255,255,255,.62), rgba(255,255,255,.30));
+  --bar-veil: rgba(246,245,241,.9);
+
+  /* documents keep a paper surface */
+  --doc-bg: #FFFFFF;
+
+  /* elevation. Neutral ink only. No coloured shadows anywhere. */
+  --e1: 0 1px 2px rgba(16,20,24,.05);
+  --e2: 0 1px 2px rgba(16,20,24,.05), 0 6px 16px -8px rgba(16,20,24,.16);
+  --e3: 0 1px 3px rgba(16,20,24,.06), 0 18px 40px -18px rgba(16,20,24,.26);
+  --e4: 0 2px 6px rgba(16,20,24,.07), 0 40px 80px -32px rgba(16,20,24,.34);
+  --inset-well: inset 0 1px 3px rgba(16,20,24,.05);
+
+  /* ambient field tints */
+  --aura-1: rgba(11,95,82,.10);
+  --aura-1b: rgba(11,95,82,.035);
+  --aura-2: rgba(158,128,74,.11);
+  --aura-2b: rgba(158,128,74,.04);
+  --aura-3: rgba(84,104,118,.09);
+  --aura-3b: rgba(84,104,118,.03);
+
+  --halo-line: rgba(16,20,24,.16);
+
+  /* ---- gradients. Four, and only four, so the product reads as one thing.
+     The AI gradient is the accent travelling through teal to a warm gold: it
+     belongs to the same family as the brand rather than arriving as a separate
+     "AI purple", which is the cliche this deliberately avoids. */
+  --grad-accent: linear-gradient(135deg, var(--pine-lift), var(--pine) 55%, var(--pine-deep));
+  --grad-ai:     linear-gradient(120deg, #0E7161, #14A88C 38%, #7FBF9A 66%, #C8A44E);
+  --grad-ok:     linear-gradient(135deg, #14A88C, var(--pine));
+  --grad-warn:   linear-gradient(135deg, #C9922B, #8A5A00);
+
+  /* ---- AI glow. One shadow recipe, used wherever intelligence is working. */
+  --glow-ai:   0 0 0 1px rgba(20,168,140,.22), 0 8px 30px -8px rgba(20,168,140,.35);
+  --glow-soft: 0 0 0 1px rgba(20,168,140,.14), 0 4px 18px -6px rgba(20,168,140,.22);
+  --glow-warn: 0 0 0 1px rgba(201,146,43,.24), 0 8px 26px -8px rgba(201,146,43,.32);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --canvas:      #101317;
+  --canvas-deep: #0B0E11;
+  --surface:     #171B20;
+  --surface-2:   #1C2127;
+  --sunk:        #14181C;
+
+  --ink:    #ECEAE5;   /* 15.49:1 on canvas */
+  --ink-2:  #B4BCC4;   /*  9.69:1 */
+  --ink-3:  #A3ACB4;   /*  7.9:1  */
+  --ink-4:  #838C95;   /*  5.45:1, and 4.74:1 on the lightest surface */
+
+  /* inverted means lighter here. A white panel on a dark canvas is a glare
+     source, so this is an elevated grey rather than a flip to white. */
+  --invert-bg:  #262E35;
+  --invert-fg:  #ECEAE5;
+  --invert-dim: #A3ACB4;
+  --invert-line: rgba(255,255,255,.10);
+  --invert-hover: #303941;
+
+  --hair:        #262C33;
+  --hair-strong: #343C44;
+
+  /* the accent lightens so it stays legible on a dark surface */
+  --pine:       #3FBFA3;
+  --pine-deep:  #2E9E88;
+  --pine-lift:  #52D0B4;
+  --pine-wash:  #10241F;
+  --pine-line:  #1F4A40;
+  --on-accent:     #06120F;
+  --on-accent-dim: rgba(6,18,15,.72);
+
+  --amber:      #E5B45F;
+  --amber-wash: #241C0E;
+  --amber-line: #463619;
+
+  --crimson:      #FF8A9B;
+  --crimson-wash: #2A1418;
+  --crimson-line: #4A2028;
+
+  --slate-wash: #1E242A;
+
+  --glass:      rgba(255,255,255,.045);
+  --glass-soft: rgba(255,255,255,.03);
+  --glass-thin: rgba(255,255,255,.02);
+  --sheen:      rgba(255,255,255,.07);
+  --scrim:      rgba(0,0,0,.62);
+  --scrim-soft: rgba(0,0,0,.45);
+  --lip: inset 0 1px 0 rgba(255,255,255,.05);
+  --sidebar-veil: linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.012));
+  --bar-veil: rgba(16,19,23,.9);
+
+  --doc-bg: #191D22;
+
+  /* shadows carry almost no weight on a dark canvas, so depth comes from a
+     hairline top light instead of a heavier drop */
+  --e1: 0 1px 2px rgba(0,0,0,.34);
+  --e2: 0 1px 2px rgba(0,0,0,.34), 0 6px 16px -8px rgba(0,0,0,.5);
+  --e3: 0 1px 3px rgba(0,0,0,.4), 0 18px 40px -18px rgba(0,0,0,.62);
+  --e4: 0 2px 6px rgba(0,0,0,.45), 0 40px 80px -32px rgba(0,0,0,.7);
+  --inset-well: inset 0 1px 3px rgba(0,0,0,.4);
+
+  --aura-1: rgba(63,191,163,.10);
+  --aura-1b: rgba(63,191,163,.035);
+  --aura-2: rgba(229,180,95,.075);
+  --aura-2b: rgba(229,180,95,.025);
+  --aura-3: rgba(120,150,180,.07);
+  --aura-3b: rgba(120,150,180,.025);
+
+  --halo-line: rgba(255,255,255,.18);
+
+  /* Dark carries the same four gradients, lifted so they read on a dark
+     surface. The AI gradient keeps its identity rather than becoming a
+     different colour in the other theme. */
+  --grad-accent: linear-gradient(135deg, #52D0B4, #3FBFA3 55%, #2E9E88);
+  --grad-ai:     linear-gradient(120deg, #3FBFA3, #52D0B4 38%, #8FD9C4 66%, #E5B45F);
+  --grad-ok:     linear-gradient(135deg, #52D0B4, #3FBFA3);
+  --grad-warn:   linear-gradient(135deg, #E5B45F, #B98A31);
+
+  --glow-ai:   0 0 0 1px rgba(63,191,163,.30), 0 10px 34px -8px rgba(63,191,163,.42);
+  --glow-soft: 0 0 0 1px rgba(63,191,163,.18), 0 5px 20px -6px rgba(63,191,163,.26);
+  --glow-warn: 0 0 0 1px rgba(229,180,95,.28), 0 8px 26px -8px rgba(229,180,95,.34);
+}
+
+/* Theme changes are instant on load and animated when a person flips them,
+   so the first paint never fades in from the wrong colour. */
+[data-theme-ready] body,
+[data-theme-ready] .panel,
+[data-theme-ready] .sidebar,
+[data-theme-ready] .lcard,
+[data-theme-ready] .doc {
+  transition: background-color var(--t-mid) var(--ease), border-color var(--t-mid) var(--ease),
+              color var(--t-mid) var(--ease);
+}
+
+/*
+ * The accent for anything sitting on the inverted surface.
+ *
+ * --invert-bg is dark in both themes, so the island, the mandate card and the
+ * hero are dark whichever theme is on. --pine-lift is not: in the light theme
+ * it is a deep green, which put dark green text on the dark hero at about 2:1.
+ * This one does not flip.
+ */
+/*
+ * A second, lighter step for small type that sits inside a tinted chip. The
+ * chip's own mint wash lifts the background, and 11px uppercase at #3FBFA3
+ * measured 3.87:1 against it in the dark theme, just under the AA floor.
+ */
+:root { --invert-accent: #3FBFA3; --invert-accent-lift: #7FE3CC; }
+
 * { box-sizing: border-box; }
-html, body, #root { height: 100%; }
+
+/* Height is a floor, never a ceiling.
+   A definite `height: 100%` on body pins it to the viewport, and combined with
+   the horizontal clip further down it turned body into its own scroll
+   container. That moves the document scroller off the viewport, which silently
+   makes window.scrollY read 0 forever and window.scrollTo a no-op. Every scroll
+   in the run choreography went through window.scrollTo, so the whole sequence
+   did nothing. min-height keeps the layout floor without taking the scroller. */
+html, body, #root { min-height: 100%; }
 
 body {
   margin: 0;
@@ -132,7 +312,7 @@ body {
 h1, h2, h3, h4 { margin: 0; font-weight: 600; letter-spacing: -.021em; line-height: 1.2; }
 p { margin: 0; }
 button { font: inherit; color: inherit; }
-::selection { background: var(--pine); color: #fff; }
+::selection { background: var(--pine); color: var(--on-accent); }
 
 .num, .mono, td.num, .fig-v, .money { font-variant-numeric: tabular-nums; }
 .mono {
@@ -154,6 +334,9 @@ button { font: inherit; color: inherit; }
    a short class name like .neg collides with component classes, and refusal
    colour should always come from the component that owns the refusal. */
 .pos { color: var(--pine); }
+/* A figure that is not a win but is not a failure either, such as a schedule
+   surcharge the buyer chose to pay. */
+.warn { color: var(--amber); }
 
 /* ============================================================== the aura ==
    The liquid layer. Three very large, very soft fields drifting on long
@@ -178,19 +361,19 @@ button { font: inherit; color: inherit; }
 }
 .aura .a1 {
   background: radial-gradient(closest-side circle at 26% 28%,
-    rgba(11,95,82,.10), rgba(11,95,82,.035) 55%, rgba(11,95,82,0) 78%);
+    var(--aura-1), var(--aura-1b) 55%, transparent 78%);
   opacity: .85;
   animation: drift1 54s var(--ease) infinite alternate;
 }
 .aura .a2 {
   background: radial-gradient(closest-side circle at 78% 26%,
-    rgba(158,128,74,.11), rgba(158,128,74,.04) 55%, rgba(158,128,74,0) 78%);
+    var(--aura-2), var(--aura-2b) 55%, transparent 78%);
   opacity: .55;
   animation: drift2 68s var(--ease) infinite alternate;
 }
 .aura .a3 {
   background: radial-gradient(closest-side circle at 56% 96%,
-    rgba(84,104,118,.09), rgba(84,104,118,.03) 55%, rgba(84,104,118,0) 78%);
+    var(--aura-3), var(--aura-3b) 55%, transparent 78%);
   opacity: .7;
   animation: drift3 61s var(--ease) infinite alternate;
 }
@@ -232,14 +415,28 @@ button { font: inherit; color: inherit; }
   display: flex; flex-direction: column;
   padding: 20px 16px 16px 20px;
   border-right: 1px solid var(--hair);
-  background: linear-gradient(180deg, rgba(255,255,255,.62), rgba(255,255,255,.30));
+  background: var(--sidebar-veil);
   backdrop-filter: blur(8px);
 }
 
-.side-brand { display: flex; align-items: center; gap: 10px; padding: 2px 4px 22px; }
+/* A button now, so it needs the button reset as well as the layout. The hit
+   area keeps its old padding at the bottom, but the hover treatment is pulled
+   in tight around the mark and the words rather than washing the gap below. */
+.side-brand {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 8px; margin: -4px -8px 16px;
+  background: none; border: 0; cursor: pointer;
+  text-align: left; color: inherit; font: inherit;
+  border-radius: var(--r-sm);
+  transition: background var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+}
+.side-brand:hover { background: var(--sunk); }
+.side-brand:active { transform: scale(.985); }
+.side-brand:focus-visible { outline: 2px solid var(--pine); outline-offset: 2px; }
+.side-brand:hover .brand-mark { box-shadow: var(--e2); }
 .brand-mark {
   width: 26px; height: 26px; flex: none; border-radius: var(--r-sm);
-  background: var(--ink-surface); color: var(--on-ink);
+  background: var(--invert-bg); color: var(--invert-fg);
   display: grid; place-items: center;
   font-size: 13px; font-weight: 650; letter-spacing: -.03em;
   box-shadow: var(--e1);
@@ -292,7 +489,7 @@ button { font: inherit; color: inherit; }
 
 .rail-item.done { color: var(--ink-2); }
 .rail-item.done .rail-idx {
-  background: var(--pine); border: 1.5px solid var(--pine); color: #fff;
+  background: var(--pine); border: 1.5px solid var(--pine); color: var(--on-accent);
   animation: markSet var(--t-major) var(--ease) both;
 }
 .rail-item.done::before { background: var(--pine-line); }
@@ -302,7 +499,7 @@ button { font: inherit; color: inherit; }
   100% { transform: scale(1); }
 }
 
-.rail-item.current { color: var(--ink); background: rgba(255,255,255,.72); box-shadow: var(--e1); }
+.rail-item.current { color: var(--ink); background: var(--glass); box-shadow: var(--e1); }
 .rail-item.current .rail-name { font-weight: 620; }
 .rail-item.current .rail-actor { color: var(--pine); }
 .rail-item.current .rail-idx {
@@ -329,7 +526,7 @@ button { font: inherit; color: inherit; }
 .netchip {
   display: flex; align-items: center; gap: 8px;
   padding: 8px 10px; border-radius: var(--r-sm);
-  background: rgba(255,255,255,.62); border: 1px solid var(--hair);
+  background: var(--glass-soft); border: 1px solid var(--hair);
   font-size: 12.5px; color: var(--ink-2); font-variant-numeric: tabular-nums;
 }
 .netdot { width: 7px; height: 7px; border-radius: 50%; background: var(--pine); flex: none; }
@@ -339,7 +536,7 @@ button { font: inherit; color: inherit; }
 
 .idchip {
   display: grid; gap: 2px; padding: 9px 10px; border-radius: var(--r-sm);
-  background: rgba(255,255,255,.62); border: 1px solid var(--hair);
+  background: var(--glass-soft); border: 1px solid var(--hair);
 }
 .id-mode {
   display: block;
@@ -363,9 +560,58 @@ button { font: inherit; color: inherit; }
 .view-head h2 { font-size: 23px; letter-spacing: -.026em; }
 .view-head .sub { font-size: 14.5px; color: var(--ink-2); line-height: 1.55; max-width: 68ch; }
 
-.section { display: grid; gap: 16px; animation: enter var(--t-mid) var(--ease) both; }
+/*
+ * Section entrance.
+ *
+ * Sections arrive from slightly below and slightly behind, on a spring. The Z
+ * translation is what separates this from a fade: content that scales up as it
+ * settles reads as approaching rather than appearing, which is the difference
+ * between a page loading and a system producing a result.
+ *
+ * The head arrives first and the body a beat later, so the eye is told what it
+ * is about to read before it reads it.
+ */
+.section { display: grid; gap: 16px; animation: enter var(--t-major) var(--spring) both; }
 @keyframes enter {
-  from { opacity: 0; transform: translate3d(0, 8px, 0); }
+  from { opacity: 0; transform: translate3d(0, 14px, -30px); }
+  to   { opacity: 1; transform: none; }
+}
+.section > .view-head { animation: enter var(--t-panel) var(--ease) both; }
+.section > *:not(.view-head) { animation: enter var(--t-major) var(--spring) 70ms both; }
+
+/*
+ * Staggered children, used by the screening table and the negotiation column.
+ * Six steps is enough to read as a cascade; past that it starts to feel slow,
+ * so later rows share the last delay rather than compounding.
+ */
+.stagger > * { animation: enter var(--t-panel) var(--ease) both; }
+.stagger > *:nth-child(1) { animation-delay: 30ms; }
+.stagger > *:nth-child(2) { animation-delay: 75ms; }
+.stagger > *:nth-child(3) { animation-delay: 120ms; }
+.stagger > *:nth-child(4) { animation-delay: 165ms; }
+.stagger > *:nth-child(5) { animation-delay: 210ms; }
+.stagger > *:nth-child(n+6) { animation-delay: 250ms; }
+
+/* Table rows cascade in as the screen resolves. */
+table.grid tbody tr { animation: rowIn var(--t-mid) var(--ease) both; }
+@keyframes rowIn {
+  from { opacity: 0; transform: translate3d(-6px, 0, 0); }
+  to   { opacity: 1; transform: none; }
+}
+table.grid tbody tr:nth-child(1) { animation-delay: 20ms; }
+table.grid tbody tr:nth-child(2) { animation-delay: 50ms; }
+table.grid tbody tr:nth-child(3) { animation-delay: 80ms; }
+table.grid tbody tr:nth-child(4) { animation-delay: 110ms; }
+table.grid tbody tr:nth-child(5) { animation-delay: 140ms; }
+table.grid tbody tr:nth-child(n+6) { animation-delay: 170ms; }
+
+/*
+ * The award panel is the moment the run pays off, so it gets the one piece of
+ * theatre in the product: it rises, overshoots by a hair, and settles.
+ */
+.award { animation: award var(--t-major) var(--spring) both; }
+@keyframes award {
+  from { opacity: 0; transform: translate3d(0, 22px, -60px) scale(.985); }
   to   { opacity: 1; transform: none; }
 }
 
@@ -378,7 +624,18 @@ button { font: inherit; color: inherit; }
   background: var(--surface); border: 1px solid var(--hair);
   border-radius: var(--r-md); box-shadow: var(--e1);
   overflow: hidden;
+  transition: box-shadow var(--t-mid) var(--ease), transform var(--t-mid) var(--ease),
+              border-color var(--t-mid) var(--ease);
 }
+/* Surfaces lift very slightly under the pointer. Two pixels is enough to feel
+   responsive and small enough that a page of them does not twitch. */
+.panel:hover { box-shadow: var(--e2); }
+.sheet { transition: box-shadow var(--t-mid) var(--ease); }
+.sheet:hover { box-shadow: var(--e2); }
+.neg { transition: box-shadow var(--t-mid) var(--ease), transform var(--t-mid) var(--ease), border-color var(--t-panel) var(--ease); }
+.neg:hover { box-shadow: var(--e2); transform: translateY(-1px); }
+.lcard { transition: box-shadow var(--t-mid) var(--ease), border-color var(--t-mid) var(--ease); }
+.lcard:hover { box-shadow: var(--e2); border-color: var(--hair-strong); }
 .panel.lift { box-shadow: var(--e2); }
 .panel-head {
   display: flex; align-items: center; gap: 12px;
@@ -406,29 +663,60 @@ button { font: inherit; color: inherit; }
    settles back on press. That is most of what separates polished from plain. */
 .btn::after {
   content: ""; position: absolute; inset: 0; border-radius: inherit; z-index: -1;
-  background: linear-gradient(180deg, rgba(255,255,255,.16), rgba(255,255,255,0));
+  background: linear-gradient(180deg, var(--sheen), transparent);
   opacity: 0; transition: opacity var(--t-fast) var(--ease);
 }
 .btn:hover:not(:disabled)::after { opacity: 1; }
 
+/*
+ * A physical button rather than a coloured rectangle.
+ *
+ * Four cheap things do the work: a top-to-bottom tint so the face reads as lit
+ * from above, a bright inner hairline on the top edge only, which is what makes
+ * a surface look raised instead of printed, a shadow that grows on hover and
+ * collapses inward on press, and a light sweep that crosses the face on hover.
+ *
+ * The press also scales down a touch. A button that only changes colour feels
+ * like a link; one that moves under the finger feels like a control.
+ */
 .btn-primary {
-  background: var(--pine); color: #fff; border-color: var(--pine-deep);
-  box-shadow: var(--e1), inset 0 1px 0 rgba(255,255,255,.14);
+  background: linear-gradient(180deg, var(--pine-lift), var(--pine) 55%, var(--pine-deep));
+  color: var(--on-accent); border-color: var(--pine-deep);
+  box-shadow: var(--e2), inset 0 1px 0 var(--sheen), inset 0 -1px 0 rgba(0,0,0,.16);
 }
 .btn-primary:hover:not(:disabled) {
-  background: var(--pine-lift); transform: translateY(-1px);
-  box-shadow: var(--e2), inset 0 1px 0 rgba(255,255,255,.18);
+  transform: translateY(-1.5px);
+  box-shadow: var(--e3), inset 0 1px 0 var(--sheen), inset 0 -1px 0 rgba(0,0,0,.16);
+  filter: saturate(1.06) brightness(1.05);
 }
-.btn-primary:active:not(:disabled) { transform: translateY(0); box-shadow: var(--e1); }
+.btn-primary:active:not(:disabled) {
+  transform: translateY(.5px) scale(.986);
+  box-shadow: var(--e1), inset 0 2px 6px rgba(0,0,0,.24);
+  filter: none; transition-duration: 70ms;
+}
 
 .btn-secondary {
-  background: var(--surface); color: var(--ink); border-color: var(--hair-strong);
-  box-shadow: var(--e1);
+  background: linear-gradient(180deg, var(--surface), var(--surface-2));
+  color: var(--ink); border-color: var(--hair-strong);
+  box-shadow: var(--e1), inset 0 1px 0 var(--glass);
 }
 .btn-secondary:hover:not(:disabled) {
-  border-color: var(--ink-4); transform: translateY(-1px); box-shadow: var(--e2);
+  border-color: var(--ink-4); transform: translateY(-1.5px);
+  box-shadow: var(--e2), inset 0 1px 0 var(--glass);
 }
-.btn-secondary:active:not(:disabled) { transform: translateY(0); box-shadow: none; }
+.btn-secondary:active:not(:disabled) {
+  transform: translateY(.5px) scale(.986);
+  box-shadow: inset 0 2px 5px rgba(16,20,24,.12); transition-duration: 70ms;
+}
+
+/* One pass of light across the face on hover, clipped to the button. */
+.btn::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; z-index: -1;
+  background: linear-gradient(105deg, transparent 35%, var(--sheen) 50%, transparent 65%);
+  transform: translateX(-120%); pointer-events: none;
+  transition: transform var(--t-panel) var(--ease);
+}
+.btn:hover:not(:disabled)::before { transform: translateX(120%); }
 
 .btn-quiet { background: transparent; color: var(--ink-2); padding: 7px 10px; }
 .btn-quiet:hover:not(:disabled) { color: var(--ink); background: var(--sunk); }
@@ -497,10 +785,759 @@ button { font: inherit; color: inherit; }
 }
 .hint { font-size: 13px; color: var(--ink-3); }
 
-.chips { display: grid; gap: 6px; margin-top: 12px; }
+/* ========================================================== the orb ======
+   Four counter-rotating lobes behind a circular mask. Rotation is constant;
+   scale tracks --lvl, which is written from the live microphone analyser every
+   frame. Silence settles it to an idle drift, so the orb is never animating a
+   loop that pretends to hear you.
+
+   Colour comes from the accent and its neighbours only. No rainbow, and no
+   purple: this is the same product, listening.
+   ======================================================================== */
+
+.orb {
+  --lvl: 0;
+  position: relative; border-radius: 50%; overflow: hidden;
+  display: grid; place-items: center; flex: none;
+  background: radial-gradient(circle at 50% 50%, var(--surface), var(--canvas-deep));
+  box-shadow: var(--e3), inset 0 1px 0 var(--sheen);
+  isolation: isolate;
+}
+.orb-lobe {
+  position: absolute; width: 78%; height: 78%; border-radius: 50%;
+  filter: blur(14px); opacity: .85; mix-blend-mode: normal;
+  transform-origin: 50% 50%;
+  transition: opacity var(--t-panel) var(--ease);
+}
+.orb-lobe.l1 { background: var(--pine);   animation: orbSpin 7s linear infinite; }
+.orb-lobe.l2 { background: var(--amber);  animation: orbSpin 11s linear infinite reverse; opacity: .55; }
+.orb-lobe.l3 { background: var(--pine-lift); animation: orbSpin 9s linear infinite; opacity: .6; }
+.orb-lobe.l4 { background: var(--ink-4);  animation: orbSpin 14s linear infinite reverse; opacity: .35; }
+
+/* Each lobe orbits off-centre, and the orbit widens with input level. */
+@keyframes orbSpin {
+  from { transform: rotate(0deg) translateX(calc(9% + var(--lvl) * 16%)) scale(calc(.82 + var(--lvl) * .5)); }
+  to   { transform: rotate(360deg) translateX(calc(9% + var(--lvl) * 16%)) scale(calc(.82 + var(--lvl) * .5)); }
+}
+
+.orb-core {
+  position: absolute; inset: 26%; border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, var(--surface), transparent 70%);
+  opacity: calc(.5 + var(--lvl) * .5);
+  transform: scale(calc(1 + var(--lvl) * .18));
+  transition: transform 90ms linear, opacity 90ms linear;
+}
+.orb-ring {
+  position: absolute; inset: 3px; border-radius: 50%;
+  border: 1px solid var(--hair-strong);
+  box-shadow: inset 0 0 0 1px var(--glass-thin);
+}
+.orb.on .orb-ring {
+  border-color: var(--pine);
+  transform: scale(calc(1 + var(--lvl) * .04));
+  transition: transform 90ms linear;
+}
+.orb:not(.on) .orb-lobe { opacity: .22; }
+
+/* While an answer is being composed the lobes keep moving but the ring pulses
+   instead of tracking amplitude, so "listening" and "thinking" never look alike. */
+.orb.thinking .orb-ring { animation: orbThink 1.5s var(--ease) infinite; border-color: var(--pine); }
+@keyframes orbThink {
+  0%, 100% { opacity: .35; transform: scale(1); }
+  50%      { opacity: 1;   transform: scale(1.03); }
+}
+
+
+/* ================================================== command palette ======
+   Ctrl or Cmd K. Sits high in the viewport rather than centred, because the
+   list grows downward and a centred panel that grows in both directions makes
+   the first result move while you are reading it.
+   ======================================================================== */
+
+.cp-scrim {
+  position: fixed; inset: 0; z-index: 95;
+  background: var(--scrim); backdrop-filter: blur(3px);
+  display: grid; align-items: start; justify-items: center;
+  padding: 12vh 20px 20px;
+  animation: fadeIn var(--t-mid) var(--ease) both;
+}
+.cp {
+  width: min(620px, 100%); border-radius: var(--r-lg); overflow: hidden;
+  background: var(--surface); border: 1px solid var(--hair-strong);
+  box-shadow: var(--e4);
+  animation: cpIn var(--t-panel) var(--spring) both;
+}
+@keyframes cpIn {
+  from { opacity: 0; transform: translateY(-10px) scale(.98); }
+  to   { opacity: 1; transform: none; }
+}
+.cp-input {
+  display: flex; align-items: center; gap: 11px;
+  padding: 14px 16px; border-bottom: 1px solid var(--hair);
+}
+.cp-search { width: 17px; height: 17px; color: var(--ink-4); flex: none; }
+.cp-input input {
+  flex: 1; min-width: 0; border: 0; background: none; outline: none;
+  font: inherit; font-size: 15.5px; color: var(--ink); letter-spacing: -.008em;
+}
+.cp-input input::placeholder { color: var(--ink-4); }
+.cp-esc {
+  font-family: var(--sans); font-size: 10.5px; font-weight: 620; color: var(--ink-4);
+  border: 1px solid var(--hair); border-radius: var(--r-xs);
+  padding: 2px 6px; background: var(--sunk); flex: none;
+}
+
+.cp-list { max-height: 46vh; overflow-y: auto; padding: 6px; }
+.cp-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  padding: 10px 12px; border: 0; background: none; cursor: pointer;
+  border-radius: var(--r-sm); color: var(--ink);
+}
+.cp-row.on { background: var(--pine-wash); }
+.cp-label { font-size: 14px; font-weight: 550; flex: none; }
+.cp-hint {
+  font-size: 12.5px; color: var(--ink-3); flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cp-group {
+  font-size: 10.5px; font-weight: 650; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--ink-4); border: 1px solid var(--hair); border-radius: 100px;
+  padding: 1px 7px; flex: none;
+}
+.cp-row.on .cp-group { color: var(--pine); border-color: var(--pine-line); }
+.cp-none { padding: 22px; text-align: center; color: var(--ink-3); font-size: 13.5px; }
+
+/* =============================================== live activity capsule ===
+   Pinned top centre. Collapsed to a sliver at rest, expanded while the system
+   is working. The width and height animate together so it reads as one object
+   growing rather than a box being swapped for a bigger box, which is the
+   difference between continuity and a flash.
+   ======================================================================== */
+
+
+/* ==========================================================================
+   THE ISLAND
+
+   A single capsule pinned to the top of the viewport that reports what the
+   system is doing. It has three jobs and it changes shape for each: it counts
+   the phase while the agent works, it goes amber and stops counting when the
+   decision comes back to the person, and it settles green when the money has
+   moved.
+
+   The shape change is the point. A control that only swaps its text reads as a
+   notification; one that grows, re-proportions and springs into place reads as
+   the same object taking a new form, which is what makes it feel alive rather
+   than pushed at you.
+
+   Nothing here is a scripted animation standing in for progress. The step
+   count comes from the phase list, the seconds come from a real clock, and the
+   bar is the fraction of phases actually finished.
+   ========================================================================== */
+
+.di {
+  position: fixed; top: 14px; left: 50%; z-index: 85;
+  transform: translateX(-50%);
+  pointer-events: none;
+  transition: opacity 320ms var(--ease), transform 520ms var(--spring);
+}
+.di.off { opacity: 0; transform: translateX(-50%) translateY(-16px) scale(.86); }
+.di.on  { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+
+/* The shell carries the morph. Width, radius and shadow all travel on the same
+   spring so the capsule changes proportion as one object. */
+.di-shell {
+  position: relative; overflow: hidden;
+  border-radius: 26px;
+  background: var(--invert-bg);
+  color: var(--invert-fg);
+  border: 1px solid var(--invert-line);
+  box-shadow: var(--e4), inset 0 1px 0 rgba(255,255,255,.09);
+  backdrop-filter: blur(18px) saturate(1.35);
+  pointer-events: auto;
+  /* Wide enough that the longest phase title, "Screening the catalogue", still
+     fits beside the spinner and the counter without ellipsis. Narrower than
+     this and the compact form truncates the one word carrying the meaning. */
+  width: 302px;
+  transition:
+    width 560ms var(--spring),
+    border-radius 560ms var(--spring),
+    box-shadow 420ms var(--ease);
+}
+.di.wide .di-shell { width: min(468px, calc(100vw - 28px)); }
+.di.stop .di-shell { box-shadow: var(--e4), var(--glow-warn); }
+.di.work .di-shell { box-shadow: var(--e4), var(--glow-soft); }
+.di.done .di-shell { box-shadow: var(--e4), var(--glow-ok, var(--glow-soft)); }
+
+.di-hit {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center; gap: 12px;
+  width: 100%; padding: 10px 16px 11px 14px;
+  background: none; border: 0; cursor: pointer; text-align: left;
+  color: inherit; font: inherit;
+}
+.di-hit:focus-visible { outline: 2px solid var(--invert-accent); outline-offset: -3px; border-radius: 26px; }
+
+/* ---- Leading view. One glyph per tone, same footprint, so the capsule does
+   not jump when the state changes. */
+.di-lead { width: 20px; height: 20px; display: grid; place-items: center; }
+
+.di-spin {
+  width: 15px; height: 15px; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.22);
+  border-top-color: var(--invert-accent);
+  animation: diSpin .8s linear infinite;
+}
+@keyframes diSpin { to { transform: rotate(360deg); } }
+
+.di-alert {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: #E5B45F; position: relative;
+  animation: diPulse 1.9s var(--ease) infinite;
+}
+.di-alert::after {
+  content: ""; position: absolute; inset: -6px; border-radius: 50%;
+  border: 1.5px solid #E5B45F; animation: diRing 1.9s var(--ease) infinite;
+}
+@keyframes diPulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+@keyframes diRing {
+  0%   { opacity: .7; transform: scale(.62); }
+  70%  { opacity: 0;  transform: scale(1.5); }
+  100% { opacity: 0;  transform: scale(1.5); }
+}
+
+.di-tick {
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--invert-accent); color: var(--invert-bg);
+  display: grid; place-items: center;
+  animation: diPop 460ms var(--spring) both;
+}
+.di-tick svg { width: 11px; height: 11px; }
+@keyframes diPop {
+  0%   { transform: scale(.4); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* ---- Middle view. The sub line is what the capsule grows to reveal, so it
+   animates its own height rather than appearing at full size. */
+.di-mid { display: grid; min-width: 0; gap: 1px; }
+.di-title {
+  font-size: 13.5px; font-weight: 600; letter-spacing: -.012em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.di-sub {
+  font-size: 11.8px; line-height: 1.35; color: var(--invert-dim);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-height: 0; opacity: 0;
+  transition: max-height 420ms var(--spring), opacity 300ms var(--ease) 120ms;
+}
+.di.wide .di-sub { max-height: 18px; opacity: 1; }
+
+/* ---- Trailing view. Phase count and elapsed seconds, tabular so the capsule
+   does not twitch every time a digit changes. */
+.di-trail {
+  display: flex; align-items: center; gap: 9px;
+  font-variant-numeric: tabular-nums; flex: none;
+}
+.di-step {
+  font-size: 12px; font-weight: 640; letter-spacing: -.01em;
+  padding: 3px 8px; border-radius: 100px;
+  background: rgba(255,255,255,.1);
+}
+.di-step i { font-style: normal; opacity: .45; margin: 0 1px; }
+.di-time { font-size: 11.5px; color: var(--invert-dim); min-width: 24px; text-align: right; }
+
+/* ---- The bar. Determinate on phase progress, with a light travelling over it
+   so a long phase still reads as moving. */
+.di-bar {
+  display: block; height: 2.5px; width: 100%;
+  background: rgba(255,255,255,.1);
+}
+.di-fill {
+  display: block; height: 100%;
+  background: var(--grad-accent);
+  border-radius: 0 100px 100px 0;
+  transition: width 720ms var(--ease-firm);
+  position: relative; overflow: hidden;
+}
+.di.stop .di-fill { background: linear-gradient(90deg, #C08A2E, #E5B45F); }
+.di-bar.live .di-fill::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.55), transparent);
+  animation: diSweep 1.5s var(--ease) infinite;
+}
+@keyframes diSweep {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(220%); }
+}
+
+@media (max-width: 620px) {
+  .di-shell { width: 236px; }
+  .di.wide .di-shell { width: calc(100vw - 24px); }
+  .di-hit { padding: 9px 13px 10px 11px; gap: 10px; }
+  .di-step { display: none; }
+}
+
+/* ------------------------------------------------------- locked stage -- */
+
+.locked {
+  display: flex; align-items: flex-start; gap: 16px;
+  padding: 22px 24px; border-radius: var(--r-md);
+  border: 1px dashed var(--hair-strong); background: var(--glass-soft);
+}
+.locked-mark {
+  width: 40px; height: 40px; border-radius: var(--r-sm); flex: none;
+  display: grid; place-items: center;
+  background: var(--sunk); color: var(--ink-3);
+  border: 1px solid var(--hair);
+}
+.locked-mark svg { width: 21px; height: 21px; }
+.locked-title { font-size: 15.5px; font-weight: 620; letter-spacing: -.018em; }
+.locked-body { font-size: 14px; color: var(--ink-2); line-height: 1.6; margin-top: 5px; max-width: 68ch; }
+
+/* ---------------------------------------------------------- copy button -- */
+
+.withcopy { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.copybtn {
+  display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+  padding: 3px 9px 3px 7px; border-radius: 100px; flex: none;
+  border: 1px solid var(--hair); background: var(--surface-2); color: var(--ink-3);
+  font-size: 11.5px; font-weight: 560; font-family: var(--sans);
+  transition: border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease),
+              background var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+}
+.copybtn:hover { border-color: var(--ink-4); color: var(--ink); }
+.copybtn:active { transform: scale(.95); }
+.copybtn.done { border-color: var(--pine-line); background: var(--pine-wash); color: var(--pine); }
+.copybtn.fail { border-color: var(--crimson-line); background: var(--crimson-wash); color: var(--crimson); }
+
+/* Both icons occupy the same cell and crossfade, so the control never resizes
+   and nothing beside it shifts on click. */
+.cb-icons { position: relative; width: 13px; height: 13px; flex: none; }
+.cb-icons svg {
+  position: absolute; inset: 0; width: 13px; height: 13px;
+  transition: opacity var(--t-fast) var(--ease), transform var(--t-mid) var(--spring);
+}
+.cb-copy { opacity: 1; transform: scale(1); }
+.cb-tick { opacity: 0; transform: scale(.5); }
+.copybtn.done .cb-copy { opacity: 0; transform: scale(.5); }
+.copybtn.done .cb-tick { opacity: 1; transform: scale(1); }
+.cb-text { min-width: 3.6em; text-align: left; }
+
+/* ================================================ theme switch ===========
+   A segmented control in the operating-system idiom: one recessed track, one
+   raised pill that slides between positions, and icons that animate their own
+   parts on selection.
+
+   The pill is a single translating element rather than a background swapped
+   between three buttons. That is the whole difference. A swap is a state
+   change; a slide is a movement, and movement is what tells the eye that the
+   thing it was looking at is the same thing that is now over there.
+   ======================================================================== */
+
+/*
+ * The track has to read as a track.
+ *
+ * It was --sunk on a --canvas page: 1.05:1, which is not a difference anyone
+ * can see. The control dissolved into the background and looked like three
+ * loose icons rather than a segmented switch. Measured, not guessed.
+ */
+.themeswitch {
+  position: relative; display: inline-flex; align-items: center;
+  padding: 3px; border-radius: 100px;
+  background: var(--canvas-deep); border: 1px solid var(--hair-strong);
+  box-shadow: var(--inset-well);
+  isolation: isolate;
+}
+
+/* The travelling pill. Three positions, one spring. */
+.ts-slide {
+  position: absolute; top: 3px; bottom: 3px; left: 3px;
+  width: calc((100% - 6px) / 3);
+  border-radius: 100px; z-index: 0;
+  background: var(--surface);
+  border: 1px solid var(--hair-strong);
+  /* The pill was 1.15:1 against its own track, so the selected segment was
+     invisible. Real elevation is what separates it, not a lighter fill. */
+  box-shadow: var(--e2), inset 0 1px 0 var(--glass);
+  transition: transform var(--t-panel) var(--spring), background var(--t-mid) var(--ease);
+}
+.ts-slide[data-at="light"]  { transform: translateX(0); }
+.ts-slide[data-at="dark"]   { transform: translateX(100%); }
+.ts-slide[data-at="system"] { transform: translateX(200%); }
+
+.ts-opt {
+  position: relative; z-index: 1; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  flex: 1 0 auto; min-width: 0;
+  padding: 6px 12px; border: 0; background: none; border-radius: 100px;
+  font-size: 12.5px; font-weight: 550; color: var(--ink-3);
+  transition: color var(--t-mid) var(--ease);
+  white-space: nowrap;
+}
+.ts-opt:hover { color: var(--ink-2); }
+/* The selected segment takes the accent. Position alone is a weak signal on a
+   three-way control where all three glyphs are the same weight. */
+.ts-opt.on { color: var(--pine); }
+
+/* display:block stops the inline baseline gap that made the icons sit at
+   slightly different heights inside their buttons. */
+.ti { width: 15px; height: 15px; flex: none; display: block; }
+
+/* Sun: rays retract when unselected, spring back out when chosen. */
+.ti.sun .rays {
+  transform-origin: 12px 12px;
+  transition: transform var(--t-panel) var(--spring), opacity var(--t-mid) var(--ease);
+}
+.ts-opt:not(.on) .ti.sun .rays { transform: scale(.55); opacity: 0; }
+.ts-opt.on .ti.sun .rays { transform: scale(1); opacity: 1; }
+
+/* Moon: rotates into place rather than appearing. */
+.ti.moon { transition: transform var(--t-panel) var(--spring); transform-origin: 12px 12px; }
+.ts-opt:not(.on) .ti.moon { transform: rotate(-32deg) scale(.9); }
+.ts-opt.on .ti.moon { transform: rotate(0) scale(1); }
+
+/* System: the filled half is the point, so it only fills when selected. */
+.ti.sys path { transition: opacity var(--t-mid) var(--ease); }
+.ts-opt:not(.on) .ti.sys path { opacity: .35; }
+
+/*
+ * Compact form. Fills its container exactly and divides into equal thirds, so
+ * the pill always lands square on a segment at any container width. Labels are
+ * dropped rather than squeezed; the accessible name and tooltip carry them.
+ */
+.themeswitch.compact { display: flex; width: 100%; }
+.themeswitch.compact .ts-opt { flex: 1 1 0; padding: 7px 0; min-width: 0; gap: 0; }
+.themeswitch.compact .ts-label {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.themeswitch.compact .ti { width: 16px; height: 16px; }
+
+/* Below this the header cannot hold the labelled form either. */
+@media (max-width: 1100px) {
+  .themeswitch .ts-label { display: none; }
+  .themeswitch .ts-opt { padding: 6px 12px; gap: 0; }
+}
+
+/* =================================================== global voice dock ===
+   Bottom centre, clear of the Rationale control in the corner. Compact and
+   quiet at rest; the side panel and the answer card only exist once there is
+   something to say.
+   ======================================================================== */
+
+.gv {
+  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
+  z-index: 70; display: grid; justify-items: center; gap: 10px;
+  pointer-events: none; width: min(560px, calc(100vw - 32px));
+}
+.gv > * { pointer-events: auto; }
+
+.gv-dock {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 8px 8px 8px; border-radius: 100px;
+  background: var(--glass); border: 1px solid var(--hair);
+  box-shadow: var(--e3), inset 0 1px 0 var(--sheen);
+  backdrop-filter: blur(16px) saturate(1.2);
+  transition: gap var(--t-panel) var(--ease), padding var(--t-panel) var(--ease);
+}
+.gv-orb {
+  padding: 0; border: 0; background: none; cursor: pointer; border-radius: 50%;
+  display: grid; place-items: center;
+  transition: transform var(--t-mid) var(--spring);
+}
+.gv-orb:hover { transform: scale(1.06); }
+.gv-orb:active { transform: scale(.96); }
+
+.gv-side { display: flex; align-items: center; gap: 12px; padding-right: 10px; }
+.gv-hint {
+  font-size: 12.5px; color: var(--ink-2); white-space: nowrap;
+  max-width: 30ch; overflow: hidden; text-overflow: ellipsis;
+}
+.gv.listening .gv-hint { color: var(--pine); font-weight: 550; }
+.gv-wake {
+  display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+  font-size: 11.5px; color: var(--ink-3); white-space: nowrap;
+}
+.gv-wake input { width: 13px; height: 13px; accent-color: var(--pine); }
+
+/* Answer card rises out of the dock. */
+.gv-card {
+  position: relative; width: 100%;
+  padding: 15px 38px 13px 17px; border-radius: var(--r-md);
+  background: var(--glass); border: 1px solid var(--hair-strong);
+  box-shadow: var(--e4); backdrop-filter: blur(18px) saturate(1.2);
+  animation: gvRise var(--t-panel) var(--spring) both;
+  max-height: 42vh; overflow: auto;
+}
+@keyframes gvRise {
+  from { opacity: 0; transform: translateY(12px) scale(.97); }
+  to   { opacity: 1; transform: none; }
+}
+.gv-card.refused { border-color: var(--crimson-line); background: var(--crimson-wash); }
+.gv-card.err { border-color: var(--crimson-line); }
+.gv-q {
+  font-size: 12px; color: var(--ink-4); margin-bottom: 6px;
+  text-transform: uppercase; letter-spacing: .07em; font-weight: 620;
+}
+.gv-a { font-size: 14.5px; line-height: 1.55; color: var(--ink); white-space: pre-wrap; }
+.gv-meta { font-size: 11px; color: var(--ink-4); margin-top: 9px; font-variant-numeric: tabular-nums; }
+.gv-close {
+  position: absolute; top: 9px; right: 10px; cursor: pointer;
+  border: 0; background: none; color: var(--ink-4); font-size: 13px; line-height: 1;
+  padding: 4px; border-radius: var(--r-xs);
+}
+.gv-close:hover { color: var(--ink); background: var(--sunk); }
+
+/* Three dots while the answer is being composed. */
+.gv-thinking { display: flex; gap: 5px; padding: 4px 0; }
+.gv-thinking span {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--ink-4);
+  animation: gvDot 1.1s var(--ease) infinite;
+}
+.gv-thinking span:nth-child(2) { animation-delay: .15s; }
+.gv-thinking span:nth-child(3) { animation-delay: .3s; }
+@keyframes gvDot {
+  0%, 100% { opacity: .25; transform: translateY(0); }
+  40%      { opacity: 1;   transform: translateY(-3px); }
+}
+
+.gv-err {
+  font-size: 12px; color: var(--crimson); background: var(--crimson-wash);
+  border: 1px solid var(--crimson-line); padding: 6px 11px; border-radius: 100px;
+}
+
+/* The Rationale control moves aside so the two never overlap. */
+@media (max-width: 720px) {
+  .gv { width: calc(100vw - 24px); bottom: 12px; }
+  .gv-side { display: none; }
+  /* The lift that keeps the Rationale control off the dock lives at the end of
+     this file. Declared here it sat above the unconditional .rationale-fab
+     rule and lost on source order, so the control stayed in the corner and the
+     dock ran straight underneath it. */
+}
+
+
+
+
+/* Live microphone indicator on the floating control. */
+
+
+/* ------------------------------------------------------- decision brief --
+   Sits above an irreversible action, so it is deliberately calmer than the
+   button it precedes. Amber edge when the step cannot be undone. */
+
+.dbrief {
+  border: 1px solid var(--hair-strong); border-left: 3px solid var(--ink-4);
+  border-radius: var(--r-md); background: var(--surface);
+  padding: 16px 18px; margin-bottom: 18px; box-shadow: var(--e1);
+  animation: enter var(--t-mid) var(--ease) both;
+}
+.dbrief.grave { border-left-color: var(--amber); }
+.dbrief.loading { border-left-color: var(--hair-strong); }
+
+.dbrief-top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.dbrief-mark {
+  width: 24px; height: 24px; border-radius: var(--r-xs); flex: none;
+  display: grid; place-items: center;
+  background: var(--invert-bg); color: var(--invert-fg);
+}
+.dbrief-title { font-size: 14.5px; font-weight: 620; letter-spacing: -.015em; }
+
+.dbrief-headline { font-size: 15px; line-height: 1.6; color: var(--ink); max-width: 74ch; min-height: 1.6em; }
+
+/* The caret only exists while words are still arriving. */
+.caret {
+  display: inline-block; width: 2px; height: 1.05em; margin-left: 2px;
+  background: var(--pine); vertical-align: text-bottom;
+  animation: caretBlink .9s steps(1) infinite;
+}
+@keyframes caretBlink { 0%, 60% { opacity: 1; } 61%, 100% { opacity: 0; } }
+
+/* The mark breathes while the brief is being composed. */
+.dbrief-mark.thinking { animation: markThink 1.6s var(--ease) infinite; }
+@keyframes markThink {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%      { transform: scale(1.08); opacity: .72; }
+}
+
+/* Skeleton, shaped like the content that replaces it so nothing jumps. */
+.skel-lines { display: grid; gap: 8px; margin: 4px 0 14px; }
+.skel {
+  height: 11px; border-radius: 3px;
+  background: linear-gradient(90deg, var(--sunk) 25%, var(--hair) 37%, var(--sunk) 63%);
+  background-size: 400% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+.skel.w90 { width: 90%; } .skel.w75 { width: 75%; } .skel.w60 { width: 60%; }
+.skel-figs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.skel-box {
+  height: 54px; border-radius: var(--r-sm);
+  background: linear-gradient(90deg, var(--sunk) 25%, var(--hair) 37%, var(--sunk) 63%);
+  background-size: 400% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+
+/* A brief that has just finished writing gets one quiet sweep of light across
+   it, then never again. It marks arrival; it is not an ambient effect. */
+.dbrief { position: relative; overflow: hidden; }
+.dbrief::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(105deg, transparent 30%, var(--sheen) 50%, transparent 70%);
+  transform: translateX(-100%);
+  animation: sweep 1.1s var(--ease) 180ms 1;
+}
+
+.dbrief-figures {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px; background: var(--hair);
+  border: 1px solid var(--hair); border-radius: var(--r-sm);
+  margin-top: 14px; overflow: hidden;
+}
+.dbf { background: var(--surface-2); padding: 11px 13px; }
+.dbf-k {
+  font-size: 11px; font-weight: 620; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--ink-4);
+}
+.dbf-v {
+  font-size: 20px; font-weight: 620; letter-spacing: -.026em;
+  font-variant-numeric: tabular-nums; margin-top: 3px;
+}
+.dbf-n { font-size: 12px; color: var(--ink-3); margin-top: 3px; line-height: 1.4; }
+
+/* Sections arrive after the headline, staggered. */
+.dbrief-sections {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 22px;
+  margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--hair);
+}
+.dbs { animation: enter var(--t-panel) var(--ease) both; }
+
+/* What happened, as a spine with nodes. Reads as a sequence, not a list. */
+.timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; position: relative; }
+.timeline::before {
+  content: ""; position: absolute; left: 3.5px; top: 6px; bottom: 6px;
+  width: 1.5px; background: var(--hair);
+}
+.timeline li {
+  position: relative; padding-left: 18px;
+  font-size: 13px; color: var(--ink-2); line-height: 1.5;
+}
+.timeline li::before {
+  content: ""; position: absolute; left: 0; top: 6px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--surface); border: 2px solid var(--hair-strong);
+}
+.timeline li:last-child::before { border-color: var(--pine); background: var(--pine); }
+
+/* Attention items carry severity from the server, not from the stylesheet. */
+.attn { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+.attn li {
+  font-size: 13px; line-height: 1.5; padding: 8px 11px 8px 30px;
+  border-radius: var(--r-sm); position: relative;
+  background: var(--sunk); color: var(--ink-2);
+}
+.attn li::before {
+  position: absolute; left: 11px; top: 8px; font-weight: 700; font-size: 12px;
+}
+.attn li.ok   { background: var(--pine-wash); color: var(--ink); }
+.attn li.ok::before   { content: "\2713"; color: var(--pine); }
+.attn li.warn { background: var(--amber-wash); color: var(--ink); }
+.attn li.warn::before { content: "\0021"; color: var(--amber); }
+.attn li.note::before { content: "\00b7"; color: var(--ink-4); font-size: 18px; top: 4px; }
+
+/* The handoff line. States the boundary in three words. */
+.dbrief-handoff {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: 14px; padding: 10px 13px; border-radius: var(--r-sm);
+  background: var(--surface-2); border: 1px solid var(--hair);
+  animation: enter var(--t-panel) var(--ease) both;
+}
+.dbh-a { font-size: 12.5px; color: var(--ink-3); }
+.dbh-arrow { color: var(--ink-4); }
+.dbh-b { font-size: 12.5px; font-weight: 650; color: var(--pine); }
+
+@media (max-width: 820px) { .dbrief-sections { grid-template-columns: 1fr; gap: 16px; } }
+
+.dbrief-detail {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 22px;
+  margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--hair);
+}
+.dbrief-h {
+  font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--ink-4); margin-bottom: 7px;
+}
+.dbrief-detail ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.dbrief-detail li {
+  font-size: 13.5px; color: var(--ink-2); line-height: 1.5;
+  padding-left: 16px; position: relative;
+}
+.dbrief-detail li::before {
+  content: ""; position: absolute; left: 3px; top: 8px;
+  width: 4px; height: 4px; border-radius: 50%; background: var(--ink-4);
+}
+.dbrief-detail .checks li::before { background: var(--pine); }
+
+.dbrief-rev {
+  font-size: 13px; color: var(--ink-2); line-height: 1.55;
+  margin-top: 14px; padding: 10px 12px;
+  background: var(--sunk); border-radius: var(--r-sm);
+}
+.dbrief.grave .dbrief-rev { background: var(--amber-wash); color: var(--ink); }
+
+.dbrief-meta {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--hair);
+  font-size: 11.5px; color: var(--ink-4); font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 820px) {
+  .dbrief-detail { grid-template-columns: 1fr; gap: 16px; }
+}
+
+/* ------------------------------------------------------------ scenarios --
+   A picker rather than a list of raw sentences. Each card says what the run
+   demonstrates, because "cheapest listing rejected" tells a first-time viewer
+   why to click it and the request text does not. */
+
+.scenarios { margin-top: 18px; }
+.scenarios-head {
+  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 10px;
+}
+.scenario-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px;
+}
+.scenario {
+  display: grid; gap: 3px; text-align: left; cursor: pointer;
+  padding: 11px 13px; border-radius: var(--r-sm);
+  border: 1px solid var(--hair); background: var(--glass-soft);
+  transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease),
+              transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+.scenario:hover {
+  border-color: var(--hair-strong); background: var(--surface);
+  transform: translateY(-1px); box-shadow: var(--e2);
+}
+.scenario:active { transform: translateY(0); box-shadow: var(--e1); }
+.scenario.on {
+  border-color: var(--pine); background: var(--pine-wash);
+  box-shadow: 0 0 0 1px var(--pine) inset;
+}
+.sc-top { display: flex; align-items: baseline; gap: 8px; justify-content: space-between; }
+.sc-label { font-size: 13.5px; font-weight: 600; color: var(--ink); letter-spacing: -.01em; }
+.sc-ind {
+  font-size: 10.5px; font-weight: 650; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--ink-4); border: 1px solid var(--hair); border-radius: 100px;
+  padding: 1px 7px; white-space: nowrap; flex: none;
+}
+.scenario.on .sc-ind { color: var(--pine); border-color: var(--pine-line); }
+.sc-tag { font-size: 12px; color: var(--ink-3); line-height: 1.35; }
+.scenario.on .sc-tag { color: var(--ink-2); }
+
 .chip {
   display: block; width: 100%; text-align: left; cursor: pointer;
-  border: 1px solid var(--hair); background: rgba(255,255,255,.6);
+  border: 1px solid var(--hair); background: var(--glass-soft);
   padding: 9px 12px; border-radius: var(--r-sm); font-size: 13px; color: var(--ink-2);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease),
@@ -569,7 +1606,7 @@ button { font: inherit; color: inherit; }
   /* Translucent so the aura reads through it, but no backdrop-filter: the
      chain renders several of these at once and a blur pass per surface is
      paid on every frame for an effect a flat alpha already gives. */
-  background: rgba(255,255,255,.80);
+  background: var(--glass);
   border: 1px solid var(--hair);
   box-shadow: var(--e1), var(--lip);
   transition: transform var(--t-panel) var(--ease), box-shadow var(--t-panel) var(--ease),
@@ -591,21 +1628,21 @@ button { font: inherit; color: inherit; }
 /* The mandate itself is the one inverted surface in the product. It is the
    object the whole system is built to protect, so it reads as the object. */
 .mnode.grant {
-  background: var(--ink-surface); border-color: var(--ink-surface); color: var(--on-ink);
+  background: var(--invert-bg); border-color: var(--invert-bg); color: var(--invert-fg);
   box-shadow: var(--e3); z-index: 2;
   margin-inline: 14px;
 }
-.mnode.grant .mnode-role { color: var(--on-ink-dim); }
-.mnode.grant .mnode-id { color: var(--on-ink-dim); }
+.mnode.grant .mnode-role { color: var(--invert-dim); }
+.mnode.grant .mnode-id { color: var(--invert-dim); }
 .mnode.grant .mnode-tag {
-  color: var(--on-ink); background: rgba(255,255,255,.09); border-color: rgba(255,255,255,.16);
+  color: var(--invert-fg); background: var(--sheen); border-color: var(--invert-line);
 }
 .mnode.grant .mnode-amount {
   font-size: 30px; font-weight: 640; letter-spacing: -.035em;
   font-variant-numeric: tabular-nums; margin-top: 4px; line-height: 1.1;
 }
 .mnode.grant .mnode-amount small {
-  display: block; font-size: 13px; font-weight: 500; color: var(--on-ink-dim);
+  display: block; font-size: 13px; font-weight: 500; color: var(--invert-dim);
   letter-spacing: -.006em; margin-top: 3px; line-height: 1.4;
 }
 
@@ -807,16 +1844,16 @@ table.grid tr.winner td:first-child { box-shadow: inset 3px 0 0 var(--pine); }
 
 .award { border-radius: var(--r-md); overflow: hidden; box-shadow: var(--e2); border: 1px solid var(--pine-line); }
 .award-head {
-  padding: 20px 22px; background: var(--pine); color: #fff;
+  padding: 20px 22px; background: var(--pine); color: var(--on-accent);
   display: flex; align-items: flex-end; gap: 18px; flex-wrap: wrap;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.12);
+  box-shadow: inset 0 1px 0 var(--sheen);
 }
-.award-head .eyebrow { color: rgba(255,255,255,.68); }
+.award-head .eyebrow { color: var(--on-accent-dim); }
 .award-sup { font-size: 22px; font-weight: 620; letter-spacing: -.026em; margin-top: 3px; }
-.award-loc { font-size: 13px; color: rgba(255,255,255,.72); margin-top: 2px; }
+.award-loc { font-size: 13px; color: var(--on-accent-dim); margin-top: 2px; }
 .award-amt { margin-left: auto; text-align: right; }
 .award-amt .v { font-size: 40px; font-weight: 630; letter-spacing: -.04em; line-height: 1; font-variant-numeric: tabular-nums; }
-.award-amt .k { font-size: 13px; color: rgba(255,255,255,.72); margin-top: 5px; }
+.award-amt .k { font-size: 13px; color: var(--on-accent-dim); margin-top: 5px; }
 
 .award-grid {
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px;
@@ -886,7 +1923,7 @@ table.grid tr.winner td:first-child { box-shadow: inset 3px 0 0 var(--pine); }
 .lm-track {
   position: relative; height: 42px; border-radius: var(--r-sm);
   background: var(--surface); border: 1px solid var(--hair-strong);
-  overflow: hidden; box-shadow: inset 0 1px 3px rgba(16,20,24,.05);
+  overflow: hidden; box-shadow: var(--inset-well);
 }
 .lm-fill {
   position: absolute; inset: 0 auto 0 0; width: 0;
@@ -943,7 +1980,7 @@ table.grid tr.winner td:first-child { box-shadow: inset 3px 0 0 var(--pine); }
 .proof-grid .v { font-weight: 560; word-break: break-word; }
 .proof-note {
   font-size: 12.5px; color: var(--ink-2); line-height: 1.55;
-  padding: 12px 15px; background: rgba(255,255,255,.6);
+  padding: 12px 15px; background: var(--glass-soft);
   border-top: 1px solid var(--crimson-line);
 }
 
@@ -1030,7 +2067,7 @@ table.grid tr.winner td:first-child { box-shadow: inset 3px 0 0 var(--pine); }
   display: grid; place-items: center; font-size: 12px; color: var(--ink-4); font-weight: 620;
   transition: background var(--t-mid) var(--ease), border-color var(--t-mid) var(--ease), color var(--t-mid) var(--ease);
 }
-.step.done .step-node { background: var(--pine); border-color: var(--pine); color: #fff; }
+.step.done .step-node { background: var(--pine); border-color: var(--pine); color: var(--on-accent); }
 .step.done::before { background: var(--pine-line); }
 .step.current .step-node { border-color: var(--pine); color: var(--pine); background: var(--pine-wash); }
 .step.pending { opacity: .48; }
@@ -1075,7 +2112,7 @@ table.grid tr.winner td:first-child { box-shadow: inset 3px 0 0 var(--pine); }
 .ledger::-webkit-scrollbar-track { background: transparent; }
 
 .lcard {
-  background: rgba(255,255,255,.78); border: 1px solid var(--hair);
+  background: var(--glass); border: 1px solid var(--hair);
   border-radius: var(--r-md); padding: 14px 16px; box-shadow: var(--e1);
 }
 .lcard-t {
@@ -1100,10 +2137,32 @@ table.grid tr.winner td:first-child { box-shadow: inset 3px 0 0 var(--pine); }
 
 /* Loading is a description of the work, not a spinner. It names what the
    system is doing so a first-time viewer follows the run. */
+/*
+ * Working state. Deliberately not a spinner: a spinner says "wait", and this
+ * screen has something better to say, which is what it is doing on your behalf.
+ * A pulsing dot, a travelling band of light, and a line naming the actual work.
+ */
 .working {
+  position: relative; overflow: hidden;
   display: grid; gap: 10px; padding: 18px 20px;
   border: 1px solid var(--hair); border-radius: var(--r-md);
-  background: rgba(255,255,255,.66); box-shadow: var(--e1);
+  background: var(--glass-soft); box-shadow: var(--e1);
+  animation: enter var(--t-panel) var(--ease) both;
+}
+.working::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(105deg, transparent 35%, var(--sheen) 50%, transparent 65%);
+  transform: translateX(-100%);
+  animation: sweep 2.1s var(--ease) infinite;
+}
+.working-top::before {
+  content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--pine); flex: none;
+  animation: workDot 1.1s var(--ease) infinite;
+}
+@keyframes workDot {
+  0%, 100% { opacity: .3; transform: scale(.8); }
+  50%      { opacity: 1;  transform: scale(1.15); }
 }
 .working-top { display: flex; align-items: center; gap: 11px; font-size: 14.5px; font-weight: 550; }
 .working-sub { font-size: 13px; color: var(--ink-3); }
@@ -1116,7 +2175,7 @@ table.grid tr.winner td:first-child { box-shadow: inset 3px 0 0 var(--pine); }
 .empty {
   border: 1px dashed var(--hair-strong); border-radius: var(--r-md);
   padding: 34px 24px; text-align: center; color: var(--ink-3); font-size: 13.5px;
-  background: rgba(255,255,255,.5);
+  background: var(--glass-thin);
 }
 
 .banner {
@@ -1131,7 +2190,7 @@ table.grid tr.winner td:first-child { box-shadow: inset 3px 0 0 var(--pine); }
 
 .disclosure {
   padding: 16px 18px; border: 1px solid var(--hair); border-left: 3px solid var(--hair-strong);
-  border-radius: var(--r-sm); background: rgba(255,255,255,.6);
+  border-radius: var(--r-sm); background: var(--glass-soft);
   font-size: 13px; color: var(--ink-3); line-height: 1.65;
 }
 .disclosure b { color: var(--ink-2); font-weight: 620; }
@@ -1145,47 +2204,6 @@ table.grid tr.winner td:first-child { box-shadow: inset 3px 0 0 var(--pine); }
 }
 @keyframes drawTick { to { stroke-dashoffset: 0; } }
 
-/* ================================================================== entry = */
-
-.entry {
-  position: relative; z-index: 1; min-height: 100vh;
-  display: grid; grid-template-columns: minmax(0, 1.02fr) minmax(400px, .98fr);
-  gap: 60px; align-items: center;
-  padding: 44px clamp(24px, 5.5vw, 88px);
-}
-.entry-copy { max-width: 560px; }
-.entry-brand {
-  display: flex; align-items: center; gap: 11px;
-  font-size: 16px; font-weight: 620; letter-spacing: -.026em; margin-bottom: 30px;
-}
-.entry h1 {
-  font-size: clamp(32px, 3.7vw, 48px); line-height: 1.06; letter-spacing: -.038em;
-  max-width: 15ch;
-}
-.entry-sub {
-  font-size: 16.5px; line-height: 1.55; color: var(--ink-2);
-  margin-top: 17px; max-width: 50ch; letter-spacing: -.008em;
-}
-.entry-actions { display: flex; gap: 12px; margin-top: 28px; flex-wrap: wrap; }
-.entry-err {
-  margin-top: 18px; font-size: 13.5px; color: var(--crimson);
-  background: var(--crimson-wash); border: 1px solid var(--crimson-line);
-  padding: 11px 14px; border-radius: var(--r-sm);
-}
-.entry-note {
-  margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--hair);
-  font-size: 13.5px; color: var(--ink-3); line-height: 1.6; max-width: 52ch;
-}
-.entry-facts { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 7px; max-width: 52ch; }
-.entry-facts li { font-size: 13.5px; color: var(--ink-3); line-height: 1.5; }
-.entry-facts b { color: var(--ink-2); font-weight: 620; }
-
-.entry-visual { position: relative; }
-.entry-visual-cap {
-  font-size: 12px; font-weight: 650; text-transform: uppercase; letter-spacing: .09em;
-  color: var(--ink-4); margin-bottom: 16px; text-align: center;
-}
-
 /* ============================================== rationale: the AI control ==
    A circular control with a mark built for this product: an open C orbit
    (Covenant), a smaller inner arc, and a solid node at the centre. It is not a
@@ -1197,9 +2215,9 @@ table.grid tr.winner td:first-child { box-shadow: inset 3px 0 0 var(--pine); }
   position: fixed; right: 26px; bottom: 26px; z-index: 60;
   width: 54px; height: 54px; border-radius: 50%; padding: 0; cursor: pointer;
   display: grid; place-items: center;
-  background: var(--ink-surface); color: var(--on-ink);
-  border: 1px solid rgba(255,255,255,.10);
-  box-shadow: var(--e3), inset 0 1px 0 rgba(255,255,255,.14);
+  background: var(--invert-bg); color: var(--invert-fg);
+  border: 1px solid var(--invert-line);
+  box-shadow: var(--e3), inset 0 1px 0 var(--sheen);
   transition: transform var(--t-mid) var(--ease), background var(--t-mid) var(--ease),
               box-shadow var(--t-mid) var(--ease);
   animation: hover 6s var(--ease) infinite;
@@ -1211,7 +2229,7 @@ table.grid tr.winner td:first-child { box-shadow: inset 3px 0 0 var(--pine); }
 /* Ambient ring. Ink, not neon: it reads as presence, not as a glow effect. */
 .rf-halo {
   position: absolute; inset: -7px; border-radius: 50%;
-  border: 1px solid rgba(16,20,24,.16); pointer-events: none;
+  border: 1px solid var(--halo-line); pointer-events: none;
   animation: halo 4.4s var(--ease) infinite;
 }
 @keyframes halo {
@@ -1241,7 +2259,7 @@ table.grid tr.winner td:first-child { box-shadow: inset 3px 0 0 var(--pine); }
 
 .rf-tip {
   position: absolute; right: 64px; top: 50%; transform: translate(6px, -50%);
-  background: var(--ink-surface); color: var(--on-ink);
+  background: var(--invert-bg); color: var(--invert-fg);
   font-size: 12.5px; font-weight: 560; padding: 5px 11px; border-radius: var(--r-xs);
   white-space: nowrap; opacity: 0; pointer-events: none; box-shadow: var(--e2);
   transition: opacity var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
@@ -1253,7 +2271,7 @@ table.grid tr.winner td:first-child { box-shadow: inset 3px 0 0 var(--pine); }
 /* ---- drawer. Opens from the control, not from the screen edge. */
 
 .rat-scrim {
-  position: fixed; inset: 0; z-index: 55; background: rgba(16,20,24,.20);
+  position: fixed; inset: 0; z-index: 55; background: var(--scrim-soft);
   opacity: 0; pointer-events: none; transition: opacity var(--t-panel) var(--ease);
   backdrop-filter: blur(1.5px);
 }
@@ -1278,7 +2296,7 @@ table.grid tr.winner td:first-child { box-shadow: inset 3px 0 0 var(--pine); }
 }
 .rat-mark {
   width: 34px; height: 34px; border-radius: var(--r-sm); flex: none;
-  display: grid; place-items: center; background: var(--ink-surface); color: var(--on-ink);
+  display: grid; place-items: center; background: var(--invert-bg); color: var(--invert-fg);
   box-shadow: var(--e1);
 }
 .rat-title { font-size: 15.5px; font-weight: 620; letter-spacing: -.02em; }
@@ -1312,7 +2330,7 @@ table.grid tr.winner td:first-child { box-shadow: inset 3px 0 0 var(--pine); }
 /* Answers read as notes on the file. Questions are quiet and right-aligned. */
 .rat-q {
   align-self: flex-end; max-width: 86%;
-  background: var(--ink-surface); color: var(--on-ink);
+  background: var(--invert-bg); color: var(--invert-fg);
   padding: 9px 13px; border-radius: var(--r-sm) var(--r-sm) 2px var(--r-sm);
   font-size: 13.5px; line-height: 1.5;
   animation: enter var(--t-mid) var(--ease) both;
@@ -1353,7 +2371,7 @@ table.grid tr.winner td:first-child { box-shadow: inset 3px 0 0 var(--pine); }
 /* ================================================================== modal = */
 
 .modal-scrim {
-  position: fixed; inset: 0; z-index: 70; background: rgba(16,20,24,.34);
+  position: fixed; inset: 0; z-index: 70; background: var(--scrim);
   display: grid; place-items: center; padding: 28px;
   animation: fadeIn var(--t-panel) var(--ease) both; backdrop-filter: blur(2px);
 }
@@ -1384,7 +2402,7 @@ table.grid tr.winner td:first-child { box-shadow: inset 3px 0 0 var(--pine); }
    ========================================================================== */
 
 .doc {
-  background: #fff; border: 1px solid var(--hair-strong); border-radius: var(--r-sm);
+  background: var(--doc-bg); border: 1px solid var(--hair-strong); border-radius: var(--r-sm);
   padding: 38px 42px; color: var(--ink); box-shadow: var(--e2);
 }
 
@@ -1550,9 +2568,6 @@ table.grid tr.winner td:first-child { box-shadow: inset 3px 0 0 var(--pine); }
   }
   .ledger .lcard { flex: 1 1 250px; }
   .award-grid { grid-template-columns: repeat(2, 1fr); }
-  .entry { grid-template-columns: minmax(0,1fr); gap: 44px; padding-block: 44px; }
-  .entry-copy { max-width: none; }
-  .entry-visual { max-width: 560px; }
 }
 
 /* Sidebar becomes a horizontal progress strip. The actor tags survive. */
@@ -1562,16 +2577,30 @@ table.grid tr.winner td:first-child { box-shadow: inset 3px 0 0 var(--pine); }
     position: sticky; top: 0; height: auto; z-index: 30;
     flex-direction: row; align-items: center; gap: 20px;
     padding: 12px 16px; border-right: 0; border-bottom: 1px solid var(--hair);
-    background: rgba(246,245,241,.9); backdrop-filter: blur(12px);
-    overflow-x: auto;
+    background: var(--bar-veil); backdrop-filter: blur(12px);
+    /* The bar itself must not scroll. When it did, the stage rail was 1053px
+       wide inside a 700px bar and everything after it, the theme control and
+       the network chip, sat around x=1200: off screen, with no affordance that
+       the bar scrolled at all. Only the rail scrolls now. */
+    overflow: visible;
   }
   .side-brand { padding: 0; flex: none; }
   .brand-role { display: none; }
   .rail-head { display: none; }
-  .rail { display: flex; gap: 6px; min-width: max-content; }
-  .rail-item { padding: 5px 9px; }
+  .rail {
+    display: flex; gap: 6px;
+    flex: 1 1 auto; min-width: 0;
+    overflow-x: auto; overscroll-behavior-x: contain;
+    scrollbar-width: none; padding-block: 2px;
+  }
+  .rail::-webkit-scrollbar { display: none; }
+  .rail-item { padding: 5px 9px; flex: none; }
   .rail-item::before { left: auto; right: -4px; top: 19px; bottom: auto; width: 8px; height: 1.5px; }
-  .side-foot { margin: 0; padding: 0; flex: none; display: flex; gap: 8px; }
+  .side-foot {
+    margin: 0 0 0 auto; padding: 0; flex: none;
+    display: flex; gap: 8px; align-items: center;
+  }
+  .side-foot .themeswitch.compact { width: auto; }
   .idchip { display: none; }
   .canvas { padding: 22px 18px 120px; }
   .canvas-inner { gap: 28px; }
@@ -1598,8 +2627,7 @@ table.grid tr.winner td:first-child { box-shadow: inset 3px 0 0 var(--pine); }
   .figures { grid-template-columns: 1fr; }
   .signbox-terms > div { flex-direction: column; gap: 3px; }
   .signbox-terms .v { text-align: left; }
-  .rationale-fab { right: 16px; bottom: 16px; }
-  .entry { padding-inline: 20px; }
+  .rationale-fab { right: 16px; }
 
   /* The sign field carried a 230px floor that left almost no room beside the
      signbox padding on a narrow phone. Both come down together. */
@@ -1607,38 +2635,440 @@ table.grid tr.winner td:first-child { box-shadow: inset 3px 0 0 var(--pine); }
   .signbox-sign .field { min-width: 0; }
   .doc { padding: 20px 16px; }
 
-  /* A 116px label column plus a break-all hash in the remainder is unreadable
-     at this width. Stack the term over its value instead. */
-  .doc-dl { grid-template-columns: 1fr; gap: 2px; }
-  .doc-dl dt { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; font-weight: 620; }
-  .doc-dl dd { margin-bottom: 10px; }
-  .doc-meta { gap: 18px; }
+  /* On a phone the top bar has to carry brand, rail and theme control in one
+     row. The network chip drops to its status dot rather than pushing the
+     theme control off the edge; the ledger below still names the network. */
+  .sidebar .netchip { padding: 6px; gap: 0; }
+  .sidebar .netchip > span:not(.netdot) { display: none; }
 }
 
-/* =========================================================== reduced motion
-   Motion sits on top of a working interface. Removing it removes no
-   information: every animated element has a resolved resting state.
-   ========================================================================== */
+.story { padding: clamp(28px, 5vh, 56px) 0 0; border-top: 1px solid var(--hair); }
+.story-head { max-width: 60ch; margin-bottom: 26px; }
+.story-head h2 {
+  font-size: clamp(22px, 2.6vw, 32px); letter-spacing: -.03em; margin-top: 6px;
+}
+/* Four across, so eight steps make two even rows. auto-fit gave six columns at
+   desktop and left steps 07 and 08 orphaned on a second row beside a gap,
+   which broke the sequence the rail exists to show. */
+.story-rail {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px;
+}
+.story-step {
+  position: relative; display: grid; gap: 7px;
+  padding: 15px 16px; border-radius: var(--r-md);
+  background: var(--glass-soft); border: 1px solid var(--hair);
+  transition: transform var(--t-mid) var(--ease), box-shadow var(--t-mid) var(--ease),
+              border-color var(--t-mid) var(--ease);
+}
+.story-step:hover { transform: translateY(-2px); box-shadow: var(--e2); }
+.ss-n {
+  font-size: 11px; font-weight: 700; letter-spacing: .08em;
+  color: var(--ink-4); font-variant-numeric: tabular-nums;
+}
+.ss-body { display: grid; gap: 2px; }
+.ss-label { font-size: 15px; font-weight: 620; letter-spacing: -.018em; }
+.ss-note { font-size: 12.5px; color: var(--ink-3); line-height: 1.4; }
+.ss-by {
+  justify-self: start; font-size: 10.5px; font-weight: 650;
+  text-transform: uppercase; letter-spacing: .07em;
+  padding: 2px 8px; border-radius: 100px;
+  border: 1px solid var(--hair); color: var(--ink-4);
+}
+.story-step.by-agent .ss-by { color: var(--pine); border-color: var(--pine-line); background: var(--pine-wash); }
+.story-step.by-contract .ss-by { color: var(--ink-2); border-color: var(--hair-strong); }
+
+/* The checkpoint is heavier than everything around it, on purpose. */
+.story-step.gate {
+  background: linear-gradient(180deg, var(--amber-wash), var(--surface));
+  border-color: var(--amber-line);
+  box-shadow: var(--e2), var(--glow-warn);
+}
+.story-step.gate .ss-by { color: var(--amber); border-color: var(--amber-line); background: transparent; }
+.story-step.gate .ss-label { color: var(--ink); }
+
+/* ---- homepage responsive. Reflowed, not scaled. */
+@media (max-width: 720px) {
+  /* The wall label needs room the phone does not have, so the figure switches
+     to labels above the bars rather than beside them. */
+  .cd-track { padding-right: 0; }
+  .cd-wall { right: 8px; }
+  .cd-wall-lab {
+    left: auto; right: 12px; top: -20px; transform: none; font-size: 11px;
+  }
+  .ceildemo { padding: 18px 16px 16px; }
+  .story-rail { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 440px) {
+  .story-rail { grid-template-columns: 1fr; }
+  .cd-settled, .cd-attempt { flex-direction: column; align-items: flex-start; gap: 2px; }
+}
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: .01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: .01ms !important;
-  }
-  .aura i { animation: none !important; }
-  .rationale-fab { animation: none !important; transform: none !important; }
-  .rf-halo { display: none; }
-  .lm-attempt.run { width: var(--stop-at); }
-  .tick path { stroke-dashoffset: 0; }
-  .vplane, .vplane.holding { transform: none !important; }
-  .mandate.showcase .mnode { transform: none !important; opacity: 1 !important; }
-  .rationale { transform: none; }
-  .mconn.flowing::after, .rail-item.current .rail-idx::after,
-  .vlink.active::after { display: none; }
-  .workbar::after, .negpulse::after { animation: none; width: 100%; opacity: .4; }
-  /* The in-button progress bar animates to zero opacity, so pin it visible
-     instead. The button label already reads "Running", but the control should
-     still look occupied rather than idle. */
-  .btn.loading::before { animation: none; transform: none; opacity: .45; }
+  .ceildemo, .cd-settled, .cd-attempt, .cd-revert { animation: none !important; }
+  .cd-settled { width: 78%; opacity: 1; }
+  .cd-attempt { width: 100%; opacity: 1; transform: none; }
+  .hp-eyedot { animation: none; }
+  .story-step:hover { transform: none; }
+}
+
+/* ---- Shell. The page is one column with full-bleed bands, so each section
+   sets its own surface and the hero can invert without the others following. */
+.hp { min-height: 100%; display: flex; flex-direction: column; background: var(--canvas); }
+/* Every band is a column flex item. Auto side margins turn off the default
+   stretch, so without an explicit width each band shrank to its own content and
+   max-width never governed: the figure row ended up 106px right of the sections
+   above and below it. */
+.hp > * { width: 100%; }
+
+.hp-bar {
+  position: relative; z-index: 3;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; padding: 18px clamp(20px, 5vw, 56px);
+  max-width: 1240px; margin-inline: auto;
+}
+.hp-brand { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 640; letter-spacing: -.026em; }
+
+/* ---- Hero. Inverted, full bleed, and pulled up under the bar so the bar
+   reads as sitting on the hero rather than above it. */
+.hp-hero {
+  position: relative; margin-top: -74px; padding: 96px 0 clamp(56px, 7vw, 88px);
+  background: var(--invert-bg); color: var(--invert-fg);
+  overflow: hidden;
+}
+.hp-hero::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(58% 74% at 88% 8%, rgba(63,191,163,.20), transparent 62%),
+    radial-gradient(46% 62% at 6% 96%, rgba(63,191,163,.10), transparent 68%);
+}
+/* Scoped to the wordmark rather than set on the whole bar. The theme switch
+   brings its own surface and its own label colours, and inheriting a light
+   colour into it put near-white labels on its own pale pill. Components that
+   style themselves should be left to do it. */
+.hp-brand { color: var(--invert-fg); }
+.hp-brand .brand-mark { background: var(--invert-fg); color: var(--invert-bg); }
+
+.hp-hero-in {
+  /* The gutter sits on the inner column so the headline starts on the same
+     line as every section below it, rather than 56px further out. */
+  position: relative; max-width: 1240px; margin: 0 auto;
+  padding-inline: clamp(20px, 5vw, 56px);
+  display: grid; grid-template-columns: minmax(0, 1.04fr) minmax(0, .96fr);
+  gap: clamp(32px, 5vw, 72px); align-items: center;
+}
+
+.hp-eyebrow {
+  display: inline-flex; align-items: center; gap: 9px;
+  font-size: 12px; font-weight: 620; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--invert-dim);
+  padding: 7px 14px 7px 11px; border-radius: 100px;
+  background: rgba(255,255,255,.06); border: 1px solid var(--invert-line);
+}
+.hp-eyedot {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--invert-accent);
+  box-shadow: 0 0 0 4px rgba(63,191,163,.18);
+  animation: breathe 2.6s var(--ease) infinite;
+}
+
+.hp-lede h1 {
+  margin: 22px 0 0; font-size: clamp(38px, 5.1vw, 62px); line-height: 1.03;
+  letter-spacing: -.036em; font-weight: 660;
+}
+.hp-sub {
+  margin-top: 20px; max-width: 46ch;
+  font-size: clamp(15px, 1.35vw, 17px); line-height: 1.62; color: var(--invert-dim);
+}
+.hp-cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
+
+/* A quiet second action against a dark surface. btn-secondary is built for the
+   light canvas and disappears here. */
+.btn-ghost {
+  background: rgba(255,255,255,.07); color: var(--invert-fg);
+  border-color: var(--invert-line); box-shadow: none;
+}
+.btn-ghost:hover:not(:disabled) { background: rgba(255,255,255,.13); transform: translateY(-1.5px); }
+.btn-ghost:active:not(:disabled) { transform: translateY(.5px) scale(.986); }
+
+.hp-note { margin-top: 16px; font-size: 12.5px; color: var(--invert-dim); }
+.hp-err {
+  margin-top: 16px; padding: 11px 14px; border-radius: var(--r-sm);
+  background: rgba(255,138,155,.12); border: 1px solid rgba(255,138,155,.34);
+  font-size: 13px; color: #FFC9D1; max-width: 52ch;
+}
+
+/* ---- Mandate card. The hero's evidence. */
+/* The card is the hero's evidence and should read as the focal point. It gets
+   real elevation and a faint accent bloom, so the eye lands on the ceiling
+   figure rather than sharing attention evenly with the headline beside it. */
+.mandate {
+  position: relative;
+  border-radius: var(--r-lg, 18px); padding: 22px;
+  background: rgba(255,255,255,.055);
+  border: 1px solid var(--invert-line);
+  box-shadow:
+    var(--e4),
+    0 0 0 1px rgba(63,191,163,.10),
+    0 28px 70px -30px rgba(63,191,163,.32),
+    inset 0 1px 0 rgba(255,255,255,.08);
+  backdrop-filter: blur(14px);
+}
+.mn-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.mn-eyebrow {
+  font-size: 11.5px; font-weight: 620; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--invert-dim);
+}
+.mn-badge {
+  font-size: 11px; font-weight: 640; letter-spacing: .04em; text-transform: uppercase;
+  padding: 5px 10px; border-radius: 100px;
+  background: rgba(63,191,163,.16); color: var(--invert-accent-lift);
+  border: 1px solid rgba(63,191,163,.32);
+}
+
+.mn-ceiling {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 14px;
+  margin-top: 16px; padding-bottom: 18px; border-bottom: 1px solid var(--invert-line);
+}
+.mn-k { font-size: 13px; color: var(--invert-dim); }
+.mn-v { font-size: 38px; font-weight: 680; letter-spacing: -.032em; font-variant-numeric: tabular-nums; }
+
+.mn-log { list-style: none; margin: 4px 0 0; padding: 0; display: grid; }
+.mn-row {
+  display: grid; grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center; gap: 12px;
+  padding: 14px 0; border-bottom: 1px solid var(--invert-line);
+}
+.mn-row:last-child { border-bottom: 0; }
+.mn-ico { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; }
+.mn-row.ok .mn-ico { background: rgba(63,191,163,.18); color: var(--invert-accent); }
+.mn-row.no .mn-ico { background: rgba(255,138,155,.15); color: #FF9BA9; }
+.mn-ico svg { width: 12px; height: 12px; }
+.mn-x { font-size: 11px; line-height: 1; }
+
+.mn-body { display: grid; gap: 2px; min-width: 0; }
+.mn-amt { font-size: 16px; font-weight: 620; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.mn-note { font-size: 12px; color: var(--invert-dim); line-height: 1.4; }
+.mn-tag {
+  font-size: 10.5px; font-weight: 640; letter-spacing: .07em; text-transform: uppercase;
+  padding: 4px 9px; border-radius: 100px; flex: none;
+}
+.mn-row.ok .mn-tag { background: rgba(63,191,163,.15); color: var(--invert-accent-lift); }
+.mn-row.no .mn-tag { background: rgba(255,138,155,.13); color: #FF9BA9; }
+
+.mn-foot {
+  margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--invert-line);
+  font-size: 11.5px; line-height: 1.55; color: var(--invert-dim);
+}
+.mn-foot code { font-family: var(--mono); font-size: 11px; color: var(--invert-accent); }
+
+/* ---- Figures band. Sits on the seam between the hero and the page. */
+.hp-figures {
+  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px; padding: 0 clamp(20px, 5vw, 56px);
+  max-width: 1240px; margin: -30px auto 0; position: relative; z-index: 2;
+}
+.hp-figures > div {
+  background: var(--surface); border: 1px solid var(--hair);
+  border-radius: var(--r-md); padding: 20px 18px;
+  display: grid; gap: 4px; box-shadow: var(--e2);
+}
+.hp-figures b {
+  font-size: 30px; font-weight: 680; letter-spacing: -.032em; color: var(--pine);
+  font-variant-numeric: tabular-nums; line-height: 1;
+}
+.hp-figures span { font-size: 12.5px; color: var(--ink-2); line-height: 1.4; }
+
+/* ---- Shared section furniture. */
+.hp-sec-head { display: grid; gap: 7px; margin-bottom: 26px; max-width: 60ch; }
+.hp-sec-head h2 { font-size: clamp(23px, 2.6vw, 31px); letter-spacing: -.028em; }
+
+.hp-fail, .hp-close {
+  max-width: 1240px; margin: 0 auto; padding: clamp(52px, 6vw, 84px) clamp(20px, 5vw, 56px) 0;
+}
+
+/* The authority section takes a tinted full-bleed band. Every section sitting
+   on the same flat canvas gave the page one long undifferentiated middle; one
+   change of surface is enough to break it into a rhythm and to mark where the
+   argument moves from what the product is to how the authority is split. */
+.hp-hands {
+  background: var(--sunk);
+  border-block: 1px solid var(--hair);
+  padding: clamp(52px, 6vw, 84px) 0;
+  margin-top: clamp(52px, 6vw, 84px);
+}
+/* The gutter belongs to the children, not to the band. With the padding on the
+   band, its inner column centred inside the already-inset width and the text
+   sat 56px left of every other section on the page. */
+.hp-hands > * {
+  max-width: 1240px; margin-inline: auto;
+  padding-inline: clamp(20px, 5vw, 56px);
+}
+
+.hp-hands-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.hp-hand {
+  border-radius: var(--r-md); padding: 24px;
+  border: 1px solid var(--hair); background: var(--surface); box-shadow: var(--e1);
+}
+.hp-hand.buyer { background: var(--invert-bg); color: var(--invert-fg); border-color: var(--invert-bg); }
+.hp-hand h3 { font-size: 17px; letter-spacing: -.024em; font-weight: 560; }
+.hp-hand h3 b { font-weight: 680; }
+.hp-hand ul { list-style: none; margin: 18px 0 0; padding: 0; display: grid; gap: 11px; }
+.hp-hand li {
+  position: relative; padding-left: 22px; font-size: 13.5px; line-height: 1.55; color: var(--ink-2);
+}
+.hp-hand li::before {
+  content: ""; position: absolute; left: 2px; top: 8px;
+  width: 7px; height: 7px; border-radius: 50%; background: var(--ink-4);
+}
+.hp-hand.buyer li { color: var(--invert-dim); }
+.hp-hand.buyer li::before { background: var(--invert-accent); }
+.hp-hands-foot {
+  margin-top: 18px; font-size: 13px; color: var(--ink-2); line-height: 1.6; max-width: 74ch;
+}
+.hp-hands-foot code { font-family: var(--mono); font-size: 12.5px; color: var(--pine); }
+
+.hp-fail-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: 20px; align-items: start; }
+.hp-fail-side { display: grid; gap: 18px; align-content: start; }
+.hp-fail-side article {
+  border-radius: var(--r-md); padding: 22px;
+  border: 1px solid var(--hair); background: var(--surface); box-shadow: var(--e1);
+}
+.hp-fail-side h3 { font-size: 15.5px; letter-spacing: -.02em; }
+.hp-fail-side p { font-size: 13.5px; color: var(--ink-2); line-height: 1.6; margin-top: 8px; }
+
+/* ---- Closing call. */
+.hp-close {
+  text-align: center; padding-top: clamp(56px, 7vw, 92px);
+  display: grid; justify-items: center; gap: 12px;
+}
+.hp-close h2 { font-size: clamp(26px, 3vw, 36px); letter-spacing: -.03em; }
+.hp-close p { font-size: 15px; color: var(--ink-2); max-width: 52ch; line-height: 1.6; }
+.hp-close .btn { margin-top: 12px; }
+
+/* The page used to stop rather than end. A hairline and the mark give it a
+   closing edge, and the note keeps the same honest framing it had before. */
+.hp-foot {
+  max-width: 1240px; margin: clamp(44px, 5vw, 68px) auto 0; width: 100%;
+  padding: 26px clamp(20px, 5vw, 56px) 56px;
+  border-top: 1px solid var(--hair);
+  display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap;
+  font-size: 12.5px; color: var(--ink-3); line-height: 1.6;
+}
+.hp-foot .brand-mark { flex: none; }
+.hp-foot p { max-width: 68ch; margin: 0; }
+
+@media (max-width: 1000px) {
+  .hp-hero-in { grid-template-columns: minmax(0, 1fr); gap: 34px; }
+  .hp-figures { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .hp-fail-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 720px) {
+  .hp-hands-grid { grid-template-columns: minmax(0, 1fr); }
+  .hp-figures { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: -22px; }
+  .hp-hero { margin-top: -70px; padding-top: 92px; }
+}
+@media (max-width: 440px) {
+  .hp-figures { grid-template-columns: minmax(0, 1fr); }
+  .hp-cta .btn { flex: 1 1 100%; justify-content: center; }
+}
+
+
+/* ==========================================================================
+   FLOATING CONTROL CLEARANCE
+
+   Two fixed controls share the bottom of the screen: the voice dock, centred,
+   and the Rationale control in the right corner. On a wide screen the dock is
+   560px and they never meet. Below roughly 720px the dock goes full width and
+   runs straight under the control.
+
+   Measured rather than guessed: the dock is 560px until the viewport drops
+   under 592px, so overlap begins when the dock's right edge passes the
+   control's left edge, which works out at 720px. The control moves above the
+   dock from there down.
+
+   This block sits at the end of the file on purpose. The same rule earlier was
+   overridden by the unconditional .rationale-fab declaration further down.
+   ========================================================================== */
+
+@media (max-width: 720px) {
+  /* dock bottom 12px + dock height 70px + a 14px gap */
+  .rationale-fab { bottom: 96px; }
+}
+
+/* ---- Narrow phone type. A 38px floor on a three line headline filled most of
+   a 390px screen before any of the supporting copy was reached. */
+@media (max-width: 560px) {
+  .hp-lede h1 { font-size: clamp(30px, 8.6vw, 38px); }
+  .hp-sub { font-size: 14.5px; }
+}
+
+/* ==========================================================================
+   WALLET GATE
+
+   A sign-in screen rather than a modal. Choosing which workspace you work in
+   is a decision, and decisions get a page. It reuses the homepage bar, the
+   eyebrow and the button set so it reads as the same product rather than as a
+   bolted-on auth screen.
+   ========================================================================== */
+
+.gate-page { background: var(--canvas); }
+
+.gate-back { background: none; border: 0; cursor: pointer; font: inherit; color: var(--ink);
+  display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 640;
+  letter-spacing: -.026em; padding: 6px 8px; margin: -6px -8px; border-radius: var(--r-sm);
+  transition: background var(--t-fast) var(--ease); }
+.gate-back:hover { background: var(--sunk); }
+.gate-back:focus-visible { outline: 2px solid var(--pine); outline-offset: 2px; }
+
+.gate-wrap {
+  flex: 1; width: 100%; max-width: 1080px; margin: 0 auto;
+  padding: clamp(24px, 5vw, 56px) clamp(20px, 5vw, 56px) 72px;
+  display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr);
+  gap: clamp(24px, 4vw, 48px); align-items: start;
+}
+
+.gate-card {
+  background: var(--surface); border: 1px solid var(--hair);
+  border-radius: var(--r-lg, 18px); padding: clamp(24px, 3.4vw, 38px);
+  box-shadow: var(--e3);
+}
+.gate-eyebrow {
+  background: var(--pine-wash); border-color: var(--pine-line); color: var(--pine);
+}
+.gate-card h1 {
+  margin: 20px 0 0; font-size: clamp(27px, 3.4vw, 36px);
+  letter-spacing: -.032em; line-height: 1.1;
+}
+.gate-sub { margin-top: 14px; font-size: 15px; line-height: 1.62; color: var(--ink-2); max-width: 52ch; }
+
+.gate-facts { list-style: none; margin: 26px 0 0; padding: 0; display: grid; gap: 14px; }
+.gate-facts li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 12px; align-items: start; }
+.gate-facts span:last-child { font-size: 13.5px; line-height: 1.55; color: var(--ink-2); }
+.gate-facts b { color: var(--ink); font-weight: 620; }
+.gate-ic { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; margin-top: 1px; }
+.gate-facts .yes .gate-ic { background: var(--pine-wash); color: var(--pine); }
+.gate-facts .no .gate-ic { background: var(--sunk); color: var(--ink-3); border: 1px solid var(--hair); }
+.gate-ic svg { width: 12px; height: 12px; }
+.gate-x { font-size: 10px; line-height: 1; }
+
+.gate-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
+.gate-note { margin-top: 14px; font-size: 12.5px; color: var(--ink-3); line-height: 1.55; }
+.gate-ok { color: var(--pine); font-weight: 560; }
+.gate-err { margin-top: 16px; background: var(--crimson-wash); border-color: var(--crimson-line); color: var(--crimson); }
+
+.gate-side { padding-top: 6px; }
+.gate-side h2 { font-size: 17px; letter-spacing: -.024em; }
+.gate-side p { margin-top: 12px; font-size: 13.5px; line-height: 1.65; color: var(--ink-2); }
+.gate-side-note {
+  margin-top: 18px; padding: 14px 16px; border-radius: var(--r-sm);
+  background: var(--sunk); border: 1px solid var(--hair);
+  font-size: 12.5px; color: var(--ink-3);
+}
+
+@media (max-width: 860px) {
+  .gate-wrap { grid-template-columns: minmax(0, 1fr); }
+  .gate-side { padding-top: 0; }
+}
+@media (max-width: 440px) {
+  .gate-actions .btn { flex: 1 1 100%; justify-content: center; }
 }

@@ -1,0 +1,29 @@
+# One-click deploy to Render. https://render.com/docs/blueprint-spec
+#
+# The frontend is built once at build time, not at start time. npm start would
+# rebuild it on every cold start through the prestart hook, which on a free
+# instance means paying for a Vite build again every time the service wakes.
+#
+# This runs a persistent Node process on purpose. The chain is an in-process
+# EVM, so a serverless target such as Vercel or Netlify functions cannot host
+# this: there is no process to keep the chain alive between requests.
+
+services:
+  - type: web
+    name: covenant
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm install && npm run build:web
+    startCommand: node server/index.js
+    healthCheckPath: /api/status
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      # Set these in the Render dashboard, not here. Never commit a key.
+      - key: LLM_API_KEY
+        sync: false
+      - key: LLM_BASE_URL
+        sync: false
+      - key: LLM_MODEL
+        sync: false

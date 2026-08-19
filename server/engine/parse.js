@@ -3,7 +3,23 @@
 // and soft preferences (ranking only). Deterministic on purpose: an LLM pre-pass
 // is optional and only fills gaps, so no demo depends on a network call.
 
+/*
+ * Ordered most specific first. "aluminium extrusion" has to win over a bare
+ * "aluminium", and "stainless fasteners" over "stainless", or a request for
+ * profile stock matches ingot and quietly sources the wrong thing.
+ *
+ * Everything here trades by mass in real procurement, which is why the engine
+ * can stay mass-based across metals, polymers and paper without inventing a
+ * per-unit model it would then have to fake.
+ */
 const MATERIALS = [
+  { match: /aluminium extrusion|aluminum extrusion|extruded aluminium|extruded aluminum/i, name: 'aluminium extrusion' },
+  { match: /aluminium ingot|aluminum ingot|\bal ingot\b/i, name: 'aluminium ingot' },
+  { match: /cold[- ]rolled steel|steel coil|\bcrc\b|steel sheet/i, name: 'cold-rolled steel coil' },
+  { match: /stainless (?:steel )?fastener|\bfasteners?\b|bolts?\b|\bnuts and bolts\b/i, name: 'stainless fasteners' },
+  { match: /copper wire|copper conductor|\bcu wire\b/i, name: 'copper wire' },
+  { match: /silicone rubber|\blsr\b/i, name: 'silicone rubber' },
+  { match: /\babs\b|acrylonitrile/i, name: 'ABS resin' },
   { match: /\bpet\b|polyethylene terephthalate/i, name: 'PET resin' },
   { match: /\bhdpe\b|high[- ]density polyethylene/i, name: 'HDPE granules' },
   { match: /\bldpe\b/i, name: 'LDPE granules' },
@@ -16,13 +32,28 @@ const GRADES = [
   { match: /bottle[- ]grade/i, name: 'bottle-grade' },
   { match: /industrial[- ]grade/i, name: 'industrial-grade' },
   { match: /blow[- ]mou?lding/i, name: 'blow-moulding' },
+  { match: /\b6061\b/i, name: '6061-T6' },
+  { match: /\b6063\b/i, name: '6063-T5' },
+  { match: /\ba356\b|casting grade/i, name: 'A356' },
+  { match: /\bdc01\b/i, name: 'DC01' },
+  { match: /\b(?:a2[- ]?)?304\b/i, name: 'A2-304' },
+  { match: /\b(?:a4[- ]?)?316\b/i, name: 'A4-316' },
+  { match: /medical[- ]grade/i, name: 'medical-grade' },
+  { match: /flame[- ]retardant|\bfr\b/i, name: 'flame-retardant' },
 ];
 
 const CERTS = [
   { match: /fda|food[- ]contact|food[- ]safe|food grade/i, name: 'FDA-FOOD-CONTACT' },
   { match: /iso[- ]?9001/i, name: 'ISO-9001' },
   { match: /iso[- ]?14001/i, name: 'ISO-14001' },
+  { match: /iso[- ]?13485/i, name: 'ISO-13485' },
   { match: /\bbrc\b/i, name: 'BRC' },
+  { match: /\brohs\b/i, name: 'RoHS' },
+  { match: /\breach\b/i, name: 'REACH' },
+  // EN 10204 3.1 is the mill certificate a metals buyer actually asks for.
+  { match: /en[- ]?10204|mill cert|3\.1 cert/i, name: 'EN-10204-3.1' },
+  { match: /\biatf\b|iatf[- ]?16949/i, name: 'IATF-16949' },
+  { match: /\bas9100\b/i, name: 'AS9100' },
 ];
 
 const NUM = String.raw`(\d[\d,]*(?:\.\d+)?)`;

@@ -1,6 +1,6 @@
 'use strict';
 
-// Optional phrasing layer for Rationale, backed by the xAI API.
+// Optional phrasing layer for Rationale, backed by any OpenAI-compatible API.
 //
 // Two rules that must not be relaxed:
 //   1. It never sees a refusal. Refusals return before this module is reached,
@@ -48,6 +48,22 @@ const SYSTEM = [
 
 function isEnabled() {
   return !!apiKey();
+}
+
+// Models substitute typographic characters that look identical on screen and
+// are not: a non-breaking hyphen inside "food-contact", an en dash in a range,
+// a non-breaking space before a unit. They survive copy and paste into
+// spreadsheets and search boxes and break both. Normalise the whole family to
+// plain ASCII rather than chasing them one at a time.
+//   U+2010 to U+2015  hyphen, non-breaking hyphen, figure dash, en dash,
+//                     em dash, horizontal bar
+//   U+2212            minus sign
+//   U+00A0, U+202F    non-breaking and narrow no-break space
+function normalise(text) {
+  return text
+    .trim()
+    .replace(/[\u2010-\u2015\u2212]/g, '-')
+    .replace(/[\u00A0\u202F]/g, ' ');
 }
 
 // detail carries the provider's own error text when there is one. It is for
@@ -108,8 +124,7 @@ async function polish(question, groundedAnswer) {
 
     return {
       ok: true,
-      // Escape, not a literal: the repo holds zero em dash characters in source.
-      text: text.trim().replace(/\u2014/g, '-'),
+      text: normalise(text),
       latencyMs,
       slow: latencyMs > SLOW_MS,
       model: MODEL,

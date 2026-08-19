@@ -25,6 +25,12 @@ coverage/
 *.log
 npm-debug.log*
 
+# Internal working documents. Kept locally, not published. The technical
+# documentation ships as a PDF in docs/ instead.
+TECHNICAL_DOCUMENTATION.md
+DEMO_SCRIPT.md
+PROJECT_STATE.md
+
 # Editor and OS
 .vscode/
 .idea/

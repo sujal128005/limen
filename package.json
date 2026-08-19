@@ -10,7 +10,8 @@
     "test": "node test/run.js",
     "build:web": "cd web && vite build",
     "dev:web": "cd web && vite",
-    "prestart": "npm run build:web"
+    "prestart": "npm run build:web",
+    "sweep": "node scripts/sweep.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

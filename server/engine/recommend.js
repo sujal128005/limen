@@ -55,7 +55,12 @@ function recommend(negotiations, candidates, brief) {
   }
   reasons.push({
     kind: 'negotiation',
-    text: `Negotiated $${winner.savings.toLocaleString()} below list price (${winner.savingsPct}%) across ${winner.rounds} rounds.`,
+    // On an expedited order the net against list can be negative, because the
+    // buyer asked for a faster schedule and the supplier charged for it. Saying
+    // "negotiated -$21 below list" would be false, so the two are stated apart.
+    text: winner.expediteCost > 0
+      ? `Negotiated $${winner.bargained.toLocaleString()} off list across ${winner.rounds} rounds, then $${winner.expediteCost.toLocaleString()} was added for the shortened schedule you asked for.`
+      : `Negotiated $${winner.savings.toLocaleString()} below list price (${winner.savingsPct}%) across ${winner.rounds} rounds.`,
   });
   reasons.push({
     kind: 'reputation',
@@ -81,6 +86,10 @@ function recommend(negotiations, candidates, brief) {
       qualityScore: c.qualityScore, onTimeRate: c.onTimeRate,
       certifications: c.certifications, walletIndex: c.walletIndex,
       savings: winner.savings, savingsPct: winner.savingsPct,
+      // Carried through so the interface can separate what the agent bargained
+      // off list from what the buyer chose to pay for a shorter lead time.
+      bargained: winner.bargained, expediteCost: winner.expediteCost,
+      listTotal: winner.listTotal,
       budgetHeadroom: winner.budgetHeadroom, rounds: winner.rounds,
       expedited: winner.expedited,
     },

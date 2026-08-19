@@ -154,9 +154,31 @@ function negotiate(candidate, brief, opts = {}) {
 
   const total = r2(agreedUnit * qty);
   const listTotal = candidate.listTotal;
+
+  /*
+   * Decompose the movement instead of reporting one net figure.
+   *
+   * When the buyer asks for a shorter lead time than the supplier publishes,
+   * the supplier adds an expedite surcharge. That surcharge is the price of the
+   * faster schedule the buyer asked for, not a failure of the negotiation. A
+   * single "savings" number conflates the two, and on a rush order it goes
+   * negative, so the interface cheerfully reported "Saved -$21.75". Wrong on
+   * the arithmetic and wrong on the word.
+   *
+   *   bargained   what the haggling actually moved, always >= 0
+   *   expediteCost what the buyer chose to pay for speed, always >= 0
+   *   savings      the net against list, which may legitimately be negative
+   */
+  const settledBeforeFee = expediteFeePct > 0 ? r2(agreedUnit / (1 + expediteFeePct)) : agreedUnit;
+  const bargained = r2(Math.max(0, (candidate.listUnitPrice - settledBeforeFee) * qty));
+  const expediteCost = r2(Math.max(0, total - settledBeforeFee * qty));
+  const savings = r2(listTotal - total);
+
   say('agent', 'settled', {
     message: `Agreed: $${total.toLocaleString()} for ${qty.toLocaleString()} kg, delivery in ${finalLeadTime} days.`,
-    rationale: `Saved $${r2(listTotal - total).toLocaleString()} against list price.`,
+    rationale: expediteCost > 0
+      ? `Negotiated $${bargained.toLocaleString()} off list, then $${expediteCost.toLocaleString()} added for the shortened schedule.`
+      : `Saved $${bargained.toLocaleString()} against list price.`,
   });
 
   return {
@@ -164,8 +186,9 @@ function negotiate(candidate, brief, opts = {}) {
     unitPrice: agreedUnit, total, quantityKg: qty,
     leadTimeDays: finalLeadTime, expedited: expediteFeePct > 0,
     expediteFeePct, listTotal,
-    savings: r2(listTotal - total),
-    savingsPct: r2(((listTotal - total) / listTotal) * 100),
+    bargained, expediteCost,
+    savings,
+    savingsPct: r2((savings / listTotal) * 100),
     budgetHeadroom: r2(brief.budgetTotal - total),
     rounds: round, transcript,
   };

@@ -5,6 +5,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Covenant | Sourcing Desk</title>
     <meta name="description" content="Procurement agents that source and negotiate, with spending authority enforced by contract." />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#F6F5F1" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#101317" media="(prefers-color-scheme: dark)" />
+
+    <!--
+      Resolve the theme before the first paint.
+
+      React mounts a frame or two after the document parses. If the theme were
+      applied in a component, a person who chose dark would get a white flash
+      first, which looks broken rather than merely imperfect. This runs
+      synchronously in the head, so the correct palette is on the element
+      before anything is painted.
+
+      It is deliberately dependency free and wrapped in try/catch: a browser
+      with storage disabled should fall back to the system preference, not
+      throw and leave the page unstyled.
+    -->
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem('covenant.theme') || 'system';
+          var dark = saved === 'dark' ||
+            (saved === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'light');
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

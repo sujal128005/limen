@@ -73,6 +73,11 @@ function purchaseSummary(session, ctx) {
       listTotal,
       saving: w.savings,
       savingPct: w.savingsPct,
+      // Split out so a rush order does not report a negative "saving". The
+      // surcharge is the price of the schedule the buyer asked for.
+      bargained: w.bargained ?? w.savings,
+      expediteCost: w.expediteCost ?? 0,
+      savingLabel: w.savings >= 0 ? 'Negotiated saving' : 'Net of expedite surcharge',
     },
 
     terms: {

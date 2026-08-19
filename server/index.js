@@ -14,6 +14,8 @@ const { negotiateAll } = require('./engine/negotiate');
 const { recommend } = require('./engine/recommend');
 const { sessionFor, resetSession, sessions } = require('./workspace');
 const counsel = require('./counsel');
+const normalize = require('./normalize');
+const decisionbrief = require('./decisionbrief');
 const grok = require('./grok');
 const documents = require('./documents');
 const pdf = require('./pdf');
@@ -30,15 +32,28 @@ app.use(express.json({ limit: '32kb' })); // a procurement brief is never large
 // Lightweight fixed-window rate limit. Not enterprise infrastructure - just enough
 // that the demo box cannot be trivially hammered, and it costs one map.
 const HITS = new Map();
+let lastSweep = Date.now();
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api/')) return next();
   const key = req.ip || 'local';
   const now = Date.now();
+
+  // Evict expired windows. Without this the map keeps one entry per address
+  // seen since boot, which on a long-lived public deployment is an unbounded
+  // structure keyed by remote input.
+  if (now - lastSweep > 60000) {
+    for (const [k, v] of HITS) if (now > v.reset) HITS.delete(k);
+    lastSweep = now;
+  }
+
   const w = HITS.get(key) || { count: 0, reset: now + 60000 };
   if (now > w.reset) { w.count = 0; w.reset = now + 60000; }
   w.count += 1;
   HITS.set(key, w);
-  if (w.count > 240) return res.status(429).json({ error: 'Too many requests. Wait a moment.' });
+  if (w.count > 240) {
+    res.setHeader('retry-after', Math.max(1, Math.ceil((w.reset - now) / 1000)));
+    return res.status(429).json({ error: 'Too many requests. Wait a moment.' });
+  }
   next();
 });
 
@@ -67,6 +82,10 @@ app.get('/api/status', wrap(async (req, res) => {
     mode: chain.mode,
     chainId: chain.chainId,
     solc: chain.solcVersion,
+    // Catalogue size, so the first screen quotes the real figure rather than a
+    // number typed into the markup that drifts the moment a supplier is added.
+    supplierCount: SUPPLIERS.length,
+    listingCount: SUPPLIERS.reduce((n, s) => n + s.products.length, 0),
     counselModel: grok.isEnabled() ? grok.MODEL : 'local',
     addresses,
     buyer: chain.buyerAddress,
@@ -134,6 +153,22 @@ app.post('/api/brief', wrap(async (req, res) => {
   }
   session.brief = brief;
   session.candidates = []; session.negotiations = []; session.recommendation = null;
+  /*
+   * A new brief starts a new run, so the previous run's settlement has to go
+   * with it. Leaving settlementFacts and signature in place meant the summary
+   * document for the new run was stamped settled and carried the earlier
+   * signature, so the approval step showed an agreement that claimed to be
+   * signed and paid while asking the person to sign it. dealId matters for the
+   * same reason one step earlier: purchaseSummary reads it to decide between
+   * "Pending buyer approval" and "Approved, funds in escrow", so a stale id
+   * made a fresh, unfunded run present itself as already funded.
+   *
+   * The client clears the same four pieces of state when a run starts. The
+   * server has to agree with it or the two drift apart on the second run.
+   */
+  session.settlementFacts = null;
+  session.signature = null;
+  session.dealId = null;
   res.json(brief);
 }));
 
@@ -419,8 +454,40 @@ app.get('/api/deal/:id', wrap(async (req, res) => {
 // no session object. There is no write path for it to reach.
 app.post('/api/counsel', wrap(async (req, res) => {
   const session = sessionFor(req);
-  const question = String(req.body.question || '').slice(0, 500);
+  let question = String(req.body.question || '').slice(0, 500);
   if (!question.trim()) throw new Error('Ask a question about this run.');
+
+  /*
+   * Screen context, sent by the voice layer.
+   *
+   * Spoken questions lean on deixis in a way typed ones do not: "summarise
+   * this", "why was this one picked". Resolving "this" to whatever the person
+   * is looking at is what separates an assistant embedded in a product from a
+   * chatbot sitting next to one.
+   *
+   * The substitution is textual and happens before classification, so the
+   * capability boundary is untouched: "approve this" still resolves to an
+   * action request and is still refused. The answer itself continues to come
+   * from run state, never from the client's claim about context.
+   */
+  const ctx = req.body.context && typeof req.body.context === 'object' ? req.body.context : null;
+
+  /*
+   * Repair, then resolve, then classify. In that order, and all of it before
+   * the capability check, so a misspelled or elliptical command is refused on
+   * exactly the same terms as a clean one. "aprove ths deal" must not survive
+   * because it was typed badly.
+   */
+  const norm = normalize.normalizeQuestion(question);
+  question = norm.text;
+
+  // Follow-ups resolve against the last exchange in this workspace.
+  question = normalize.resolveFollowUp(question, session.chat);
+
+  if (ctx && /\b(this|it|that)\b/i.test(question)) {
+    const subject = ctx.supplier || ctx.material || null;
+    if (subject) question = question.replace(/\b(this|that)\b/i, String(subject).slice(0, 80));
+  }
 
   const policy = await chain.escrow.policies(chain.buyerAddress);
   const status = {
@@ -463,9 +530,21 @@ app.post('/api/counsel', wrap(async (req, res) => {
     fallback = 'refusal-not-sent';
   }
 
+  /*
+   * Remember the last exchange so the next fragment resolves. Two fields only:
+   * a dialogue history would be a place for stale figures to accumulate, and
+   * every answer is recomputed from live state on each request anyway.
+   */
+  session.chat = {
+    lastQuestion: question,
+    lastSubject: (ctx && (ctx.supplier || ctx.material)) || (session.chat && session.chat.lastSubject) || null,
+    lastIntent: result.intent,
+  };
+
   res.json({
     ...result, text, phrased,
-    question, workspace: session.id,
+    question, corrected: norm.changed ? norm.original : null,
+    workspace: session.id,
     suggestions: counsel.suggestionsFor(snap),
 
     // Pipeline telemetry. Reported on every answer so the model path is
@@ -481,6 +560,69 @@ app.post('/api/counsel', wrap(async (req, res) => {
       timeoutMs: grok.TIMEOUT_MS,
       fallback,
       usage,
+    },
+  });
+}));
+
+/*
+ * Decision brief. Read only, and built the same way as every other figure in
+ * this product: computed from canonical state first, phrased second.
+ *
+ * The model is handed the finished prose and nothing else. Amounts, limits and
+ * checks travel to the browser as structured fields and are rendered from
+ * those, so a person approving a payment is never reading a number that a
+ * language model produced.
+ */
+app.post('/api/decision-brief', wrap(async (req, res) => {
+  const session = sessionFor(req);
+  const point = String(req.body.point || '');
+
+  const policy = await chain.escrow.policies(chain.buyerAddress);
+  const status = {
+    buyer: chain.buyerAddress,
+    agent: chain.agentAddress,
+    policy: {
+      active: policy.active,
+      maxPerDeal: fromUnits(policy.maxPerDeal),
+      spent: fromUnits(policy.spent),
+    },
+  };
+
+  const t0 = Date.now();
+  const snap = counsel.buildSnapshot(session, status);
+  const facts = session.settlementFacts || {};
+  const chainFacts = {
+    deal: session.dealId ? { id: session.dealId } : null,
+    delivery: facts.deliveryTx ? { onTime: facts.onTime } : null,
+    release: facts.releaseTx ? { tx: facts.releaseTx } : null,
+  };
+  const brief = decisionbrief.buildBrief(point, snap, chainFacts);
+  const sections = decisionbrief.sectionsFor(brief, snap, chainFacts);
+  const localMs = Date.now() - t0;
+
+  let headline = brief.headline;
+  let phrased = false;
+  let modelMs = 0;
+  let fallback = null;
+
+  if (brief.ready) {
+    const p = await grok.polish(
+      `Rewrite this procurement decision brief for a busy buyer. Keep every figure exactly as written.`,
+      decisionbrief.proseFor(brief)
+    );
+    modelMs = p.latencyMs;
+    if (p.ok) { headline = p.text; phrased = true; } else { fallback = p.reason; }
+  } else {
+    fallback = 'not-ready';
+  }
+
+  res.json({
+    ...brief, headline, sections,
+    pipeline: {
+      mode: phrased ? 'model' : 'local',
+      model: grok.MODEL, keyPresent: grok.isEnabled(),
+      localMs, modelMs, totalMs: localMs + modelMs,
+      timeoutMs: grok.TIMEOUT_MS, fallback,
     },
   });
 }));
@@ -630,7 +772,7 @@ async function boot() {
 
   // register suppliers on-chain
   for (const s of SUPPLIERS) {
-    const signer = chain.supplierSigners[s.walletIndex - 2];
+    const signer = chain.signerByAccount.get(s.walletIndex);
     const wallet = signer ? await signer.getAddress()
       : ethers.Wallet.createRandom().address;
     supplierWallets[s.id] = wallet;

@@ -6,6 +6,12 @@ const { getFreePort } = require('./freeport');
 // Defaults to an in-process EVM: real execution, real gas, real reverts, but no
 // public explorer. Chosen so a live demo does not depend on a faucet or an RPC
 // provider. Set RPC_URL + DEPLOYER_KEY to run the same code against Base Sepolia.
+
+// Account 0 deploys, 1 is the buyer, 10 is the agent, everything else is a
+// supplier. The agent sits at a fixed index so the separation test can assert
+// against a known account rather than whatever happened to be free.
+const AGENT_ACCOUNT = 10;
+
 class Chain {
   constructor() {
     this.ready = false;
@@ -30,6 +36,7 @@ class Chain {
       this.agent = process.env.AGENT_KEY ? new ethers.Wallet(process.env.AGENT_KEY, this.provider) : this.deployer;
       this.agentIsolated = !!process.env.AGENT_KEY;
       this.supplierSigners = [];
+      this.signerByAccount = new Map();
       const net = await this.provider.getNetwork();
       this.chainId = Number(net.chainId);
     } else {
@@ -48,7 +55,10 @@ class Chain {
       })();
       this.server = ganache.server({
         logging: { quiet: true },
-        wallet: { deterministic: true, totalAccounts: 12 },
+        // Enough accounts for one wallet per supplier plus the reserved roles.
+        // Sharing a wallet between two suppliers would send both their proceeds
+        // to the same address, which is silently wrong rather than loudly wrong.
+        wallet: { deterministic: true, totalAccounts: 32 },
         chain: { chainId: 31337 },
         miner: { blockGasLimit: 30000000 },
       });
@@ -64,8 +74,26 @@ class Chain {
       // the agent can spend under a policy but has no key that can write one.
       this.agent = await this.provider.getSigner(10);
       this.agentIsolated = true;
+
+      /*
+       * Two views of the same spare accounts, because two callers want
+       * different things.
+       *
+       * supplierSigners is positional: "give me the third spare account". The
+       * contract tests use it that way to grab arbitrary unrelated addresses.
+       *
+       * signerByAccount is keyed by the actual account index, which is what a
+       * supplier's walletIndex refers to. Keying by account is what lets the
+       * agent sit at 10 without every supplier after it shifting by one.
+       */
       this.supplierSigners = [];
-      for (let i = 2; i < 10; i++) this.supplierSigners.push(await this.provider.getSigner(i));
+      this.signerByAccount = new Map();
+      for (let i = 2; i < 32; i++) {
+        if (i === AGENT_ACCOUNT) continue;
+        const signer = await this.provider.getSigner(i);
+        this.signerByAccount.set(i, signer);
+        this.supplierSigners.push(signer);
+      }
     }
 
     this.deployerAddress = await this.deployer.getAddress();
