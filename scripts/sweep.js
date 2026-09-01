@@ -228,6 +228,63 @@ async function waitForChain() {
   const nq = await ncall('POST', '/api/counsel', { question: 'why did nothing work?' });
   check('rationale explains a failed run', nq.status === 200 && nq.body.text.length > 40);
 
+  console.log('\nThe approval gate');
+  /*
+   * The checkpoint used to live only in the browser. Three requests with curl
+   * and no signature funded the escrow and released the money. These checks
+   * exist so that can never quietly come back.
+   */
+  const gate = 'gate-' + Date.now().toString(36);
+  const gcall = async (m, p2, b) => {
+    const r = await fetch(BASE + p2, {
+      method: m,
+      headers: { 'content-type': 'application/json', 'x-workspace': gate },
+      body: b === undefined ? undefined : JSON.stringify(b),
+    });
+    return { status: r.status, body: await r.json() };
+  };
+  const gRun = async () => {
+    await gcall('POST', '/api/brief', { text: REQUEST });
+    await gcall('POST', '/api/candidates');
+    await gcall('POST', '/api/negotiate');
+    await gcall('POST', '/api/recommend');
+  };
+
+  await gRun();
+  const balBefore = (await gcall('GET', '/api/status')).body.buyerBalanceUsdc;
+
+  const fundUnsigned = await gcall('POST', '/api/deal', {});
+  check('funding without a signature is refused', fundUnsigned.status >= 400, String(fundUnsigned.status));
+  check('the refusal says approval is missing', /approv/i.test(fundUnsigned.body.error || ''), fundUnsigned.body.error);
+
+  const deliverUnfunded = await gcall('POST', '/api/deal/deliver', {});
+  check('delivery on an unfunded deal is refused', deliverUnfunded.status >= 400);
+  const releaseUndelivered = await gcall('POST', '/api/deal/release', {});
+  check('release before delivery is refused', releaseUndelivered.status >= 400);
+
+  const balAfterAttack = (await gcall('GET', '/api/status')).body.buyerBalanceUsdc;
+  check('no money moved during the bypass attempt', balAfterAttack === balBefore,
+    `${balBefore} -> ${balAfterAttack}`);
+
+  // An approval belongs to the terms it was given. A new run is new terms.
+  await gcall('POST', '/api/document/sign', { signer: 'A Buyer' });
+  await gRun();
+  const staleApproval = await gcall('POST', '/api/deal', {});
+  check('an approval from an earlier run does not authorise a new one', staleApproval.status >= 400,
+    String(staleApproval.status));
+
+  // And the honest path still works, which is the half that matters.
+  const signOk = await gcall('POST', '/api/document/sign', { signer: 'A Buyer' });
+  check('signing succeeds on the current terms', signOk.status === 200);
+  const fundOk = await gcall('POST', '/api/deal', {});
+  check('funding succeeds once approved', fundOk.status === 200 && !!fundOk.body.dealId,
+    JSON.stringify(fundOk.body).slice(0, 80));
+  check('delivery succeeds on a funded deal', (await gcall('POST', '/api/deal/deliver', {})).status === 200);
+  const relOk = await gcall('POST', '/api/deal/release', {});
+  check('release succeeds after delivery', relOk.status === 200 && !!relOk.body.txHash);
+  check('the buyer is debited only on the approved path',
+    (await gcall('GET', '/api/status')).body.buyerBalanceUsdc < balBefore);
+
   console.log('\nRationale');
   const why = await call('POST', '/api/counsel', { question: 'why was this supplier chosen?' });
   check('a grounded question is answered', why.status === 200 && why.body.text.length > 20);
@@ -266,7 +323,12 @@ async function waitForChain() {
 
   const steps = [
     ['policy', () => bcall('POST', '/api/policy', {})],
-    ['fund', () => bcall('POST', '/api/deal', {})],
+    // Signing is part of advancing now: the server refuses to fund an
+    // unapproved purchase, which is the whole point of the gate above.
+    ['fund', async () => {
+      await bcall('POST', '/api/document/sign', { signer: 'A Buyer' });
+      return bcall('POST', '/api/deal', {});
+    }],
     ['deliver', () => bcall('POST', '/api/deal/deliver', {})],
     ['release', () => bcall('POST', '/api/deal/release', {})],
   ];

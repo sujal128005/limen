@@ -67,7 +67,7 @@ function statusStamp(doc, text, x, y, tone) {
 
 function header(doc, { title, reference, version, issued, status, statusTone }) {
   brandMark(doc, 54, 50, 20);
-  doc.font('Helvetica-Bold').fontSize(12.5).fillColor(INK).text('Covenant', 80, 53);
+  doc.font('Helvetica-Bold').fontSize(12.5).fillColor(INK).text('Limen', 80, 53);
   doc.font('Helvetica').fontSize(7.5).fillColor(FAINT)
     .text('Procurement under enforced authority', 80, 68);
 
@@ -283,7 +283,7 @@ function agreementPdf(d, sig) {
   const l = d.line;
   const signed = !!(sig && sig.signed);
   return render({
-    info: { Title: `Negotiated Purchase Agreement ${d.reference}`, Author: 'Covenant', Subject: 'Negotiated commercial agreement' },
+    info: { Title: `Negotiated Purchase Agreement ${d.reference}`, Author: 'Limen', Subject: 'Negotiated commercial agreement' },
     createdAt: signed && sig.signedAt ? sig.signedAt : d.issuedAt,
     disclaimer:
       'Internal procurement document. Not a tax invoice and not a legally binding contract. ' +
@@ -374,7 +374,7 @@ function invoicePdf(d, sig) {
   const l = d.line;
   const c = d.charges;
   return render({
-    info: { Title: `Invoice ${d.reference}`, Author: 'Covenant', Subject: 'Settlement invoice' },
+    info: { Title: `Invoice ${d.reference}`, Author: 'Limen', Subject: 'Settlement invoice' },
     createdAt: d.settlement.settledAt,
     disclaimer:
       'Internal settlement record. Not a tax invoice: this build does not compute or remit tax. ' +

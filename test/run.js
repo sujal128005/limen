@@ -2,7 +2,7 @@
 const { summary } = require('./harness');
 
 (async () => {
-  console.log('\n\x1b[1mCovenant test suite\x1b[0m');
+  console.log('\n\x1b[1mLimen test suite\x1b[0m');
   await require('./contracts.test').run();
   if (require('fs').existsSync(require('path').join(__dirname, 'engine.test.js'))) {
     await require('./engine.test').run();

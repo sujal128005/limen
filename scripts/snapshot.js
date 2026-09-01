@@ -105,10 +105,10 @@ const get = async (p) => (await fetch(BASE + p)).json();
 
   const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Covenant | recorded run</title><style>${css}</style></head>
+<title>Limen | recorded run</title><style>${css}</style></head>
 <body><div class="app">
 <header class="topbar">
-  <div class="brand"><span class="brand-mark">C</span>Covenant<span class="brand-sub">Recorded run</span></div>
+  <div class="brand"><span class="brand-mark">L</span>Limen<span class="brand-sub">Recorded run</span></div>
   <div class="topbar-right">
     <div class="chainchip"><span class="dot"></span><span>EVM · chain ${status.chainId}</span></div>
     <div class="wallet-pill"><span>${short(status.buyer)}</span></div>

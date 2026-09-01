@@ -80,7 +80,7 @@ async function run() {
 
   await test('agreement carries document metadata', () => {
     const t = pdfText(unsigned);
-    ok(t.includes('Covenant'), 'producer/author metadata');
+    ok(t.includes('Limen'), 'producer/author metadata');
     ok(t.includes('Negotiated Purchase Agreement'), 'title metadata');
   });
 
@@ -169,7 +169,7 @@ async function run() {
   await test('invoice metadata names the invoice and reference', () => {
     const t = pdfText(invoicePdf);
     ok(t.includes('Invoice'), 'title');
-    ok(t.includes('Covenant'), 'author');
+    ok(t.includes('Limen'), 'author');
   });
 
   await test('invoice does not claim tax it cannot compute', () => {

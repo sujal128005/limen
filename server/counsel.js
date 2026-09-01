@@ -153,7 +153,7 @@ const INTENTS = [
    */
   { id: 'greeting', kw: ['hello', 'hi ', 'hey ', 'good morning', 'good afternoon', 'good evening', 'howdy'] },
   { id: 'capabilities', kw: ['what can you do', 'what can you help', 'how can you help', 'who are you', 'what are you', 'help me', 'what do you do'] },
-  { id: 'product', kw: ['what is this app', 'what does this do', 'what is covenant', 'what is this product', 'what is procurement', 'how does this work'] },
+  { id: 'product', kw: ['what is this app', 'what does this do', 'what is limen', 'what is this product', 'what is procurement', 'how does this work'] },
   { id: 'farewell', kw: ['bye', 'goodbye', 'thanks', 'thank you', 'cheers'] },
 ];
 
@@ -208,7 +208,7 @@ function answer(question, snap) {
       intent, refused: false, sources: [],
       text: snap && snap.hasRun
         ? 'Hello. There is a sourcing run open in this workspace. Ask me why a supplier was excluded, how a negotiation went, or what to check before you approve.'
-        : 'Hello. This is Covenant, a procurement desk where an agent negotiates under a spending limit that a smart contract enforces. Describe what you need to buy, or pick a scenario, and I can explain every step as it happens.',
+        : 'Hello. This is Limen, a procurement desk where an agent negotiates under a spending limit that a smart contract enforces. Describe what you need to buy, or pick a scenario, and I can explain every step as it happens.',
     };
   }
 
@@ -234,7 +234,7 @@ function answer(question, snap) {
     return {
       intent, refused: false, sources: ['product'],
       text:
-        'Covenant is a procurement desk. You describe what you need to buy in plain language. An agent ' +
+        'Limen is a procurement desk. You describe what you need to buy in plain language. An agent ' +
         'screens suppliers, discards the ones that fail a requirement that cannot be negotiated, bargains ' +
         'with the rest against prices it cannot see, and recommends one deal.\n\n' +
         'Then it stops. You approve. The spending limit lives in a smart contract rather than in the ' +

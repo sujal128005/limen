@@ -28,7 +28,7 @@ const get = async (p) => (await fetch(BASE + p)).json();
   await boot();
   await new Promise((r) => setTimeout(r, 400));
 
-  console.log('\n\x1b[1m=== Covenant end-to-end ===\x1b[0m\n');
+  console.log('\n\x1b[1m=== Limen end-to-end ===\x1b[0m\n');
 
   console.log('\x1b[1m1. Chain\x1b[0m');
   const st = await get('/api/status');
