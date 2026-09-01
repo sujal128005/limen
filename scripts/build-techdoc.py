@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Covenant technical documentation, on the product's light palette."""
+"""Limen technical documentation, on the product's light palette."""
 
 import re
 
@@ -13,7 +13,7 @@ from reportlab.platypus import (
     PageBreak, KeepTogether, NextPageTemplate, Flowable,
 )
 
-OUT = "/tmp/deck/Covenant_Technical_Documentation.pdf"
+OUT = "/tmp/deck/Limen_Technical_Documentation.pdf"
 
 # Straight from web/src/styles.css, [data-theme="light"].
 CANVAS = colors.HexColor("#F6F5F1")
@@ -180,10 +180,10 @@ def cover(canvas, doc):
     canvas.roundRect(M, PAGE_H - M - 34, 34, 34, 7, stroke=0, fill=1)
     canvas.setFillColor(colors.white)
     canvas.setFont(HEAD, 19)
-    canvas.drawCentredString(M + 17, PAGE_H - M - 25, "C")
+    canvas.drawCentredString(M + 17, PAGE_H - M - 25, "L")
     canvas.setFillColor(INK)
     canvas.setFont(BOLD, 9.5)
-    canvas.drawString(M + 44, PAGE_H - M - 22, "C O V E N A N T")
+    canvas.drawString(M + 44, PAGE_H - M - 22, "L I M E N")
 
     canvas.setFont(HEAD, 33)
     canvas.setFillColor(INK)
@@ -226,7 +226,7 @@ def cover(canvas, doc):
     canvas.drawString(M, 114, "M. Navya, 124CS0001   ·   Sujal Negi, 123ME0023   ·   IIITDM Kurnool")
     canvas.drawString(M, 99, "RizeOS Hackathon, AI Track")
     canvas.setFillColor(INK_3); canvas.setFont(BODY, 8.2)
-    canvas.drawString(M, 74, "github.com/sujal128005/Covenant   ·   covenant-j1op.onrender.com")
+    canvas.drawString(M, 74, "github.com/sujal128005/limen   ·   covenant-j1op.onrender.com")
     canvas.restoreState()
 
 
@@ -236,7 +236,7 @@ def body_page(canvas, doc):
     canvas.rect(0, 0, PAGE_W, PAGE_H, stroke=0, fill=1)
     canvas.setFillColor(INK_3)
     canvas.setFont(BODY, 7.4)
-    canvas.drawString(M, 12 * mm, "Covenant  ·  Technical Documentation")
+    canvas.drawString(M, 12 * mm, "Limen  ·  Technical Documentation")
     canvas.drawRightString(PAGE_W - M, 12 * mm, str(canvas.getPageNumber() - 1))
     canvas.setStrokeColor(HAIR)
     canvas.setLineWidth(0.5)
@@ -245,7 +245,7 @@ def body_page(canvas, doc):
 
 
 doc = BaseDocTemplate(OUT, pagesize=A4, leftMargin=M, rightMargin=M, topMargin=M,
-                      bottomMargin=21 * mm, title="Covenant Technical Documentation",
+                      bottomMargin=21 * mm, title="Limen Technical Documentation",
                       author="Nexara9", subject="AI procurement under enforced spending authority")
 doc.addPageTemplates([
     PageTemplate(id="cover", frames=[Frame(M, M, FW, PAGE_H - 2 * M, id="c")], onPage=cover),
@@ -257,7 +257,7 @@ story.append(PageBreak())
 
 # ------------------------------------------------------------------ 1
 h1("1. Executive summary")
-lead("Covenant is a procurement agent that takes a plain-language sourcing request, screens a "
+lead("Limen is a procurement agent that takes a plain-language sourcing request, screens a "
      "supplier catalogue against it, negotiates in parallel with the suppliers that qualify, "
      "recommends one deal and settles payment through an escrow contract. It does all of that "
      "on its own.")
@@ -283,7 +283,7 @@ p("An agent that has been fully compromised, in the sense that an attacker contr
   "because the application layer is not the thing enforcing it.")
 
 h1("3. Proposed solution")
-p("Covenant separates the party that negotiates from the party that authorises. The buyer writes a "
+p("Limen separates the party that negotiates from the party that authorises. The buyer writes a "
   "per-deal ceiling into the escrow contract. The agent works beneath it and never holds the pen.")
 table([
     ["Identity", "Holds", "Can do"],
@@ -344,7 +344,7 @@ bullets([
 ])
 
 h1("6. AI architecture")
-p("Covenant separates deciding from wording. Every number that carries consequence is computed by "
+p("Limen separates deciding from wording. Every number that carries consequence is computed by "
   "the engine. The model, when configured, rewrites already-correct text into more natural prose.")
 h2("What the model is never allowed to do")
 bullets([
@@ -551,7 +551,7 @@ bullets([
 ])
 
 h1("17. Conclusion")
-p("Covenant is a working answer to a narrow question: how do you let an agent spend money without "
+p("Limen is a working answer to a narrow question: how do you let an agent spend money without "
   "trusting it not to overspend. The answer here is to move the limit out of the agent's reach "
   "entirely, into contract state the agent has no route to modify, and then to let the agent try.")
 p("Everything else in the product follows from that decision. The engine is deterministic so the "

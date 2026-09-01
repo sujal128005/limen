@@ -10,7 +10,7 @@
 
 services:
   - type: web
-    name: covenant
+    name: limen
     runtime: node
     plan: free
     region: singapore

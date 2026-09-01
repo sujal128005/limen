@@ -1,14 +1,14 @@
-# Covenant
+# Limen
 
 **AI procurement agent with on-chain spending controls.**
 
-Covenant helps businesses source physical goods, compare suppliers, negotiate prices, and execute purchases while keeping the spending limit outside the agent's control.
+Limen helps businesses source physical goods, compare suppliers, negotiate prices, and execute purchases while keeping the spending limit outside the agent's control.
 
 The core idea is simple:
 
 > **The agent can negotiate a deal, but it cannot change how much it is allowed to spend.**
 
-Covenant combines deterministic procurement logic, optional LLM assistance, and smart-contract-enforced spending limits.
+Limen combines deterministic procurement logic, optional LLM assistance, and smart-contract-enforced spending limits.
 
 The seeded catalogue holds **15 suppliers across 13 countries, offering 39 listings in 13 materials**, from PET resin and kraft paper through aluminium, steel, copper and silicone. **17 worked scenarios** ship with the app, spanning packaging, metals, mechanical, electrical, electronics, medical and aerospace buying.
 
@@ -18,9 +18,9 @@ The seeded catalogue holds **15 suppliers across 13 countries, offering 39 listi
 
 ---
 
-## What Covenant does
+## What Limen does
 
-A buyer gives Covenant a sourcing request such as:
+A buyer gives Limen a sourcing request such as:
 
 ```text
 500 kg bottle-grade PET resin
@@ -29,7 +29,7 @@ Delivery: within 14 days
 Certification: FDA food-contact
 ```
 
-Covenant then:
+Limen then:
 
 1. Parses the requirements.
 2. Screens suppliers against the request.
@@ -56,8 +56,8 @@ The LLM is used for **phrasing**, not for deciding prices, eligibility, spending
 ### Run
 
 ```bash
-git clone https://github.com/sujal128005/Covenant.git
-cd Covenant
+git clone https://github.com/sujal128005/limen.git limen
+cd limen
 npm install
 npm start
 ```
@@ -93,7 +93,7 @@ The important part of the demo is that **changing the agent's own policy does no
 
 An autonomous procurement agent may eventually be exposed to bad data, prompt injection, bugs, or a compromised model.
 
-Covenant therefore does not rely on the agent behaving correctly to enforce the budget.
+Limen therefore does not rely on the agent behaving correctly to enforce the budget.
 
 There are two separate identities:
 
@@ -157,7 +157,7 @@ flowchart TD
 
 ## AI pipeline
 
-Covenant separates **decision-making from language generation**.
+Limen separates **decision-making from language generation**.
 
 ### 1. Grounded procurement result
 
@@ -242,7 +242,7 @@ A local 6-decimal ERC-20 used for the procurement demo.
 
 ## Documents
 
-Covenant generates the actual documents server-side rather than rendering HTML and asking the browser to print it.
+Limen generates the actual documents server-side rather than rendering HTML and asking the browser to print it.
 
 ### Negotiated Purchase Agreement
 
@@ -307,7 +307,7 @@ up for the whole run including the negotiation replay. Every figure on it is
 real: the phase count comes from the phase list, the seconds from a clock, and
 the counts from the catalogue.
 
-**The mark in the corner goes home.** Covenant in the top left is a button back
+**The mark in the corner goes home.** Limen in the top left is a button back
 to the landing page, and it leaves the run untouched.
 
 **A wallet gate, for a workspace of your own.** "Sign in with a wallet" opens a
@@ -349,7 +349,7 @@ a live capsule that reports what the agent is doing without stealing focus.
 
 ## Security model
 
-Covenant is designed around the assumption that the agent may eventually behave incorrectly.
+Limen is designed around the assumption that the agent may eventually behave incorrectly.
 
 | Protection                          | Enforcement                                  |
 | ----------------------------------- | -------------------------------------------- |
@@ -398,7 +398,7 @@ budget, and a second run in the same workspace.
 
 ## Environment variables
 
-Covenant works without any environment variables.
+Limen works without any environment variables.
 
 | Variable       | Required | Default               | Description                        |
 | -------------- | -------- | --------------------- | ---------------------------------- |
@@ -452,7 +452,7 @@ The next priorities are:
 
 More detailed architecture, security and implementation notes are available in:
 
-`docs/Covenant_Technical_Documentation.pdf`
+`docs/Limen_Technical_Documentation.pdf`
 
 ---
 

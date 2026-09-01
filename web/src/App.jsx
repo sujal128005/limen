@@ -12,7 +12,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
  * production the buyer's wallet signature replaces this header as the identity.
  */
 let WORKSPACE = (() => {
-  const KEY = 'covenant.workspace';
+  const KEY = 'limen.workspace';
   try {
     let id = sessionStorage.getItem(KEY);
     if (!id) {
@@ -34,7 +34,7 @@ const headers = () => ({ 'content-type': 'application/json', 'x-workspace': WORK
 // on the local demo chain: that stays the funded demo account, and the UI says so.
 function bindWorkspaceToWallet(address) {
   WORKSPACE = 'w' + address.slice(2, 34).toLowerCase();
-  try { sessionStorage.setItem('covenant.workspace', WORKSPACE); } catch (_) {}
+  try { sessionStorage.setItem('limen.workspace', WORKSPACE); } catch (_) {}
 }
 
 async function connectWallet() {
@@ -369,15 +369,17 @@ function Tick({ className = 'tick' }) {
 }
 
 /*
- * The Covenant intelligence mark.
+ * The Limen intelligence mark.
  *
- * An open C orbit, a shorter inner arc, and a solid node at the centre. The C
- * is the product; the two arcs are a bounded orbit around it; the node is the
- * thing being reasoned about. Deliberately not a robot, a sparkle, a brain or
- * a speech bubble - those read as a chatbot bolted onto a product, and this is
- * a decision layer belonging to the product.
+ * Two open arcs around a solid node. The node is the thing being reasoned
+ * about and the arcs are the boundary it moves inside: they come close to
+ * meeting and deliberately do not, because the point of the product is a limit
+ * that holds without closing anything in.
+ *
+ * Not a robot, a sparkle, a brain or a speech bubble. Those read as a chatbot
+ * bolted onto a product, and this is a decision layer belonging to one.
  */
-function CovenantMark({ size = 24 }) {
+function LimenMark({ size = 24 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className="rf-mark" aria-hidden="true">
       <g className="rf-orbit">
@@ -396,7 +398,7 @@ function CovenantMark({ size = 24 }) {
 }
 
 function BrandMark() {
-  return <span className="brand-mark" aria-hidden="true">C</span>;
+  return <span className="brand-mark" aria-hidden="true">L</span>;
 }
 
 /*
@@ -417,7 +419,7 @@ class Boundary extends React.Component {
   componentDidCatch(error, info) {
     // Kept in the console on purpose. There is no telemetry endpoint in this
     // build, and pretending otherwise would be worse than saying so.
-    console.error('Covenant render error:', error, info?.componentStack);
+    console.error('Limen render error:', error, info?.componentStack);
   }
   render() {
     if (!this.state.error) return this.props.children;
@@ -914,7 +916,7 @@ function Desk() {
         aria-label={panelOpen ? 'Close Rationale' : 'Open Rationale'}
       >
         <span className="rf-halo" aria-hidden="true" />
-        <CovenantMark size={26} />
+        <LimenMark size={26} />
         <span className="rf-tip">Rationale</span>
       </button>
 
@@ -1040,12 +1042,12 @@ function useTheme() {
     // Light by default. The product is a document surface read in daylight,
     // and a first-time visitor should meet the theme it was designed in.
     // System and Dark are one click away and the choice is remembered.
-    try { return localStorage.getItem('covenant.theme') || 'light'; } catch (_) { return 'light'; }
+    try { return localStorage.getItem('limen.theme') || 'light'; } catch (_) { return 'light'; }
   });
 
   useEffect(() => {
     applyTheme(choice);
-    try { localStorage.setItem('covenant.theme', choice); } catch (_) {}
+    try { localStorage.setItem('limen.theme', choice); } catch (_) {}
     // Lets the command palette set the theme without threading state through
     // half the tree for three menu entries.
     window.__setTheme = setChoice;
@@ -1110,7 +1112,7 @@ function Sidebar({ reachedIndex, status, wallet, busy, onHome }) {
       <button type="button" className="side-brand" onClick={onHome} title="Back to the home page">
         <BrandMark />
         <span>
-          <span className="brand-name">Covenant</span>
+          <span className="brand-name">Limen</span>
           <span className="brand-role">Sourcing desk</span>
         </span>
       </button>
@@ -1446,7 +1448,7 @@ function WalletGate({ onConnect, onBack, onDemo, error, busy, address }) {
       <header className="hp-bar">
         <button type="button" className="hp-brand gate-back" onClick={onBack} title="Back to the home page">
           <BrandMark />
-          <span>Covenant</span>
+          <span>Limen</span>
         </button>
         <ThemeSwitch />
       </header>
@@ -1471,7 +1473,7 @@ function WalletGate({ onConnect, onBack, onDemo, error, busy, address }) {
             </li>
             <li className="no">
               <span className="gate-ic" aria-hidden="true"><span className="gate-x">&#10005;</span></span>
-              <span><b>No seed phrase, no private key.</b> Covenant never asks for either, and no screen in this product has a field for one.</span>
+              <span><b>No seed phrase, no private key.</b> Limen never asks for either, and no screen in this product has a field for one.</span>
             </li>
             <li className="no">
               <span className="gate-ic" aria-hidden="true"><span className="gate-x">&#10005;</span></span>
@@ -1503,7 +1505,7 @@ function WalletGate({ onConnect, onBack, onDemo, error, busy, address }) {
         <aside className="gate-side">
           <h2>What a workspace holds</h2>
           <p>
-            Covenant keeps procurement state per workspace: the request you typed, which suppliers
+            Limen keeps procurement state per workspace: the request you typed, which suppliers
             were screened out and why, every negotiation turn, and the documents built from them.
             That is commercially sensitive, so it is never served across workspaces.
           </p>
@@ -1528,7 +1530,7 @@ function Entry({ status, onWallet, onDemo, error, ready }) {
       <header className="hp-bar">
         <div className="hp-brand">
           <BrandMark />
-          <span>Covenant</span>
+          <span>Limen</span>
         </div>
         <ThemeSwitch />
       </header>
@@ -2543,7 +2545,7 @@ function DocLetterhead() {
     <div className="doc-letterhead">
       <BrandMark />
       <div>
-        <div className="doc-lh-name">Covenant</div>
+        <div className="doc-lh-name">Limen</div>
         <div className="doc-lh-sub">Procurement under enforced authority</div>
       </div>
     </div>
@@ -3122,7 +3124,7 @@ function Rationale({ open, onClose, stage, api }) {
   return (
     <aside className={`rationale ${open ? 'open' : ''}`} aria-hidden={!open}>
       <header className="rat-head">
-        <span className="rat-mark"><CovenantMark size={20} /></span>
+        <span className="rat-mark"><LimenMark size={20} /></span>
         <div>
           <div className="rat-title">Rationale</div>
           <div className="rat-sub">Why this decision was made</div>
@@ -3270,7 +3272,7 @@ const SpeechRec =
 
 const voiceSupported = () => !!SpeechRec && typeof window !== 'undefined' && 'speechSynthesis' in window;
 
-const WAKE = /\b(hey|hi|ok|okay)\s+(rationale|rational|covenant)\b/i;
+const WAKE = /\b(hey|hi|ok|okay)\s+(rationale|rational|limen)\b/i;
 
 function speak(text, enabled) {
   if (!enabled || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
@@ -3813,12 +3815,12 @@ function GlobalVoice({ stage, context, onAnswer }) {
   const [reply, setReply] = useState(null);
   const [speakBack, setSpeakBack] = useState(true);
   const [wake, setWake] = useState(() => {
-    try { return localStorage.getItem('covenant.wake') === 'on'; } catch (_) { return false; }
+    try { return localStorage.getItem('limen.wake') === 'on'; } catch (_) { return false; }
   });
   const hideTimer = useRef(null);
 
   useEffect(() => {
-    try { localStorage.setItem('covenant.wake', wake ? 'on' : 'off'); } catch (_) {}
+    try { localStorage.setItem('limen.wake', wake ? 'on' : 'off'); } catch (_) {}
   }, [wake]);
 
   const ask = useCallback(async (question) => {
@@ -3995,7 +3997,7 @@ function DecisionBrief({ point, deps = [] }) {
     return (
       <div className="dbrief loading" role="status">
         <div className="dbrief-top">
-          <span className="dbrief-mark thinking"><CovenantMark size={16} /></span>
+          <span className="dbrief-mark thinking"><LimenMark size={16} /></span>
           <span className="dbrief-title">Reading the run</span>
         </div>
         <div className="skel-lines" aria-hidden="true">
@@ -4013,7 +4015,7 @@ function DecisionBrief({ point, deps = [] }) {
   return (
     <div className={`dbrief ${brief.irreversible ? 'grave' : ''}`}>
       <div className="dbrief-top">
-        <span className="dbrief-mark"><CovenantMark size={16} /></span>
+        <span className="dbrief-mark"><LimenMark size={16} /></span>
         <span className="dbrief-title">{brief.title}</span>
         {brief.irreversible && <span className="badge warn">cannot be undone</span>}
         <span className="spacer" />

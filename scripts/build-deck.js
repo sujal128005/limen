@@ -26,7 +26,7 @@ const BODY = 'Calibri';
 const p = new pptxgen();
 p.layout = 'LAYOUT_WIDE';   // 13.33 x 7.5
 p.author = 'Nexara9';
-p.title = 'Covenant';
+p.title = 'Limen';
 
 const W = 13.33;
 
@@ -91,8 +91,8 @@ function note(s, text, dark) {
   s.addShape(p.ShapeType.ellipse, { x: 11.4, y: 4.1, w: 3.2, h: 3.2, fill: { color: SUNK }, line: { color: SUNK, width: 0 } });
 
   s.addShape(p.ShapeType.roundRect, { x: 0.86, y: 0.82, w: 0.6, h: 0.6, rectRadius: 0.13, fill: { color: INVERT }, line: { color: INVERT, width: 0 } });
-  s.addText('C', { x: 0.86, y: 0.82, w: 0.6, h: 0.6, margin: 0, align: 'center', valign: 'middle', fontFace: HEAD, fontSize: 25, bold: true, color: 'FFFFFF' });
-  s.addText('COVENANT', { x: 1.62, y: 0.86, w: 4, h: 0.52, margin: 0, valign: 'middle', fontFace: BODY, fontSize: 14, bold: true, charSpacing: 3, color: INK });
+  s.addText('L', { x: 0.86, y: 0.82, w: 0.6, h: 0.6, margin: 0, align: 'center', valign: 'middle', fontFace: HEAD, fontSize: 25, bold: true, color: 'FFFFFF' });
+  s.addText('LIMEN', { x: 1.62, y: 0.86, w: 4, h: 0.52, margin: 0, valign: 'middle', fontFace: BODY, fontSize: 14, bold: true, charSpacing: 3, color: INK });
 
   s.addText('Hand an agent the\nchequebook.\nKeep the signature.', {
     x: 0.86, y: 2.0, w: 7.6, h: 2.9, margin: 0, valign: 'top',
@@ -121,7 +121,7 @@ function note(s, text, dark) {
   s.addText('Nexara9   ·   RizeOS Hackathon, AI Track   ·   covenant-j1op.onrender.com', {
     x: 0.86, y: 6.6, w: 11.6, h: 0.4, margin: 0, valign: 'middle', fontFace: BODY, fontSize: 11.5, color: INK_3,
   });
-  s.addNotes('Covenant sources, screens, negotiates and pays. The one thing it cannot do is raise its own spending limit, because that limit is contract state.');
+  s.addNotes('Limen sources, screens, negotiates and pays. The one thing it cannot do is raise its own spending limit, because that limit is contract state.');
 }
 
 /* ========================================================= 2. Problem */
@@ -544,8 +544,8 @@ function note(s, text, dark) {
   s.addShape(p.ShapeType.ellipse, { x: 10.4, y: -1.6, w: 4.4, h: 4.4, fill: { color: '152822' }, line: { color: '152822', width: 0 } });
 
   s.addShape(p.ShapeType.roundRect, { x: 0.9, y: 0.85, w: 0.58, h: 0.58, rectRadius: 0.13, fill: { color: 'FFFFFF' }, line: { color: 'FFFFFF', width: 0 } });
-  s.addText('C', { x: 0.9, y: 0.85, w: 0.58, h: 0.58, margin: 0, align: 'center', valign: 'middle', fontFace: HEAD, fontSize: 24, bold: true, color: INVERT });
-  s.addText('COVENANT', { x: 1.64, y: 0.88, w: 4, h: 0.52, margin: 0, valign: 'middle', fontFace: BODY, fontSize: 13, bold: true, charSpacing: 3, color: 'FFFFFF' });
+  s.addText('L', { x: 0.9, y: 0.85, w: 0.58, h: 0.58, margin: 0, align: 'center', valign: 'middle', fontFace: HEAD, fontSize: 24, bold: true, color: INVERT });
+  s.addText('LIMEN', { x: 1.64, y: 0.88, w: 4, h: 0.52, margin: 0, valign: 'middle', fontFace: BODY, fontSize: 13, bold: true, charSpacing: 3, color: 'FFFFFF' });
 
   s.addText('The limit is contract state.\nThe agent cannot raise it.', {
     x: 0.9, y: 2.5, w: 10.4, h: 1.9, margin: 0, valign: 'top',
@@ -561,10 +561,10 @@ function note(s, text, dark) {
   s.addText('M. Navya, 124CS0001   ·   Sujal Negi, 123ME0023   ·   IIITDM Kurnool', {
     x: 0.9, y: 5.9, w: 11.5, h: 0.36, margin: 0, valign: 'middle', fontFace: BODY, fontSize: 12.5, color: 'C3DCD5',
   });
-  s.addText('Team Nexara9   ·   github.com/sujal128005/Covenant   ·   covenant-j1op.onrender.com', {
+  s.addText('Team Nexara9   ·   github.com/sujal128005/limen   ·   covenant-j1op.onrender.com', {
     x: 0.9, y: 6.3, w: 11.5, h: 0.36, margin: 0, valign: 'middle', fontFace: BODY, fontSize: 12.5, color: '8FB5AC',
   });
   s.addNotes('Close by offering to run the two attacks live rather than describing them.');
 }
 
-p.writeFile({ fileName: '/tmp/deck/Covenant_Pitch_Deck.pptx' }).then(() => console.log('written'));
+p.writeFile({ fileName: '/tmp/deck/Limen_Pitch_Deck.pptx' }).then(() => console.log('written'));

@@ -16,6 +16,7 @@ const { sessionFor, resetSession, sessions } = require('./workspace');
 const counsel = require('./counsel');
 const normalize = require('./normalize');
 const decisionbrief = require('./decisionbrief');
+const authorization = require('./authorization');
 const grok = require('./grok');
 const documents = require('./documents');
 const pdf = require('./pdf');
@@ -224,8 +225,19 @@ app.post('/api/policy', wrap(async (req, res) => {
 
 app.post('/api/deal', wrap(async (req, res) => {
   const session = sessionFor(req);
+
+  /*
+   * The checkpoint, enforced here rather than in the browser.
+   *
+   * The document is rebuilt from canonical state and hashed now, so the
+   * signature is checked against the terms as they currently stand and not
+   * against whatever was approved earlier in the run.
+   */
+  const policyNow = await chain.escrow.policies(chain.buyerAddress);
+  const docNow = summaryFor(session, policyNow, session.settlementFacts || {});
+  authorization.assertMayProceed(session, 'fund', documents.termsFingerprint(docNow));
+
   const rec = session.recommendation;
-  if (!rec || rec.status !== 'recommended') throw new Error('No approved recommendation to fund.');
   const w = rec.winner;
   const supplierWallet = supplierWallets[w.supplierId];
 
@@ -388,7 +400,7 @@ app.post('/api/attack/raise-own-cap', wrap(async (req, res) => {
 
 app.post('/api/deal/deliver', wrap(async (req, res) => {
   const session = sessionFor(req);
-  if (!session.dealId) throw new Error('No active deal.');
+  authorization.assertMayProceed(session, 'deliver');
   const escrow = chain.contractAt('ProcurementEscrow', addresses.escrow, chain.buyer);
   const tx = await escrow.confirmDelivery(session.dealId);
   const rc = await tx.wait();
@@ -403,7 +415,7 @@ app.post('/api/deal/deliver', wrap(async (req, res) => {
 
 app.post('/api/deal/release', wrap(async (req, res) => {
   const session = sessionFor(req);
-  if (!session.dealId) throw new Error('No active deal.');
+  authorization.assertMayProceed(session, 'release');
   const w = session.recommendation.winner;
   const wallet = supplierWallets[w.supplierId];
   const before = await chain.registry.getSupplier(wallet);
@@ -764,7 +776,7 @@ if (require('fs').existsSync(dist)) {
 }
 
 async function boot() {
-  console.log('Covenant - booting');
+  console.log('Limen - booting');
   await chain.init();
   console.log(`  EVM: ${chain.mode} (chainId ${chain.chainId})`);
   addresses = await chain.deployAll();
@@ -788,7 +800,7 @@ async function boot() {
 
   const port = Number(process.env.PORT || 4000);
   app.listen(port, () => {
-    console.log(`\n  Covenant running -> http://localhost:${port}\n`);
+    console.log(`\n  Limen running -> http://localhost:${port}\n`);
   });
 }
 

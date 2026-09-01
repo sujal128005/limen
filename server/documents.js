@@ -206,6 +206,33 @@ function settlementRecord(session, ctx) {
 // terms produces a new version rather than mutating a signed record.
 // Hash the commercial terms only. issuedAt changes on every render, so hashing
 // the whole object would make every comparison fail and prove nothing.
+/*
+ * What an approval is actually an approval of.
+ *
+ * contentHash below covers the whole document, including the authority block,
+ * and that is right for versioning: publish a spending policy and the document
+ * genuinely is a new version. It is wrong for binding an approval, because
+ * publishing the ceiling is the buyer's own next step. Binding to the full
+ * content hash meant a buyer invalidated their own signature by doing the
+ * thing the interface asked them to do next.
+ *
+ * So the approval binds the commercial substance: who is being paid, for what,
+ * how much, and by when. Those are the things the agent selects and the things
+ * a swap-after-approval attack would need to change. The authority block is
+ * buyer-side state and moving it does not let the agent spend more on this
+ * deal, because the committed amount lives in the line.
+ */
+function termsFingerprint(doc) {
+  const substance = {
+    reference: doc.reference,
+    buyer: doc.buyer.account,
+    supplier: { name: doc.supplier.name, account: doc.supplier.account },
+    line: doc.line,
+    terms: doc.terms,
+  };
+  return crypto.createHash('sha256').update(JSON.stringify(substance)).digest('hex');
+}
+
 function contentHash(doc) {
   const terms = {
     reference: doc.reference,
@@ -231,15 +258,17 @@ function signAgreement(session, doc, signer) {
     history.push({ version: prior.version, hash: prior.hash, signer: prior.signer, signedAt: prior.signedAt });
     return {
       signed: true, signer: name, signedAt: new Date().toISOString(),
-      version: prior.version + 1, hash: contentHash(doc), history,
+      version: prior.version + 1, hash: contentHash(doc),
+      termsHash: termsFingerprint(doc), history,
       supersededReason: 'Commercial terms changed after signing.',
     };
   }
 
   return {
     signed: true, signer: name, signedAt: new Date().toISOString(),
-    version: prior ? prior.version : 1, hash: contentHash(doc), history: [],
+    version: prior ? prior.version : 1, hash: contentHash(doc),
+    termsHash: termsFingerprint(doc), history: [],
   };
 }
 
-module.exports = { purchaseSummary, settlementRecord, signAgreement, contentHash, SUMMARY_STATUS, FEE_RATE };
+module.exports = { purchaseSummary, settlementRecord, signAgreement, contentHash, termsFingerprint, SUMMARY_STATUS, FEE_RATE };

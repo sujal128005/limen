@@ -107,7 +107,7 @@ async function listModels() {
 
 (async () => {
   if (process.argv.includes('--models')) { await listModels(); return; }
-  console.log('Covenant, LLM pipeline check');
+  console.log('Limen, LLM pipeline check');
   console.log('='.repeat(60));
   await liveCall();
   await failurePaths();
