@@ -148,6 +148,42 @@ class Chain {
     };
   }
 
+  /*
+   * Attach to contracts that already exist.
+   *
+   * The counterpart to deployAll, and the path a public network takes. Nothing
+   * is sent, nothing costs gas, and the addresses come from a manifest written
+   * by a deliberate deployment rather than from whatever this process happened
+   * to create a moment ago.
+   */
+  attachTo(addresses) {
+    this.usdc = this.contractAt('MockUSDC', addresses.usdc, this.deployer);
+    this.registry = this.contractAt('SupplierRegistry', addresses.registry, this.deployer);
+    this.escrow = this.contractAt('ProcurementEscrow', addresses.escrow, this.deployer);
+    return {
+      usdc: addresses.usdc,
+      registry: addresses.registry,
+      escrow: addresses.escrow,
+    };
+  }
+
+  /*
+   * A supplier's payout address.
+   *
+   * On the local chain these are ganache accounts, because the contract tests
+   * reach for them positionally. On a public network there are no such accounts,
+   * and the old code fell through to Wallet.createRandom(), which meant every
+   * restart registered the same suppliers at brand new addresses and threw away
+   * the reputation the previous ones had earned. Derived from the mnemonic on a
+   * separate branch, so the same supplier is the same address forever.
+   */
+  supplierAddressFor(supplierId, walletIndex) {
+    const local = this.signerByAccount && this.signerByAccount.get(walletIndex);
+    if (local) return local.getAddress();
+    const path = `m/44'/60'/1'/0/${Chain._index(String(supplierId))}`;
+    return Promise.resolve(ethers.HDNodeWallet.fromPhrase(this.buyerMnemonic, undefined, path).address);
+  }
+
   async _deploy(name, args = []) {
     const art = this.artifacts[name];
     if (!art) throw new Error(`missing artifact ${name}`);

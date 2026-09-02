@@ -230,6 +230,61 @@ async function run() {
     eq(await stateOf(c), 'HEAD_APPROVAL', 'state must not have moved');
   });
 
+  group('Clearing a workspace');
+
+  await test('the head and finance cannot clear a workspace', async () => {
+    const c = await freshRun('resetrole');
+    for (const [who, token] of [['head', c.head], ['finance', c.finance]]) {
+      const r = await call('POST', '/api/reset', { token, workspace: c.ws });
+      ok(r.status >= 400, `${who} must be refused, got ${r.status}`);
+      ok(/cannot do this/i.test(r.body.error || ''), r.body.error);
+    }
+    eq(await stateOf(c), 'AI_COMPLETED', 'nothing may have been cleared');
+  });
+
+  await test('an unsigned caller cannot clear a workspace', async () => {
+    const c = await freshRun('resetanon');
+    const r = await call('POST', '/api/reset', { workspace: c.ws });
+    ok(r.status >= 400, `expected refusal, got ${r.status}`);
+    eq(await stateOf(c), 'AI_COMPLETED');
+  });
+
+  await test('sales can clear its own draft', async () => {
+    const c = await freshRun('resetok');
+    const r = await call('POST', '/api/reset', { token: c.sales, workspace: c.ws });
+    eq(r.status, 200, r.body.error);
+    eq(r.body.from, 'AI_COMPLETED', 'the reply names what was cleared');
+    eq(await stateOf(c), 'DRAFT');
+  });
+
+  await test('sales cannot clear a purchase sitting with the head', async () => {
+    const c = await freshRun('resetpending');
+    await call('POST', '/api/purchase/submit', { token: c.sales, workspace: c.ws });
+    await call('POST', '/api/purchase/send-to-head', { token: c.sales, workspace: c.ws });
+
+    const r = await call('POST', '/api/reset', { token: c.sales, workspace: c.ws });
+    ok(r.status >= 400, `expected refusal, got ${r.status}`);
+    ok(/holding a decision|cannot be cleared/i.test(r.body.error || ''), r.body.error);
+    eq(await stateOf(c), 'HEAD_APPROVAL', "another person's pending decision must survive");
+  });
+
+  await test('sales cannot clear a purchase once escrow holds the money', async () => {
+    const c = await upToPaymentReady('resetfunded');
+    const r = await call('POST', '/api/reset', { token: c.sales, workspace: c.ws });
+    ok(r.status >= 400, `expected refusal, got ${r.status}`);
+    eq(await stateOf(c), 'PAYMENT_READY', 'the payment record must survive');
+  });
+
+  await test('the reset outlives what it cleared', async () => {
+    const c = await freshRun('resetaudit');
+    await call('POST', '/api/reset', { token: c.sales, workspace: c.ws });
+    const rows = await workspace.auditFor(c.ws);
+    const entry = rows.find((r) => r.action === 'reset');
+    ok(entry, `expected a reset entry, got ${rows.map((r) => r.action).join(', ')}`);
+    eq(entry.actorName, 'S. Negi');
+    eq(entry.fromState, 'AI_COMPLETED');
+  });
+
   group('The workflow cannot be jumped');
 
   await test('SALES_REVIEW cannot become PAYMENT_READY', async () => {
@@ -290,6 +345,124 @@ async function run() {
     await moveTerms(c.ws, (w) => { w.total = round2(w.total + 10); });
     const after = (await call('GET', '/api/purchase', { token: c.finance, workspace: c.ws })).body;
     eq(after.approvalCurrent, false, 'the payment screen must show the approval is stale');
+  });
+
+  group('Approval signed with a key');
+
+  await test('the head is given a payload built from canonical state', async () => {
+    const c = await freshRun('sigpayload');
+    await call('POST', '/api/purchase/submit', { token: c.sales, workspace: c.ws });
+    await call('POST', '/api/purchase/send-to-head', { token: c.sales, workspace: c.ws });
+
+    const r = await call('GET', '/api/purchase/approval-payload', { token: c.head, workspace: c.ws });
+    eq(r.status, 200, r.body.error);
+    eq(r.body.value.workspace, c.ws, 'the signature is pinned to this workspace');
+    eq(r.body.value.amount, '1175');
+    ok(/^0x[0-9a-f]{64}$/i.test(r.body.value.termsHash), r.body.value.termsHash);
+    ok(r.body.domain.chainId > 0 && r.body.domain.verifyingContract, JSON.stringify(r.body.domain));
+
+    // Only the head, and only while the decision is theirs to make.
+    const asSales = await call('GET', '/api/purchase/approval-payload', { token: c.sales, workspace: c.ws });
+    ok(asSales.status >= 400, 'sales must not be handed the head\'s message to sign');
+  });
+
+  await test('a wallet signature is verified and recorded', async () => {
+    const { ethers } = require('ethers');
+    const c = await freshRun('sigok');
+    await call('POST', '/api/purchase/submit', { token: c.sales, workspace: c.ws });
+    await call('POST', '/api/purchase/send-to-head', { token: c.sales, workspace: c.ws });
+
+    const p = (await call('GET', '/api/purchase/approval-payload', { token: c.head, workspace: c.ws })).body;
+    const wallet = ethers.Wallet.createRandom();
+    const signature = await wallet.signTypedData(p.domain, p.types, p.value);
+
+    const r = await call('POST', '/api/purchase/approve', {
+      body: { signature, signerAddress: wallet.address }, token: c.head, workspace: c.ws,
+    });
+    eq(r.status, 200, JSON.stringify(r.body).slice(0, 200));
+    eq(r.body.approval.method, 'wallet');
+    eq(String(r.body.approval.signerAddress).toLowerCase(), wallet.address.toLowerCase());
+
+    const view = (await call('GET', '/api/purchase', { token: c.finance, workspace: c.ws })).body;
+    eq(view.signatureMethod, 'wallet', 'finance can see what kind of proof it has');
+  });
+
+  await test('an approval with no wallet is still allowed, and says so', async () => {
+    const c = await freshRun('signame');
+    await call('POST', '/api/purchase/submit', { token: c.sales, workspace: c.ws });
+    await call('POST', '/api/purchase/send-to-head', { token: c.sales, workspace: c.ws });
+    const r = await call('POST', '/api/purchase/approve', { token: c.head, workspace: c.ws });
+    eq(r.status, 200, JSON.stringify(r.body).slice(0, 160));
+    eq(r.body.approval.method, 'name');
+    eq(r.body.approval.signerAddress, null);
+  });
+
+  await test('a signature from a different key is refused', async () => {
+    const { ethers } = require('ethers');
+    const c = await freshRun('sigwrong');
+    await call('POST', '/api/purchase/submit', { token: c.sales, workspace: c.ws });
+    await call('POST', '/api/purchase/send-to-head', { token: c.sales, workspace: c.ws });
+
+    const p = (await call('GET', '/api/purchase/approval-payload', { token: c.head, workspace: c.ws })).body;
+    const real = ethers.Wallet.createRandom();
+    const impostor = ethers.Wallet.createRandom();
+    const signature = await real.signTypedData(p.domain, p.types, p.value);
+
+    const r = await call('POST', '/api/purchase/approve', {
+      body: { signature, signerAddress: impostor.address }, token: c.head, workspace: c.ws,
+    });
+    ok(r.status >= 400, `expected refusal, got ${r.status}`);
+    ok(/does not match/i.test(r.body.error || ''), r.body.error);
+    eq(await stateOf(c), 'HEAD_APPROVAL', 'nothing may have been approved');
+  });
+
+  await test('a signature over different terms is refused', async () => {
+    const { ethers } = require('ethers');
+    const c = await freshRun('sigtamper');
+    await call('POST', '/api/purchase/submit', { token: c.sales, workspace: c.ws });
+    await call('POST', '/api/purchase/send-to-head', { token: c.sales, workspace: c.ws });
+
+    const p = (await call('GET', '/api/purchase/approval-payload', { token: c.head, workspace: c.ws })).body;
+    const wallet = ethers.Wallet.createRandom();
+    // Sign a cheaper purchase than the one on the table.
+    const signature = await wallet.signTypedData(p.domain, p.types, { ...p.value, amount: '1' });
+
+    const r = await call('POST', '/api/purchase/approve', {
+      body: { signature, signerAddress: wallet.address }, token: c.head, workspace: c.ws,
+    });
+    ok(r.status >= 400, `expected refusal, got ${r.status}`);
+    eq(await stateOf(c), 'HEAD_APPROVAL');
+  });
+
+  await test("one workspace's signature cannot approve another's purchase", async () => {
+    const { ethers } = require('ethers');
+    const a = await freshRun('sigxA');
+    const b = await freshRun('sigxB');
+    for (const c of [a, b]) {
+      await call('POST', '/api/purchase/submit', { token: c.sales, workspace: c.ws });
+      await call('POST', '/api/purchase/send-to-head', { token: c.sales, workspace: c.ws });
+    }
+
+    const pa = (await call('GET', '/api/purchase/approval-payload', { token: a.head, workspace: a.ws })).body;
+    const wallet = ethers.Wallet.createRandom();
+    const signatureForA = await wallet.signTypedData(pa.domain, pa.types, pa.value);
+
+    const r = await call('POST', '/api/purchase/approve', {
+      body: { signature: signatureForA, signerAddress: wallet.address }, token: b.head, workspace: b.ws,
+    });
+    ok(r.status >= 400, `a signature for another workspace must not approve this one, got ${r.status}`);
+    eq(await stateOf(b), 'HEAD_APPROVAL');
+  });
+
+  await test('garbage in the signature field is refused, not ignored', async () => {
+    const c = await freshRun('siggarbage');
+    await call('POST', '/api/purchase/submit', { token: c.sales, workspace: c.ws });
+    await call('POST', '/api/purchase/send-to-head', { token: c.sales, workspace: c.ws });
+    const r = await call('POST', '/api/purchase/approve', {
+      body: { signature: '0xnotasignature' }, token: c.head, workspace: c.ws,
+    });
+    ok(r.status >= 400, 'a failed proof must never quietly become a typed name');
+    eq(await stateOf(c), 'HEAD_APPROVAL');
   });
 
   group('The contract, and the rail behind it');

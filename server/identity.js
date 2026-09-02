@@ -49,7 +49,7 @@ const ROLES = {
   sales: {
     label: 'Sales / Procurement',
     blurb: 'Runs sourcing and prepares the purchase for approval.',
-    can: ['run', 'submit', 'sendToHead', 'confirmReceipt', 'read'],
+    can: ['run', 'submit', 'sendToHead', 'confirmReceipt', 'reset', 'read'],
   },
   head: {
     label: 'Head / Manager',

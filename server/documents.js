@@ -245,10 +245,22 @@ function contentHash(doc) {
   return crypto.createHash('sha256').update(JSON.stringify(terms)).digest('hex');
 }
 
-function signAgreement(session, doc, signer) {
+/*
+ * @param {object} [proof] when the head signed with a key:
+ *                         { method: 'wallet', address, signature }
+ *
+ * The method travels with the record because every document has to say which
+ * one it was. A typed name and a key signature are different kinds of evidence,
+ * and a document that presented them identically would be the dishonest part.
+ */
+function signAgreement(session, doc, signer, proof) {
   const name = String(signer || '').trim();
   if (name.length < 2) throw new Error('Enter the approver name to sign.');
   if (name.length > 80) throw new Error('Name is too long.');
+
+  const attestation = proof && proof.method === 'wallet'
+    ? { method: 'wallet', address: proof.address, signature: proof.signature }
+    : { method: 'name' };
 
   const prior = session.signature;
   if (prior && prior.signed) {
@@ -260,6 +272,7 @@ function signAgreement(session, doc, signer) {
       signed: true, signer: name, signedAt: new Date().toISOString(),
       version: prior.version + 1, hash: contentHash(doc),
       termsHash: termsFingerprint(doc), history,
+      ...attestation,
       supersededReason: 'Commercial terms changed after signing.',
     };
   }
@@ -268,6 +281,7 @@ function signAgreement(session, doc, signer) {
     signed: true, signer: name, signedAt: new Date().toISOString(),
     version: prior ? prior.version : 1, hash: contentHash(doc),
     termsHash: termsFingerprint(doc), history: [],
+    ...attestation,
   };
 }
 

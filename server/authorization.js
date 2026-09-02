@@ -143,6 +143,7 @@ function approvalIsCurrent(session, currentTermsHash, currentAmount) {
  * acquire a money-moving power by forgetting to ask.
  */
 const REQUIRES = {
+  reset: 'reset',
   submit: 'submit',
   sendToHead: 'sendToHead',
   approve: 'approve',
@@ -152,8 +153,21 @@ const REQUIRES = {
   release: 'releasePayment',
 };
 
-/* Where each step may legally be taken from. Anything absent is impossible. */
+/*
+ * Where each step may legally be taken from. Anything absent is impossible.
+ *
+ * Reset is the odd one out: it is not an advance, it is a discard. The rule is
+ * that you may throw away a purchase when nothing is pending on somebody else's
+ * desk and no money is committed. Once it is with the head, or once the escrow
+ * holds funds, resetting would destroy a decision or a payment record that
+ * somebody else is entitled to rely on. Terminal states are resettable again,
+ * because a finished purchase is a reasonable thing to clear away.
+ */
 const FROM = {
+  reset: [
+    STATE.DRAFT, STATE.AI_COMPLETED, STATE.SALES_REVIEW,
+    STATE.REJECTED, STATE.SETTLED, STATE.FAILED, STATE.REVERSED,
+  ],
   submit: [STATE.AI_COMPLETED],
   sendToHead: [STATE.SALES_REVIEW],
   approve: [STATE.HEAD_APPROVAL],
@@ -164,6 +178,7 @@ const FROM = {
 };
 
 const HUMAN = {
+  reset: 'cleared',
   submit: 'submitted for review',
   sendToHead: 'sent to the head for approval',
   approve: 'approved',
@@ -191,10 +206,16 @@ function assertMayProceed(session, step, opts) {
 
   if (!allowed) throw new Error(`Unknown step: ${step}`);
 
-  if (state === STATE.DRAFT) {
+  /*
+   * These two early exits give a better message than the generic one, but they
+   * are wrong for any step that legitimately starts from them. Reset is the
+   * first such step: clearing an empty or rejected workspace is exactly when a
+   * person wants it.
+   */
+  if (state === STATE.DRAFT && !allowed.includes(STATE.DRAFT)) {
     throw new Error('No recommendation to act on. Run sourcing first.');
   }
-  if (state === STATE.REJECTED) {
+  if (state === STATE.REJECTED && !allowed.includes(STATE.REJECTED)) {
     throw new Error('This purchase was rejected. Run sourcing again to raise a new one.');
   }
   if (TERMINAL.has(state) && !allowed.includes(state)) {
@@ -202,6 +223,18 @@ function assertMayProceed(session, step, opts) {
   }
 
   if (!allowed.includes(state)) {
+    /*
+     * Reset gets its own sentence. Listing its seven permitted states joined by
+     * "or" is technically complete and completely unreadable, and the reason it
+     * is refused is more useful than the list anyway.
+     */
+    if (step === 'reset') {
+      throw new Error(
+        `This purchase is at ${state.replace(/_/g, ' ').toLowerCase()}, so it cannot be cleared. ` +
+        'Somebody else is holding a decision on it, or the escrow already holds the money. ' +
+        'It can be cleared once it is settled or rejected.'
+      );
+    }
     throw new Error(
       `A purchase cannot be ${HUMAN[step]} from ${state}. ` +
       `That step is only available at ${allowed.join(' or ')}.`

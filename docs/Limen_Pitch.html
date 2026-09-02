@@ -184,7 +184,7 @@
       three different people have to touch a purchase before money moves.
     </p>
     <dl class="cover-links">
-      <dt>Live demo</dt><dd>limen.onrender.com</dd>
+      <dt>Live demo</dt><dd>limen-peqe.onrender.com</dd>
       <dt>Repository</dt><dd>github.com/sujal128005/limen</dd>
       <dt>Built by</dt><dd>Team Nexara9</dd>
     </dl>
@@ -601,7 +601,7 @@
   <div class="body">
     <div class="cards c4">
       <div class="card">
-        <span class="big" style="color:var(--pine)">183</span>
+        <span class="big" style="color:var(--pine)">205</span>
         <p style="font-size:16px;color:var(--ink-3)">unit tests, most of them attacking the system rather than confirming it works</p>
       </div>
       <div class="card">
@@ -621,7 +621,7 @@
     <table style="margin-top:24px">
       <thead><tr><th style="width:32%">Layer</th><th>What it holds</th></tr></thead>
       <tbody>
-        <tr><td class="strong">Contracts</td><td>Escrow lifecycle, spending caps, expiry, revocation, reputation, access control</td></tr>
+        <tr><td class="strong">Contracts</td><td>Escrow lifecycle, spending caps, expiry, revocation, deployed once and attached to</td></tr>
         <tr><td class="strong">Authorisation</td><td>Twelve workflow states, role permissions, and the approval fingerprint</td></tr>
         <tr><td class="strong">Engine</td><td>Parsing, structural screening, bounded bargaining, walk-away, determinism</td></tr>
         <tr><td class="strong">Payments</td><td>Contract-gated payouts, derived idempotency, bounded retry, reconciliation</td></tr>
@@ -637,21 +637,19 @@
   <div class="head">
     <span class="eyebrow">What is demo-grade</span>
     <h2 class="wide">The limits, stated before you ask.</h2>
-    <p class="lead">
-      A claim shipped without its boundary is not a claim worth making. The
-      interface says this on screen, not in a footnote.
-    </p>
+
   </div>
 
   <div class="body">
     <table>
       <thead><tr><th style="width:26%">Limitation</th><th style="width:44%">What it means</th><th>Fixed by</th></tr></thead>
       <tbody>
-        <tr><td class="strong">The chain is local</td><td>Real EVM, gas, reverts and transaction hashes, but not a public network</td><td>Same bytecode on a public testnet, once deployment is separated from boot</td></tr>
+        <tr><td class="strong">Not yet on a public chain</td><td>Deployment is now a deliberate step that records addresses, so a testnet run is configuration rather than code</td><td>Fund a key, run the deploy script once, commit the manifest</td></tr>
         <tr><td class="strong">Delivery is buyer-attested</td><td>A buyer and supplier together could settle a deal that never shipped</td><td>Oracle-backed or carrier-backed attestation</td></tr>
-        <tr><td class="strong">Suppliers are seeded</td><td>Fifteen suppliers shaped like a directory response, simulated counterparties</td><td>Live directory adapter and supplier-side agents</td></tr>
+        <tr><td class="strong">Suppliers are seeded</td><td>Fifteen suppliers shaped like a directory response</td><td>Live directory adapter and supplier-side agents</td></tr>
         <tr><td class="strong">Payouts are test mode</td><td>Test credentials, or a local rail running the same code path</td><td>Production credentials and a funded account</td></tr>
         <tr><td class="strong">Suppliers have no bank details</td><td>A live payout needs a verified fund account per supplier, which cannot be invented</td><td>Supplier onboarding, one record each</td></tr>
+        <tr><td class="strong">Signing keys are not identities</td><td>An approval can carry a verified EIP-712 signature; the key behind it is not a verified legal identity</td><td>Identity verification at onboarding</td></tr>
       </tbody>
     </table>
   </div>

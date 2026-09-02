@@ -69,6 +69,40 @@ function bindWorkspaceToWallet(address) {
   try { localStorage.setItem('limen.workspace', WORKSPACE); } catch (_) {}
 }
 
+/*
+ * Ask the head's wallet to sign the approval.
+ *
+ * The message comes from the server and is signed verbatim. Building it here
+ * would defeat the point of typed data: the head would be shown one thing and
+ * could be made to sign another, and the server would have nothing to compare
+ * against.
+ */
+async function signApproval() {
+  const eth = typeof window !== 'undefined' ? window.ethereum : null;
+  if (!eth) throw new Error('No wallet extension detected in this browser.');
+
+  const payload = await api.get('/api/purchase/approval-payload');
+  const accounts = await eth.request({ method: 'eth_requestAccounts' });
+  const address = accounts && accounts[0];
+  if (!address) throw new Error('No account was shared.');
+
+  const signature = await eth.request({
+    method: 'eth_signTypedData_v4',
+    params: [address, JSON.stringify({
+      domain: payload.domain,
+      types: { EIP712Domain: [
+        { name: 'name', type: 'string' },
+        { name: 'version', type: 'string' },
+        { name: 'chainId', type: 'uint256' },
+        { name: 'verifyingContract', type: 'address' },
+      ], ...payload.types },
+      primaryType: payload.primaryType,
+      message: payload.value,
+    })],
+  });
+  return { signature, signerAddress: address };
+}
+
 async function connectWallet() {
   const eth = typeof window !== 'undefined' ? window.ethereum : null;
   if (!eth) throw new Error('No wallet extension detected in this browser.');
@@ -676,6 +710,7 @@ function CheckRow({ ok, label, detail }) {
 function HeadApproval({ purchase, status, onApprove, onReject, onPublishPolicy, busy, error }) {
   const [reason, setReason] = useState('');
   const [rejecting, setRejecting] = useState(false);
+  const hasWallet = typeof window !== 'undefined' && !!window.ethereum;
   const p = purchase;
 
   if (!p || !p.supplier) {
@@ -757,6 +792,9 @@ function HeadApproval({ purchase, status, onApprove, onReject, onPublishPolicy, 
           <strong>Approved</strong>
           <span>
             {p.headApproval ? `${usd(p.headApproval.approvedAmount)} sanctioned by ${p.headApproval.approver}` : ''}
+            {p.signatureMethod === 'wallet'
+              ? `, signed with key ${short(p.signerAddress || '')}`
+              : ', recorded as a typed name'}
             . It is now with finance to pay. You cannot release the payment, and neither can sales.
           </span>
         </div>
@@ -795,13 +833,21 @@ function HeadApproval({ purchase, status, onApprove, onReject, onPublishPolicy, 
             <button className="btn btn-secondary" onClick={() => setRejecting(true)} disabled={!!busy}>
               Reject
             </button>
-            <button className="btn btn-primary btn-lg" onClick={onApprove} disabled={!!busy || !policy.active}>
+            {hasWallet && (
+              <button className="btn btn-secondary" onClick={() => onApprove(true)} disabled={!!busy || !policy.active}>
+                {busy === 'approve-signed' ? 'Waiting for your wallet' : 'Approve and sign with wallet'}
+              </button>
+            )}
+            <button className="btn btn-primary btn-lg" onClick={() => onApprove(false)} disabled={!!busy || !policy.active}>
               {busy === 'approve' ? 'Approving' : `Approve ${usd(amount)}`}
             </button>
           </div>
           <p className="packet-note">
             Approving commits the funds to escrow under your published ceiling. It
             does not pay the supplier: finance does that, on a separate screen.
+            {hasWallet
+              ? ' Signing with your wallet records a key signature over these exact terms rather than a typed name.'
+              : ' Without a wallet the approval is recorded as a typed name, and every document says so.'}
           </p>
         </div>
       )}
@@ -853,7 +899,14 @@ function FinancePayments({ purchase, onRelease, busy, error }) {
         <h3>Authorization chain</h3>
         <ul className="chklist">
           <CheckRow ok={!!p.submittedAt} label="Raised by the requesting team" detail={p.submittedBy} />
-          <CheckRow ok={!!approved} label="Sanctioned by the head" detail={approved ? `${usd(approved.approvedAmount)} on ${new Date(approved.at).toLocaleDateString()}` : 'Not yet'} />
+          <CheckRow
+            ok={!!approved}
+            label="Sanctioned by the head"
+            detail={approved
+              ? `${usd(approved.approvedAmount)} on ${new Date(approved.at).toLocaleDateString()}`
+                + (p.signatureMethod === 'wallet' ? `, signed with key ${short(p.signerAddress || '')}` : ', typed name')
+              : 'Not yet'}
+          />
           <CheckRow
             ok={p.approvalCurrent !== false}
             label="The approval still matches this purchase"
@@ -1145,6 +1198,38 @@ function Desk() {
     const t = setInterval(refreshPurchase, 4000);
     return () => clearInterval(t);
   }, [session, refreshPurchase]);
+
+  /*
+   * The head's approval, with or without a key.
+   *
+   * A wallet refusal has to be distinguishable from a server refusal, because
+   * the first is somebody changing their mind at the extension prompt and the
+   * second is the purchase being wrong. Cancelling leaves the purchase exactly
+   * where it was, which is the correct outcome and needs saying rather than
+   * showing as a generic error.
+   */
+  const approveAsHead = useCallback(async (withWallet) => {
+    if (!withWallet) return act('approve', '/api/purchase/approve', {});
+
+    setActBusy('approve-signed');
+    setActError(null);
+    try {
+      const proof = await signApproval();
+      setActBusy('approve');
+      await api.post('/api/purchase/approve', proof);
+      await refreshPurchase();
+      await refreshStatusRef.current();
+    } catch (e) {
+      // 4001 is the wallet's own "user rejected request".
+      const cancelled = e && (e.code === 4001 || /reject|denied|cancel/i.test(e.message || ''));
+      setActError(cancelled
+        ? 'You cancelled the signature. Nothing was approved.'
+        : e.message);
+      await refreshPurchase();
+    } finally {
+      setActBusy(null);
+    }
+  }, [act, refreshPurchase]);
 
   const waitingOnMe = useMemo(() => {
     if (!session || !purchase) return null;
@@ -1529,7 +1614,7 @@ function Desk() {
                 busy={actBusy}
                 error={actError}
                 onPublishPolicy={() => act('policy', '/api/policy', {})}
-                onApprove={() => act('approve', '/api/purchase/approve', {})}
+                onApprove={(withWallet) => approveAsHead(withWallet)}
                 onReject={(reason) => act('reject', '/api/purchase/reject', { reason })}
               />
             )}

@@ -20,6 +20,8 @@ const decisionbrief = require('./decisionbrief');
 const authorization = require('./authorization');
 const identity = require('./identity');
 const payments = require('./payments');
+const deployments = require('./deployments');
+const approval = require('./approval');
 const grok = require('./grok');
 const documents = require('./documents');
 const pdf = require('./pdf');
@@ -408,6 +410,10 @@ app.get('/api/purchase', wrap(async (req, res) => {
     submittedBy: session.submittedBy, submittedAt: session.submittedAt,
     sentToHeadBy: session.sentToHeadBy, sentToHeadAt: session.sentToHeadAt,
     headApproval: session.headApproval,
+    // Whether a wallet is even possible here, so the head's screen can offer it
+    // rather than guessing, and finance can see which kind of proof it has.
+    signatureMethod: session.signature ? (session.signature.method || 'name') : null,
+    signerAddress: session.signature ? session.signature.address || null : null,
     rejection: session.rejection,
     receipt: session.receipt,
     /* Whether the approval still matches the purchase. Null when there is no
@@ -431,6 +437,30 @@ app.get('/api/purchase', wrap(async (req, res) => {
       releaseTx: (session.settlementFacts || {}).releaseTx || null,
     } : null,
   });
+}));
+
+/*
+ * The message the head is asked to sign.
+ *
+ * Built here rather than in the browser, and rebuilt identically when the
+ * signature comes back. If the client supplied the message, a head could be
+ * shown one thing and made to sign another, which is the exact attack typed
+ * data exists to prevent.
+ */
+app.get('/api/purchase/approval-payload', wrap(async (req, res) => {
+  const session = sessionFor(req);
+  guard(req, session, 'approve');
+  authorization.assertMayProceed(session, 'approve');
+  const { doc, termsHash, amount } = await packetFor(session);
+  res.json(approval.buildPayload({
+    chainId: chain.chainId,
+    verifyingContract: addresses.escrow,
+    workspace: session.id,
+    reference: doc.reference,
+    supplier: doc.supplier.name,
+    amount,
+    termsHash,
+  }));
 }));
 
 /** Sales: the agent has finished, raise it as a purchase. */
@@ -482,11 +512,40 @@ app.post('/api/purchase/approve', wrap(async (req, res) => {
     throw new Error(`This purchase is ${amount}, not ${req.body.amount}. Reload before approving.`);
   }
 
-  session.signature = documents.signAgreement(session, doc, req.actor.name);
+  /*
+   * A key signature if the head has a wallet, a typed name if not.
+   *
+   * Optional on purpose: the product promises that no wallet is required, and an
+   * approval nobody can produce is worth less than a weaker one that is honestly
+   * labelled. What is not optional is the labelling, so the method travels with
+   * the record and every document states it.
+   */
+  let proof = { method: 'name' };
+  if (req.body.signature) {
+    const payload = approval.buildPayload({
+      chainId: chain.chainId,
+      verifyingContract: addresses.escrow,
+      workspace: session.id,
+      reference: doc.reference,
+      supplier: doc.supplier.name,
+      amount,
+      termsHash,
+    });
+    const check = approval.verify(payload, req.body.signature, req.body.signerAddress);
+    // A signature that does not verify is a refusal, never a quiet downgrade to
+    // a typed name: somebody tried to prove something and failed, and recording
+    // the weaker artefact instead would bury that.
+    if (!check.ok) throw new Error(check.reason);
+    proof = { method: 'wallet', address: check.address, signature: req.body.signature };
+  }
+
+  session.signature = documents.signAgreement(session, doc, req.actor.name, proof);
   session.headApproval = {
     approver: req.actor.name,
     approvedAmount: amount,
     termsHash,
+    method: proof.method,
+    signerAddress: proof.address || null,
     at: new Date().toISOString(),
   };
 
@@ -497,7 +556,9 @@ app.post('/api/purchase/approve', wrap(async (req, res) => {
    * and unfunded, which is the honest outcome: a person said yes and the
    * policy said no.
    */
-  await audit(req, 'approve', 'HEAD_APPROVAL', { approvedAmount: amount, termsHash });
+  await audit(req, 'approve', 'HEAD_APPROVAL', {
+    approvedAmount: amount, termsHash, method: proof.method, signerAddress: proof.address || null,
+  });
 
   let funded = null;
   let contractError = null;
@@ -1478,9 +1539,36 @@ app.get('/api/document/verify/:reference', wrap(async (req, res) => {
   });
 }));
 
+/*
+ * Clearing a workspace.
+ *
+ * This was the one write with no guard on it at all, which sat oddly in a
+ * product whose entire pitch is that writes are guarded. Any signed-in role
+ * could wipe a purchase mid-approval: the head's decision, the escrow record and
+ * the documents, gone, with nothing refusing and nothing recorded.
+ *
+ * Two conditions now. It belongs to the team that raised the purchase, and it is
+ * only available while nothing is pending on somebody else's desk and no money
+ * is committed. The audit trail is appended before the state goes, and it lives
+ * outside the workspace, so the record of the reset outlives what it cleared.
+ */
 app.post('/api/reset', wrap(async (req, res) => {
+  const session = sessionFor(req);
+  guard(req, session, 'reset');
+  const from = authorization.purchaseState(session);
+  authorization.assertMayProceed(session, 'reset');
+
+  await workspace.recordAudit({
+    workspaceId: session.id,
+    actorName: req.actor.name,
+    actorRole: req.actor.role,
+    action: 'reset',
+    fromState: from,
+    toState: authorization.STATE.DRAFT,
+  });
+
   await workspace.resetSession(req);
-  res.json({ ok: true });
+  res.json({ ok: true, from });
 }));
 
 // serve the built frontend if present
@@ -1503,19 +1591,41 @@ async function boot() {
 
   await chain.init();
   console.log(`  EVM: ${chain.mode} (chainId ${chain.chainId})`);
-  addresses = await chain.deployAll();
-  console.log('  contracts deployed');
 
-  // register suppliers on-chain
-  for (const s of SUPPLIERS) {
-    const signer = chain.signerByAccount.get(s.walletIndex);
-    const wallet = signer ? await signer.getAddress()
-      : ethers.Wallet.createRandom().address;
-    supplierWallets[s.id] = wallet;
-    const tx = await chain.registry.registerSupplier(wallet, ethers.id(s.id));
-    await tx.wait();
+  /*
+   * Deploy or attach, decided rather than assumed.
+   *
+   * The in-process chain is new every boot, so its contracts must be too. A
+   * public network is the opposite: the contracts are already there, and
+   * deploying again would hand out fresh addresses, orphan every supplier
+   * reputation recorded against the old registry, and cost gas to do it. So the
+   * server attaches on a public network and refuses to start if nobody has
+   * deployed yet, rather than quietly doing the expensive wrong thing.
+   */
+  const plan = deployments.plan({ mode: chain.mode, chainId: chain.chainId, artifacts: chain.artifacts });
+
+  if (plan.action === 'refuse') {
+    throw new Error(plan.reason);
   }
-  console.log(`  ${SUPPLIERS.length} suppliers registered on-chain`);
+
+  if (plan.action === 'attach') {
+    addresses = chain.attachTo(plan.manifest.contracts);
+    Object.assign(supplierWallets, plan.manifest.suppliers || {});
+    console.log(`  contracts: attached, deployed ${plan.manifest.deployedAt}`);
+    const link = deployments.addressUrl(chain.chainId, addresses.escrow);
+    if (link) console.log(`  escrow:    ${link}`);
+  } else {
+    addresses = await chain.deployAll();
+    console.log('  contracts deployed');
+
+    for (const s of SUPPLIERS) {
+      const wallet = await chain.supplierAddressFor(s.id, s.walletIndex);
+      supplierWallets[s.id] = wallet;
+      const tx = await chain.registry.registerSupplier(wallet, ethers.id(s.id));
+      await tx.wait();
+    }
+    console.log(`  ${SUPPLIERS.length} suppliers registered on-chain`);
+  }
 
   /*
    * The legacy shared buyer is still funded, because the contract test suite
