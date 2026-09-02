@@ -12,11 +12,26 @@ const { getFreePort } = require('./freeport');
 // against a known account rather than whatever happened to be free.
 const AGENT_ACCOUNT = 10;
 
+/*
+ * The float each workspace buyer is given on the local chain. Large enough that
+ * a demo never runs dry, small enough to be obviously play money.
+ */
+const BUYER_FLOAT = 250000n * 1000000n; // 250,000 USDC at 6dp
+
+/*
+ * The well-known development phrase. It is published in every Ethereum tutorial
+ * and is not a secret, which is exactly why it is safe here and refused below
+ * on any real network.
+ */
+const DEV_MNEMONIC = 'test test test test test test test test test test test junk';
+
 class Chain {
   constructor() {
     this.ready = false;
     this.mode = 'in-process';
     this.warnings = [];
+    /** workspaceId -> { signer, address } */
+    this._buyers = new Map();
   }
 
   async init({ rpcUrl = process.env.RPC_URL, deployerKey = process.env.DEPLOYER_KEY } = {}) {
@@ -96,6 +111,19 @@ class Chain {
       }
     }
 
+    /*
+     * Where per-workspace buyer keys come from. On a public network the
+     * development phrase is refused outright rather than warned about: every
+     * address it derives is known to everyone, so using it would hand any
+     * observer the keys to every workspace.
+     */
+    this.buyerMnemonic = process.env.LIMEN_BUYER_MNEMONIC || DEV_MNEMONIC;
+    if (this.mode === 'rpc' && this.buyerMnemonic === DEV_MNEMONIC) {
+      throw new Error(
+        'LIMEN_BUYER_MNEMONIC must be set on a public network. The development phrase is public knowledge.'
+      );
+    }
+
     this.deployerAddress = await this.deployer.getAddress();
     this.buyerAddress = await this.buyer.getAddress();
     this.agentAddress = await this.agent.getAddress();
@@ -136,6 +164,111 @@ class Chain {
   async fundBuyer(amountUnits) {
     const tx = await this.usdc.mint(this.buyerAddress, amountUnits);
     await tx.wait();
+  }
+
+  /* ------------------------------------------------------ per-workspace buyers
+   *
+   * One buyer identity for the whole deployment was a correctness bug waiting
+   * for a second customer. The spending policy, the cumulative envelope and the
+   * escrow balance are all keyed on the buyer's address, so two workspaces
+   * sharing one address share one budget: the second customer's purchase eats
+   * the first customer's remaining allowance, and neither can see why.
+   *
+   * Each workspace now derives its own account. Deterministically, from a
+   * mnemonic and a stable index, so the same workspace resolves to the same
+   * address across restarts. That matters more than it sounds: the policy the
+   * head published yesterday has to still be the policy the contract reads
+   * today, and a random key per boot would silently orphan it.
+   */
+
+  /** Stable, uniform-ish index for a workspace id. Not a security boundary. */
+  static _index(workspaceId) {
+    let h = 2166136261;
+    for (let i = 0; i < workspaceId.length; i++) {
+      h ^= workspaceId.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    // Keep well inside a non-hardened BIP44 index.
+    return (h >>> 0) % 2147483647;
+  }
+
+  async buyerFor(workspaceId) {
+    const id = String(workspaceId || 'demo');
+    if (this._buyers.has(id)) return this._buyers.get(id);
+
+    const path = `m/44'/60'/0'/0/${Chain._index(id)}`;
+    const wallet = ethers.HDNodeWallet
+      .fromPhrase(this.buyerMnemonic, undefined, path)
+      .connect(this.provider);
+
+    /*
+     * Wrapped in a NonceManager, and this is not optional.
+     *
+     * The shared buyer used to be a JsonRpcSigner, which means the node held
+     * the key and assigned the nonce. A derived wallet signs raw transactions,
+     * so the nonce becomes ours to get right, and asking the node for the count
+     * before each send is not enough: the provider caches that answer for a few
+     * hundred milliseconds, so two transactions in quick succession both get
+     * the same number and the second is rejected with a nonce error that
+     * surfaces as an unreadable "could not coalesce error".
+     *
+     * The manager keeps the count locally and hands out the next one. Writes
+     * for a workspace are already serialised by the request lock, so there is
+     * exactly one sender per wallet at a time.
+     */
+    const managed = new ethers.NonceManager(wallet);
+
+    const rec = { workspaceId: id, signer: managed, address: wallet.address, wallet };
+    this._buyers.set(id, rec);
+    await this._prepareBuyer(rec);
+    return rec;
+  }
+
+  /*
+   * A freshly derived account holds nothing and has approved nobody, so it
+   * cannot pay gas and the escrow cannot pull its funds. On the local chain we
+   * top it up from the deployer and mint it a balance; on a public network that
+   * is the operator's job and this only checks and reports.
+   */
+  async _prepareBuyer(rec) {
+    if (this.mode === 'in-process') {
+      const gas = await this.provider.getBalance(rec.address);
+      if (gas < ethers.parseEther('1')) {
+        const funder = await this.provider.getSigner(0);
+        await (await funder.sendTransaction({ to: rec.address, value: ethers.parseEther('10') })).wait();
+      }
+      const bal = await this.usdc.balanceOf(rec.address);
+      if (bal < BUYER_FLOAT) {
+        await (await this.usdc.mint(rec.address, BUYER_FLOAT)).wait();
+      }
+    }
+
+    // The escrow pulls funds with transferFrom, so it needs an allowance from
+    // this specific buyer. Checked rather than assumed, because an approval that
+    // silently failed shows up much later as an unexplained revert on funding.
+    const usdc = this.contractAt('MockUSDC', await this.usdc.getAddress(), rec.signer);
+    const escrowAddress = await this.escrow.getAddress();
+    const allowance = await usdc.allowance(rec.address, escrowAddress);
+    if (allowance < BUYER_FLOAT) {
+      await (await usdc.approve(escrowAddress, BUYER_FLOAT)).wait();
+    }
+    rec.ready = true;
+    return rec;
+  }
+
+  async buyerBalance(address) {
+    return this.usdc.balanceOf(address);
+  }
+
+  /*
+   * A transaction that never reached the chain leaves the local count one ahead
+   * of the network's, and every later send from that wallet fails. Callers that
+   * catch a send failure ask for a resync rather than leaving the workspace
+   * permanently unable to transact.
+   */
+  resetBuyerNonce(workspaceId) {
+    const rec = this._buyers.get(String(workspaceId || 'demo'));
+    if (rec && rec.signer && typeof rec.signer.reset === 'function') rec.signer.reset();
   }
 
   async close() {

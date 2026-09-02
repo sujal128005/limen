@@ -14,12 +14,24 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 let WORKSPACE = (() => {
   const KEY = 'limen.workspace';
   try {
-    let id = sessionStorage.getItem(KEY);
+    /*
+     * localStorage, not sessionStorage.
+     *
+     * Three desks have to be looking at the same purchase: a head approving in
+     * one tab and a finance operator paying in another are two people at one
+     * company, not two unrelated visitors. sessionStorage is per tab, so each
+     * desk minted its own workspace and the head's screen sat empty while sales
+     * waited for a decision that had gone somewhere else.
+     *
+     * The isolation this replaces was between browsers, and that still holds:
+     * the id is random per browser and never leaves it.
+     */
+    let id = localStorage.getItem(KEY);
     if (!id) {
       const bytes = new Uint8Array(16);
       crypto.getRandomValues(bytes);
       id = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
-      sessionStorage.setItem(KEY, id);
+      localStorage.setItem(KEY, id);
     }
     return id;
   } catch (_) {
@@ -27,14 +39,34 @@ let WORKSPACE = (() => {
   }
 })();
 
-const headers = () => ({ 'content-type': 'application/json', 'x-workspace': WORKSPACE });
+/*
+ * The signed role token.
+ *
+ * Held in memory and nowhere else. Not localStorage, for two reasons: a demo
+ * whose point is that three different people sit at three different screens is
+ * better off returning to the door on refresh, and a credential that outlives
+ * the tab is one more place it can be read from.
+ *
+ * Note what this variable is not. It does not decide what the holder may do:
+ * the server reads the role out of the signature on every request and answers
+ * accordingly. Clearing it here logs someone out of the interface; it does not
+ * grant or remove any permission.
+ */
+let SESSION = null;
+const setSessionToken = (s) => { SESSION = s; };
+
+const headers = () => ({
+  'content-type': 'application/json',
+  'x-workspace': WORKSPACE,
+  ...(SESSION ? { authorization: `Bearer ${SESSION.token}` } : {}),
+});
 
 // Connecting a wallet binds this browser's workspace to the address, so a buyer
 // returns to their own run instead of a random one. It does not change who signs
 // on the local demo chain: that stays the funded demo account, and the UI says so.
 function bindWorkspaceToWallet(address) {
   WORKSPACE = 'w' + address.slice(2, 34).toLowerCase();
-  try { sessionStorage.setItem('limen.workspace', WORKSPACE); } catch (_) {}
+  try { localStorage.setItem('limen.workspace', WORKSPACE); } catch (_) {}
 }
 
 async function connectWallet() {
@@ -130,7 +162,7 @@ const api = {
 };
 
 async function fetchPdfBlob(path) {
-  const r = await fetch(path, { headers: { 'x-workspace': WORKSPACE } });
+  const r = await fetch(path, { headers: headers() });
   if (!r.ok) throw new Error('Could not generate the PDF.');
   return r.blob();
 }
@@ -397,8 +429,33 @@ function LimenMark({ size = 24 }) {
   );
 }
 
-function BrandMark() {
-  return <span className="brand-mark" aria-hidden="true">L</span>;
+/*
+ * The mark.
+ *
+ * A doorway with its threshold stone beneath it, which is what the word means:
+ * limen is the Latin for the stone at the base of a door, the line you cross to
+ * go from one place into another. The opening is the agent's work. The bar
+ * underneath is the line it does not cross on its own.
+ *
+ * It replaces a letter in a rounded square, which is the default every product
+ * reaches for and which says nothing about the product. Drawn on a 48 unit grid
+ * with square outer corners, because the shape has to hold at 16px in a browser
+ * tab: rounder and lighter versions dissolved into a smudge at that size, which
+ * is the only size most people will ever see it at.
+ */
+function BrandMark({ size = 26 }) {
+  return (
+    <svg
+      width={size} height={size} viewBox="0 0 48 48" fill="none"
+      className="brand-mark" aria-hidden="true"
+    >
+      <path
+        d="M6 33V13a4 4 0 0 1 4-4h28a4 4 0 0 1 4 4v20H33V20a3 3 0 0 0-3-3H18a3 3 0 0 0-3 3v13z"
+        fill="currentColor"
+      />
+      <rect x="4" y="36" width="40" height="7" rx="3.5" fill="currentColor" />
+    </svg>
+  );
 }
 
 /*
@@ -442,6 +499,521 @@ class Boundary extends React.Component {
   }
 }
 
+/* ----------------------------------------------------------------- roles */
+
+/*
+ * Three desks, three jobs.
+ *
+ * The list is duplicated from the server's permission table on purpose, and it
+ * is only ever used to decide what to draw. Nothing here is a control: a screen
+ * that omits a button is a screen that is easier to read, not a screen that is
+ * harder to bypass, and the server refuses the action either way. The tests
+ * prove that by sending each role at every other role's routes.
+ */
+const ROLE_DESKS = {
+  sales: {
+    label: 'Sales / Procurement',
+    short: 'Sales',
+    blurb: 'Runs the sourcing, reviews what the agent found, and sends it up for approval.',
+    home: 'run',
+    nav: ['run', 'review', 'suppliers', 'documents', 'ledger'],
+  },
+  head: {
+    label: 'Head / Manager',
+    short: 'Head',
+    blurb: 'Owns the spending policy and sanctions the amount. Does not pay.',
+    home: 'approvals',
+    nav: ['approvals', 'suppliers', 'documents', 'ledger'],
+  },
+  finance: {
+    label: 'Finance / Payments',
+    short: 'Finance',
+    blurb: 'Executes an authorised payment. Cannot raise one or approve one.',
+    home: 'payments',
+    nav: ['payments', 'documents', 'ledger'],
+  },
+};
+
+/*
+ * The door.
+ *
+ * A password would be theatre here: there are no accounts to hold one. What
+ * matters is that the choice made at this screen cannot be edited afterwards,
+ * and it cannot, because the server signs it and reads it back out of the
+ * signature rather than out of anything the browser sends.
+ */
+function RoleDoor({ onIn, busy, error }) {
+  const [role, setRole] = useState('sales');
+  const [name, setName] = useState('');
+
+  const submit = (e) => {
+    e.preventDefault();
+    onIn(role, name.trim());
+  };
+
+  return (
+    <div className="door">
+      <form className="door-card" onSubmit={submit}>
+        <div className="door-head">
+          <BrandMark />
+          <div>
+            <h1>Who is signing in?</h1>
+            <p>
+              A purchase passes through three pairs of hands. Pick the one you are
+              standing in for.
+            </p>
+          </div>
+        </div>
+
+        <div className="door-roles" role="radiogroup" aria-label="Role">
+          {Object.entries(ROLE_DESKS).map(([id, r]) => (
+            <button
+              type="button"
+              key={id}
+              role="radio"
+              aria-checked={role === id}
+              className={`door-role ${role === id ? 'on' : ''}`}
+              onClick={() => setRole(id)}
+            >
+              <span className="dr-label">{r.label}</span>
+              <span className="dr-blurb">{r.blurb}</span>
+            </button>
+          ))}
+        </div>
+
+        <label className="door-name">
+          <span>Your name, for the audit trail</span>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={ROLE_DESKS[role].label}
+            maxLength={80}
+          />
+        </label>
+
+        {error && <div className="door-err">{error}</div>}
+
+        <button className="btn btn-primary btn-lg" type="submit" disabled={busy}>
+          {busy ? 'Signing in' : `Continue as ${ROLE_DESKS[role].short}`}
+        </button>
+
+        <p className="door-foot">
+          Whatever you pick, the server decides what you may do. Every restricted
+          action is checked against a signed token, so a screen with a button
+          hidden is not the same thing as a permission you do not hold.
+        </p>
+      </form>
+    </div>
+  );
+}
+
+/*
+ * Where the purchase stands, and who is holding it.
+ *
+ * Rendered from the server's own answer rather than from anything this
+ * component works out for itself. Two opinions about the state of a purchase is
+ * one opinion too many, and the one that matters is the one that guards the
+ * money.
+ */
+function WorkflowRail({ progress, role }) {
+  if (!progress) return null;
+  const { stages, state } = progress;
+  return (
+    <div className={`wfrail ${progress.rejected ? 'rejected' : ''} ${progress.failed ? 'failed' : ''}`}>
+      <ol>
+        {stages.map((s) => (
+          <li
+            key={s.id}
+            className={[
+              s.done ? 'done' : '',
+              s.rejected ? 'rejected' : '',
+              s.failed ? 'failed' : '',
+              ROLE_DESKS[role] && ROLE_DESKS[role].short === s.owner ? 'mine' : '',
+            ].join(' ')}
+          >
+            <span className="wf-dot" aria-hidden="true">{s.done ? <Tick /> : null}</span>
+            <span className="wf-text">
+              <span className="wf-label">{s.label}</span>
+              <span className="wf-owner">{s.owner}</span>
+            </span>
+          </li>
+        ))}
+      </ol>
+      <span className="wf-state" title="Server-side workflow state">{state.replace(/_/g, ' ')}</span>
+    </div>
+  );
+}
+
+/* A labelled fact. Used across the approval and payment packets so the two
+   screens read as the same document seen from two desks. */
+function Fact({ k, v, mono, tone }) {
+  return (
+    <div className={`fact ${tone || ''}`}>
+      <span className="fact-k">{k}</span>
+      <span className={`fact-v ${mono ? 'mono' : ''}`}>{v}</span>
+    </div>
+  );
+}
+
+function CheckRow({ ok, label, detail }) {
+  return (
+    <li className={`chk ${ok ? 'yes' : 'no'}`}>
+      <span className="chk-mark" aria-hidden="true">{ok ? '✓' : '✕'}</span>
+      <span className="chk-label">{label}</span>
+      {detail && <span className="chk-detail">{detail}</span>}
+    </li>
+  );
+}
+
+/*
+ * The head's screen.
+ *
+ * Everything needed to sanction an amount, and nothing that belongs to another
+ * desk. There is no payment control here, and its absence is a convenience
+ * rather than a control: the server refuses a release from this role whether or
+ * not a button exists.
+ */
+function HeadApproval({ purchase, status, onApprove, onReject, onPublishPolicy, busy, error }) {
+  const [reason, setReason] = useState('');
+  const [rejecting, setRejecting] = useState(false);
+  const p = purchase;
+
+  if (!p || !p.supplier) {
+    return (
+      <div className="view-empty">
+        <h2>Nothing is waiting for you</h2>
+        <p>
+          When a purchase is sent up for approval it will appear here with the
+          supplier, the amount and the reasoning behind it.
+        </p>
+      </div>
+    );
+  }
+
+  const waiting = p.state === 'HEAD_APPROVAL';
+  const policy = p.policy || {};
+  const amount = p.requestedAmount;
+  const withinCap = policy.active && amount != null && amount <= policy.maxPerDeal;
+
+  return (
+    <div className="packet">
+      <div className="view-head">
+        <span className="eyebrow">Purchase request</span>
+        <h2>{p.reference || 'Awaiting a run'}</h2>
+        <p className="sub">
+          Raised by {p.submittedBy || 'sales'}
+          {p.sentToHeadAt ? ` and sent for approval ${new Date(p.sentToHeadAt).toLocaleString()}` : ''}.
+        </p>
+      </div>
+
+      <div className="packet-grid">
+        <Fact k="Supplier" v={p.supplier.name} />
+        <Fact k="Requested amount" v={usd(amount)} />
+        <Fact k="Quantity" v={`${p.quantityKg} kg`} />
+        <Fact k="Unit price" v={usd(p.unitPrice, 4)} />
+        <Fact k="Delivery" v={`${p.leadTimeDays} days`} />
+        <Fact k="Line" v={p.supplier.sku} mono />
+      </div>
+
+      <section className="packet-block">
+        <h3>Financial authorization</h3>
+        <ul className="chklist">
+          <CheckRow
+            ok={policy.active}
+            label="A spending policy is published"
+            detail={policy.active ? `Per-deal ceiling ${usd(policy.maxPerDeal)}` : 'You need to publish one before anything can be funded'}
+          />
+          <CheckRow
+            ok={withinCap}
+            label="The amount sits inside the per-deal ceiling"
+            detail={policy.active && amount != null ? `${usd(amount)} against ${usd(policy.maxPerDeal)}` : null}
+          />
+          <CheckRow
+            ok={policy.remaining >= amount}
+            label="The envelope across purchases still covers it"
+            detail={policy.active ? `${usd(policy.remaining)} remaining` : null}
+          />
+        </ul>
+        {!policy.active && (
+          <button className="btn btn-secondary" onClick={onPublishPolicy} disabled={!!busy}>
+            {busy === 'policy' ? 'Publishing' : 'Publish the spending policy'}
+          </button>
+        )}
+        <details className="tech">
+          <summary>Technical detail</summary>
+          <div className="packet-grid">
+            <Fact k="Policy source" v="Buyer policy, held in contract state" />
+            <Fact k="Policy owner" v={short(policy.owner || '')} mono />
+            <Fact k="Enforced by" v="ProcurementEscrow.createDeal" mono />
+            <Fact k="Network" v={status ? `EVM ${status.chainId}` : '-'} />
+          </div>
+        </details>
+      </section>
+
+      {error && <div className="act-err">{error}</div>}
+
+      {p.state === 'APPROVED' || p.state === 'FUNDED' ? (
+        <div className="packet-done ok">
+          <strong>Approved</strong>
+          <span>
+            {p.headApproval ? `${usd(p.headApproval.approvedAmount)} sanctioned by ${p.headApproval.approver}` : ''}
+            . It is now with finance to pay. You cannot release the payment, and neither can sales.
+          </span>
+        </div>
+      ) : p.state === 'REJECTED' ? (
+        <div className="packet-done no">
+          <strong>Rejected</strong>
+          <span>{p.rejection ? p.rejection.reason : ''}</span>
+        </div>
+      ) : !waiting ? (
+        <div className="packet-done">
+          <strong>Nothing to decide</strong>
+          <span>This purchase is at {p.state.replace(/_/g, ' ').toLowerCase()}.</span>
+        </div>
+      ) : rejecting ? (
+        <div className="packet-act">
+          <label className="field">
+            <span>Why are you turning it down?</span>
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              rows={2}
+              maxLength={300}
+              placeholder="The requester will see this."
+            />
+          </label>
+          <div className="packet-buttons">
+            <button className="btn btn-quiet" onClick={() => setRejecting(false)}>Back</button>
+            <button className="btn btn-danger" onClick={() => onReject(reason)} disabled={!!busy}>
+              {busy === 'reject' ? 'Recording' : 'Confirm rejection'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="packet-act">
+          <div className="packet-buttons">
+            <button className="btn btn-secondary" onClick={() => setRejecting(true)} disabled={!!busy}>
+              Reject
+            </button>
+            <button className="btn btn-primary btn-lg" onClick={onApprove} disabled={!!busy || !policy.active}>
+              {busy === 'approve' ? 'Approving' : `Approve ${usd(amount)}`}
+            </button>
+          </div>
+          <p className="packet-note">
+            Approving commits the funds to escrow under your published ceiling. It
+            does not pay the supplier: finance does that, on a separate screen.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/*
+ * The finance screen.
+ *
+ * A payment authorization summary and one action. The status line says READY
+ * only when the server says so, and READY is not what permits the payment: the
+ * release route re-checks the whole chain, asks the contract, and stops there
+ * if the contract refuses.
+ */
+function FinancePayments({ purchase, onRelease, busy, error }) {
+  const p = purchase;
+
+  if (!p || !p.supplier) {
+    return (
+      <div className="view-empty">
+        <h2>No payments are authorised</h2>
+        <p>An approved purchase with its receipt confirmed will appear here, ready to pay.</p>
+      </div>
+    );
+  }
+
+  const approved = p.headApproval;
+  const pay = p.payment;
+  const ready = p.state === 'PAYMENT_READY';
+  const statusLabel = pay ? pay.status.toUpperCase() : ready ? 'READY' : 'NOT READY';
+
+  return (
+    <div className="packet">
+      <div className="view-head">
+        <span className="eyebrow">Payment authorization</span>
+        <h2>{p.reference}</h2>
+        <p className="sub">Raised by {p.submittedBy || 'sales'}, approved by {approved ? approved.approver : 'nobody yet'}.</p>
+      </div>
+
+      <div className="packet-grid">
+        <Fact k="Supplier" v={p.supplier.name} />
+        <Fact k="Requested" v={usd(p.requestedAmount)} />
+        <Fact k="Head approved" v={approved ? usd(approved.approvedAmount) : 'Not approved'} />
+        <Fact k="Per-deal ceiling" v={p.policy ? usd(p.policy.maxPerDeal) : '-'} />
+      </div>
+
+      <section className="packet-block">
+        <h3>Authorization chain</h3>
+        <ul className="chklist">
+          <CheckRow ok={!!p.submittedAt} label="Raised by the requesting team" detail={p.submittedBy} />
+          <CheckRow ok={!!approved} label="Sanctioned by the head" detail={approved ? `${usd(approved.approvedAmount)} on ${new Date(approved.at).toLocaleDateString()}` : 'Not yet'} />
+          <CheckRow
+            ok={p.approvalCurrent !== false}
+            label="The approval still matches this purchase"
+            detail={p.approvalCurrent === false ? 'The terms moved after approval. It has to go back to the head.' : 'Commercial fingerprint unchanged'}
+          />
+          <CheckRow ok={!!p.receipt} label="Receipt confirmed by the requesting team" detail={p.receipt ? p.receipt.confirmedBy : 'Not yet'} />
+          <CheckRow ok={ready || !!pay} label="Contract authorization" detail="Checked against the buyer policy at the moment you press pay" />
+        </ul>
+      </section>
+
+      <div className={`paystate ${pay ? pay.status : ready ? 'ready' : 'blocked'}`}>
+        <span className="ps-k">Payment status</span>
+        <span className="ps-v">{statusLabel}</span>
+      </div>
+
+      {pay && (
+        <section className="packet-block">
+          <h3>Payment history</h3>
+          <div className="packet-grid">
+            <Fact k="Payout" v={pay.payoutId} mono />
+            <Fact k="Rail" v={pay.rail === 'razorpay' ? 'Razorpay' : 'Local test rail'} />
+            <Fact k="Amount" v={`${pay.currency} ${pay.amount}`} />
+            <Fact k="Created" v={new Date(pay.createdAt).toLocaleString()} />
+          </div>
+          {/* The escrow settles on chain in USDC and the payout rail instructs
+              in INR. No rate is applied between them, and inventing one for a
+              demo would be worse than saying so. */}
+          <p className="packet-note" style={{ textAlign: 'left' }}>
+            The escrow settles on chain in USDC; the payout is instructed on the
+            rail in {pay.currency}. No conversion rate is applied in this demo,
+            so the two figures are the same number in different units.
+          </p>
+          <ul className="evlist">
+            {(pay.events || []).length === 0 && <li className="ev pending">Waiting for the rail to report back.</li>}
+            {(pay.events || []).map((e, i) => (
+              <li key={i} className={`ev ${e.applied ? 'applied' : 'ignored'}`}>
+                <span className="ev-type mono">{e.type}</span>
+                <span className="ev-when">{new Date(e.at).toLocaleTimeString()}</span>
+                <span className="ev-note">{e.applied ? 'applied' : e.reason}</span>
+              </li>
+            ))}
+          </ul>
+          {pay.releaseTx && (
+            <details className="tech">
+              <summary>Technical detail</summary>
+              <div className="packet-grid">
+                <Fact k="Release transaction" v={short(pay.releaseTx)} mono />
+                <Fact k="Idempotency" v="Derived from the purchase and its approval" />
+              </div>
+            </details>
+          )}
+        </section>
+      )}
+
+      {error && <div className="act-err">{error}</div>}
+
+      {ready ? (
+        <div className="packet-act">
+          <button className="btn btn-primary btn-lg" onClick={onRelease} disabled={!!busy}>
+            {busy === 'release' ? 'Releasing' : `Release payment ${usd(p.requestedAmount)}`}
+          </button>
+          <p className="packet-note">
+            The server re-checks the whole chain and asks the contract before the
+            payment rail is contacted. If the contract refuses, no payout is created.
+          </p>
+        </div>
+      ) : (
+        <div className="packet-done">
+          <strong>{pay ? 'Nothing further to do' : 'Not payable yet'}</strong>
+          <span>
+            {pay
+              ? 'The payout has been instructed. The rail reports its own outcome.'
+              : `This purchase is at ${p.state.replace(/_/g, ' ').toLowerCase()}.`}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/*
+ * The sales review screen.
+ *
+ * The one place a requester hands the purchase on. It is deliberately thin:
+ * the reasoning already lives in the run, and repeating it here would invite
+ * someone to review a copy rather than the thing.
+ */
+function SalesReview({ purchase, onSubmit, onSendToHead, onConfirmReceipt, onOpenRun, busy, error }) {
+  const p = purchase;
+  if (!p || !p.supplier) {
+    return (
+      <div className="view-empty">
+        <h2>No purchase yet</h2>
+        <p>Run the sourcing first. What the agent recommends will appear here to send up for approval.</p>
+        <button className="btn btn-secondary" onClick={onOpenRun}>Go to the run</button>
+      </div>
+    );
+  }
+
+  const s = p.state;
+  return (
+    <div className="packet">
+      <div className="view-head">
+        <span className="eyebrow">My purchase</span>
+        <h2>{p.reference}</h2>
+        <p className="sub">{p.supplier.name}, {usd(p.requestedAmount)} for {p.quantityKg} kg.</p>
+      </div>
+
+      <div className="packet-grid">
+        <Fact k="State" v={s.replace(/_/g, ' ')} />
+        <Fact k="Submitted by" v={p.submittedBy || 'Not yet'} />
+        <Fact k="Sent to head" v={p.sentToHeadBy || 'Not yet'} />
+        <Fact k="Head decision" v={p.headApproval ? `Approved by ${p.headApproval.approver}` : p.rejection ? 'Rejected' : 'Pending'} />
+      </div>
+
+      {p.rejection && (
+        <div className="packet-done no">
+          <strong>Rejected by {p.rejection.approver}</strong>
+          <span>{p.rejection.reason}</span>
+        </div>
+      )}
+
+      {p.approvalCurrent === false && (
+        <div className="act-err">
+          The terms moved after approval, so the approval no longer authorises anything.
+          It has to go back to the head.
+        </div>
+      )}
+
+      {error && <div className="act-err">{error}</div>}
+
+      <div className="packet-act">
+        <div className="packet-buttons">
+          {s === 'AI_COMPLETED' && (
+            <button className="btn btn-primary btn-lg" onClick={onSubmit} disabled={!!busy}>
+              {busy === 'submit' ? 'Submitting' : 'Submit for approval'}
+            </button>
+          )}
+          {s === 'SALES_REVIEW' && (
+            <button className="btn btn-primary btn-lg" onClick={onSendToHead} disabled={!!busy}>
+              {busy === 'sendToHead' ? 'Sending' : 'Send to head for approval'}
+            </button>
+          )}
+          {s === 'FUNDED' && (
+            <button className="btn btn-primary btn-lg" onClick={onConfirmReceipt} disabled={!!busy}>
+              {busy === 'receipt' ? 'Confirming' : 'Confirm the goods arrived'}
+            </button>
+          )}
+        </div>
+        {s === 'HEAD_APPROVAL' && (
+          <p className="packet-note">Waiting on the head. You cannot approve your own request.</p>
+        )}
+        {s === 'PAYMENT_READY' && (
+          <p className="packet-note">Receipt confirmed. Finance can now release the payment; you cannot.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ------------------------------------------------------------------- app */
 
 export default function App() {
@@ -468,6 +1040,16 @@ function Desk() {
   const [escalation, setEscalation] = useState(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [entered, setEntered] = useState(false);
+
+  /* Who is at this desk, and what the server says about the purchase. Both come
+     from the server; neither is inferred here. */
+  const [session, setSession] = useState(null);
+  const [doorBusy, setDoorBusy] = useState(false);
+  const [doorError, setDoorError] = useState(null);
+  const [purchase, setPurchase] = useState(null);
+  const [view, setView] = useState('run');
+  const [actBusy, setActBusy] = useState(null);
+  const [actError, setActError] = useState(null);
   const [wallet, setWallet] = useState(null);
   const [entryError, setEntryError] = useState(null);
   const [summaryDoc, setSummaryDoc] = useState(null);
@@ -479,6 +1061,62 @@ function Desk() {
   // inferred from a button that never resolves.
   const [link, setLink] = useState('ok'); // ok | lost
 
+  /* Declared before the callbacks that reach for it. refreshStatus is defined
+     lower down, so the ref is the seam between them. */
+  const refreshStatusRef = useRef(async () => {});
+
+  const refreshPurchase = useCallback(async () => {
+    try { setPurchase(await api.get('/api/purchase')); } catch (_) { /* not signed in yet */ }
+  }, []);
+
+  const signIn = useCallback(async (role, name) => {
+    setDoorBusy(true);
+    setDoorError(null);
+    try {
+      const s = await api.post('/api/session/login', { role, name });
+      setSessionToken(s);
+      setSession(s);
+      setView(ROLE_DESKS[s.role].home);
+      await refreshPurchase();
+    } catch (e) {
+      setDoorError(e.message);
+    } finally {
+      setDoorBusy(false);
+    }
+  }, [refreshPurchase]);
+
+  /* Switching desks is switching people. The run itself is untouched: the same
+     workspace, seen by someone else, with a different set of permissions. */
+  const signOut = useCallback(() => {
+    setSessionToken(null);
+    setSession(null);
+    setPurchase(null);
+    setActError(null);
+  }, []);
+
+  /*
+   * One helper for every workflow action, because they all do the same three
+   * things: call the server, take its word for the new state, and show the
+   * refusal verbatim if it refuses. Nothing here decides whether the action was
+   * allowed.
+   */
+  const act = useCallback(async (label, path, body) => {
+    setActBusy(label);
+    setActError(null);
+    try {
+      const r = await api.post(path, body || {});
+      await refreshPurchase();
+      await refreshStatusRef.current();
+      return r;
+    } catch (e) {
+      setActError(e.message);
+      await refreshPurchase();
+      return null;
+    } finally {
+      setActBusy(null);
+    }
+  }, [refreshPurchase]);
+
   const refreshStatus = useCallback(async () => {
     try {
       setStatus(await api.get('/api/status'));
@@ -487,6 +1125,37 @@ function Desk() {
       if (e.offline || e.timeout) setLink('lost');
     }
   }, []);
+  refreshStatusRef.current = refreshStatus;
+
+  /*
+   * Which section, if any, is actually waiting on the person at this desk.
+   * Read off the server's state rather than guessed, so the dot cannot claim
+   * something is pending that the server would refuse.
+   */
+  /*
+   * The purchase is polled rather than pushed. Four seconds is slow enough to
+   * be invisible and fast enough that a head approving on one screen shows up
+   * on the finance screen before anyone reaches for the mouse. A payout also
+   * settles asynchronously, so there is a real change to notice even when
+   * nobody is clicking.
+   */
+  useEffect(() => {
+    if (!session) return undefined;
+    refreshPurchase();
+    const t = setInterval(refreshPurchase, 4000);
+    return () => clearInterval(t);
+  }, [session, refreshPurchase]);
+
+  const waitingOnMe = useMemo(() => {
+    if (!session || !purchase) return null;
+    const s = purchase.state;
+    if (session.role === 'head') return s === 'HEAD_APPROVAL' ? 'approvals' : null;
+    if (session.role === 'finance') return s === 'PAYMENT_READY' ? 'payments' : null;
+    if (session.role === 'sales') {
+      return ['AI_COMPLETED', 'SALES_REVIEW', 'FUNDED'].includes(s) ? 'review' : null;
+    }
+    return null;
+  }, [session, purchase]);
 
   // Quiet heartbeat. Cheap, and it means the banner clears itself the moment
   // the server comes back rather than waiting for the next user action.
@@ -770,6 +1439,15 @@ function Desk() {
     );
   }
 
+  if (entered && !session) {
+    return (
+      <>
+        <Aura stage="entry" />
+        <RoleDoor onIn={signIn} busy={doorBusy} error={doorError} />
+      </>
+    );
+  }
+
   if (!entered) {
     return (
       <>
@@ -799,11 +1477,26 @@ function Desk() {
     >
       <Aura stage={stage} />
 
-      <LiveActivity
+      <TopBar
+        onHome={() => { setEntered(false); window.scrollTo({ top: 0, behavior: 'auto' }); }}
+        status={status}
+        wallet={wallet}
         busy={busy}
         counts={{ listings: candidates?.length || 0, suppliers: status?.supplierCount || 0 }}
-        needsApproval={rec?.status === 'recommended' && !signature?.signed && !deal}
-        settled={!!release}
+        /*
+         * Driven by the server's state, not by this desk's local run.
+         *
+         * The old expression read `rec && !signature && !deal`, which are all
+         * pieces of the sourcing run that only sales performs. On the head and
+         * finance desks those are empty, so the island announced that the agent
+         * had stopped and needed a signature while sitting above a purchase
+         * that had already settled.
+         */
+        needsApproval={purchase ? ['AI_COMPLETED', 'SALES_REVIEW', 'HEAD_APPROVAL'].includes(purchase.state) : false}
+        settled={purchase ? purchase.state === 'SETTLED' : !!release}
+        onPalette={() => setPaletteOpen(true)}
+        session={session}
+        onSwitchDesk={signOut}
       />
 
       {link === 'lost' && (
@@ -814,16 +1507,55 @@ function Desk() {
       )}
 
       <div className="root">
-        <Sidebar
-          reachedIndex={reachedIndex}
-          status={status}
-          wallet={wallet}
-          busy={busy}
-          onHome={() => { setEntered(false); window.scrollTo({ top: 0, behavior: 'auto' }); }}
+        <NavRail
+          active={view}
+          role={session.role}
+          onSelect={setView}
+          flag={waitingOnMe}
         />
 
         <main className="canvas">
+          {/* The rail replaces the eight-stage stepper on every desk but the
+              run itself, because outside the run the question is not which
+              step the agent is on but whose hands the purchase is in. */}
+          {view === 'run'
+            ? <StageStepper reachedIndex={reachedIndex} onJump={(id) => scrollToAnchor(id)} />
+            : <div className="wfbar"><WorkflowRail progress={purchase && purchase.progress} role={session.role} /></div>}
           <div className="canvas-inner">
+            {view === 'approvals' && (
+              <HeadApproval
+                purchase={purchase}
+                status={status}
+                busy={actBusy}
+                error={actError}
+                onPublishPolicy={() => act('policy', '/api/policy', {})}
+                onApprove={() => act('approve', '/api/purchase/approve', {})}
+                onReject={(reason) => act('reject', '/api/purchase/reject', { reason })}
+              />
+            )}
+
+            {view === 'payments' && (
+              <FinancePayments
+                purchase={purchase}
+                busy={actBusy}
+                error={actError}
+                onRelease={() => act('release', '/api/purchase/release', {})}
+              />
+            )}
+
+            {view === 'review' && (
+              <SalesReview
+                purchase={purchase}
+                busy={actBusy}
+                error={actError}
+                onOpenRun={() => setView('run')}
+                onSubmit={() => act('submit', '/api/purchase/submit', {})}
+                onSendToHead={() => act('sendToHead', '/api/purchase/send-to-head', {})}
+                onConfirmReceipt={() => act('receipt', '/api/purchase/confirm-receipt', {})}
+              />
+            )}
+
+            {view === 'run' && (<>
             {/* No word prefix on this banner. It carries a refused constraint,
                 a chain error and a network failure alike, and a word like
                 "Blocked" is only true for the first of those. */}
@@ -899,12 +1631,16 @@ function Desk() {
 
             {release && <SettlementPanel release={release} rec={rec} deal={deal} />}
             {settlementDoc && <SettlementRecord doc={settlementDoc} onPreview={setPreview} />}
+            </>)}
 
             <Disclosure />
           </div>
         </main>
 
-        <aside className="ledger" aria-label="Run context">
+        {/* Context rail. What you check while deciding, not what you read
+            once. The settlement section is where the Razorpay payout state
+            will land, so it already has a home rather than needing one. */}
+        <aside className="ctx" aria-label="Run context">
           <Ledger status={status} rec={rec} deal={deal} release={release} />
         </aside>
       </div>
@@ -945,6 +1681,154 @@ function Desk() {
 
       {preview && <PdfPreview {...preview} onClose={() => setPreview(null)} />}
     </div>
+  );
+}
+
+/* ============================================================ APP SHELL ==
+ *
+ * The old interface was one long scrolling document with a stage list down the
+ * side. Everything worked, but it read as a report about a purchase rather
+ * than an application that makes one, and the eight stages gave a first-time
+ * viewer nowhere to stand.
+ *
+ * This is a product shell instead: a top bar that always says where you are
+ * and what environment you are in, a nav rail, a stepper that fits on one
+ * line, one work column, and a context rail carrying the things you check
+ * while deciding rather than the things you read once.
+ *
+ * The centre column still reveals the run as it happens, because that
+ * narrative is the best thing about the product and a static dashboard would
+ * throw it away. What changed is that the frame around it holds still.
+ * ======================================================================== */
+
+function TopBar({ onHome, status, wallet, busy, counts, needsApproval, settled, onPalette, session, onSwitchDesk }) {
+  const env = status?.mode === 'in-process' || !status?.mode ? 'Test environment' : status.mode;
+  return (
+    <header className="topbar">
+      <button type="button" className="tb-brand" onClick={onHome} title="Back to the home page">
+        <BrandMark />
+        <span className="tb-name">Limen</span>
+      </button>
+
+      <span className="tb-sep" aria-hidden="true" />
+
+      <span className="tb-crumb">
+        <span className="tb-crumb-k">Workspace</span>
+        <span className="tb-crumb-v mono">{wallet ? short(wallet) : 'Demo'}</span>
+      </span>
+
+      {/* Who is at this desk. Named rather than iconographic, because the whole
+          demo turns on the reader knowing which of three people is acting. */}
+      {session && (
+        <button type="button" className={`tb-who ${session.role}`} onClick={onSwitchDesk} title="Switch desk">
+          <span className="tb-who-role">{ROLE_DESKS[session.role].short}</span>
+          <span className="tb-who-name">{session.name}</span>
+        </button>
+      )}
+
+      {/* The island lives in the bar now. Floating over the page it was a
+          notification; docked in the chrome it reads as the product's own
+          status line, which is what it always was. */}
+      <div className="tb-live">
+        <LiveActivity busy={busy} counts={counts} needsApproval={needsApproval} settled={settled} />
+      </div>
+
+      {/* Reads as a field rather than a button, because that is what it opens.
+          The glyph and the shortcut are the two things that make a search
+          affordance recognisable without a label being read at all. */}
+      <button type="button" className="tb-cmd" onClick={onPalette} title="Search suppliers, documents and steps">
+        <svg className="tb-cmd-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="1.8" />
+          <path d="M16 16l4.5 4.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        </svg>
+        <span className="tb-cmd-label">Search</span>
+        <kbd>Ctrl K</kbd>
+      </button>
+
+      <span className={`tb-env ${status?.ready ? 'ok' : 'wait'}`}>
+        <span className="tb-env-dot" aria-hidden="true" />
+        {/* Wrapped rather than left as a bare text node: on a phone the chip
+            collapses to its dot, and a text node cannot be hidden by a rule. */}
+        <span className="tb-env-label">{status?.ready ? env : 'Starting'}</span>
+      </span>
+
+      <ThemeSwitch />
+    </header>
+  );
+}
+
+/*
+ * The sections, keyed by id.
+ *
+ * Which of them a given desk shows comes from ROLE_DESKS, so the rail describes
+ * a job rather than listing every screen the application happens to contain.
+ * Finance has no reason to look at a negotiation transcript, and a rail that
+ * offers it anyway is a rail that has stopped meaning anything.
+ */
+const NAV_ITEMS = {
+  run: { label: 'Procurement run', d: 'M4 12h4l3-7 4 14 3-7h2' },
+  review: { label: 'My purchase', d: 'M4 6h16M4 12h16M4 18h10' },
+  approvals: { label: 'Approvals', d: 'M4 12.5l5 5L20 6.5' },
+  payments: { label: 'Payments', d: 'M3 7h18v10H3zM3 11h18M7 15h3' },
+  suppliers: { label: 'Suppliers', d: 'M4 19V9l6-4 6 4v10M9 19v-5h4v5' },
+  documents: { label: 'Documents', d: 'M7 4h7l4 4v12H7zM14 4v4h4' },
+  ledger: { label: 'Ledger', d: 'M5 5h14v14H5zM5 10h14M10 10v9' },
+};
+
+function NavRail({ active = 'run', onSelect, role = 'sales', flag }) {
+  const ids = (ROLE_DESKS[role] || ROLE_DESKS.sales).nav;
+  return (
+    <nav className="rail2" aria-label="Sections">
+      {ids.map((id) => ({ id, ...NAV_ITEMS[id] })).map((n) => (
+        <button
+          key={n.id}
+          type="button"
+          className={`rail2-item ${active === n.id ? 'on' : ''}`}
+          onClick={() => onSelect && onSelect(n.id)}
+          title={n.label}
+          aria-current={active === n.id ? 'page' : undefined}
+        >
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d={n.d} stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <span>{n.label}</span>
+          {/* One dot, only where something is actually waiting on this desk. */}
+          {flag === n.id && <span className="rail2-flag" aria-label="Waiting on you" />}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+/*
+ * The stepper replaces the tall stage list. Eight items on one line, so the
+ * shape of the whole run is visible without scrolling and without owning a
+ * column. The human checkpoint is drawn heavier than the rest because it is
+ * the only step that cannot proceed without a person.
+ */
+function StageStepper({ reachedIndex, onJump }) {
+  return (
+    <ol className="runsteps" aria-label="Run progress">
+      {STAGES.map((s, i) => {
+        const state = i < reachedIndex ? 'done' : i === reachedIndex ? 'now' : 'todo';
+        const gate = s.id === 'approve';
+        // Not "gate". That class already belongs to the approval card, which is
+        // an amber panel with a border and a shadow, so every render of this
+        // rail drew a filled amber box around step 06 whether or not the run
+        // had reached it. Modifiers on this rail are namespaced.
+        return (
+          <li key={s.id} className={`runstep ${state} ${gate ? 'runstep-gate' : ''}`}>
+            <button type="button" className="runstep-hit" onClick={() => onJump && onJump(s.id)} title={`${s.label}, ${s.by}`}>
+              <span className="runstep-dot" aria-hidden="true">{state === 'done' ? <Tick /> : s.n}</span>
+              <span className="runstep-text">
+                <span className="runstep-label">{s.label}</span>
+                <span className="runstep-by">{s.by}</span>
+              </span>
+            </button>
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 
@@ -1102,54 +1986,6 @@ function ThemeSwitch({ compact = false }) {
   );
 }
 
-function Sidebar({ reachedIndex, status, wallet, busy, onHome }) {
-  return (
-    <aside className="sidebar">
-      {/* The mark is the way back. People reach for a product's name in the
-          corner expecting it to go home, and until now it was inert text.
-          Leaving the run untouched matters: this returns to the landing page,
-          it does not discard what the agent has already done. */}
-      <button type="button" className="side-brand" onClick={onHome} title="Back to the home page">
-        <BrandMark />
-        <span>
-          <span className="brand-name">Limen</span>
-          <span className="brand-role">Sourcing desk</span>
-        </span>
-      </button>
-
-      <div className="rail-head">Sourcing run</div>
-      <ol className="rail">
-        {STAGES.map((st, i) => {
-          const state = i < reachedIndex ? 'done' : i === reachedIndex ? 'current' : '';
-          return (
-            <li key={st.id} className={`rail-item ${state} ${st.enforced ? 'enforced' : ''}`}>
-              <span className="rail-idx">{i < reachedIndex ? '✓' : st.n}</span>
-              <span>
-                <span className="rail-name">{st.label}</span>
-                <span className="rail-actor">{st.by}</span>
-              </span>
-            </li>
-          );
-        })}
-      </ol>
-
-      <div className="side-foot">
-        <ThemeSwitch compact />
-        <div className="netchip">
-          <span className={`netdot ${status?.ready ? '' : 'idle'} ${busy ? 'live' : ''}`} />
-          <span>{status?.ready ? `EVM, chain ${status.chainId}` : 'Starting the chain'}</span>
-        </div>
-        {status && (
-          <div className="idchip" title={wallet ? `Connected wallet ${wallet}` : `Demo workspace, buyer ${status.buyer}`}>
-            <span className="id-mode">{wallet ? 'Wallet' : 'Demo workspace'}</span>
-            <span className="id-addr mono">{short(wallet || status.buyer)}</span>
-            <span className="id-bal">{usd0(status.buyerBalanceUsdc)} <small style={{ fontSize: 11, color: 'var(--ink-4)', fontWeight: 500 }}>USDC</small></span>
-          </div>
-        )}
-      </div>
-    </aside>
-  );
-}
 
 /* ------------------------------------------------------- mandate chain --
  *
@@ -1600,10 +2436,16 @@ function Entry({ status, onWallet, onDemo, error, ready }) {
           ))}
         </div>
 
-        <p className="hp-hands-foot">
-          The policy record keys off <code>msg.sender</code>, so an agent writing a policy can only
-          ever write its own. Escalation is not a check that might be missed. It cannot be expressed.
-        </p>
+        {/* The wrapper is the band's column; the paragraph inside it is the
+            measure. Combining both jobs on one element centred a 74ch box in a
+            1240px band and left this sentence floating in the middle of the
+            page, indented from every other line in the section. */}
+        <div className="hp-hands-foot">
+          <p>
+            The policy record keys off <code>msg.sender</code>, so an agent writing a policy can only
+            ever write its own. Escalation is not a check that might be missed. It cannot be expressed.
+          </p>
+        </div>
       </section>
 
       <section className="hp-fail">
@@ -3621,7 +4463,9 @@ function LiveActivity({ busy, counts, needsApproval, settled }) {
       return { tone: 'done', key: 'settled', title: 'Settled', sub: 'Funds released and the supplier record updated', step: null, total: null };
     }
     if (needsApproval) {
-      return { tone: 'stop', key: 'approve', title: 'Your decision', sub: 'The agent has stopped here. Review the brief and sign to continue.', step: null, total: null };
+      /* Short enough to fit the docked capsule without an ellipsis, and true on
+         all three desks: only one of them can act, and it is never the agent. */
+      return { tone: 'stop', key: 'approve', title: 'Waiting on a person', sub: 'The agent has gone as far as it can.', step: null, total: null };
     }
     return null;
   }, [busy, counts.listings, counts.suppliers, needsApproval, settled]);
@@ -3909,20 +4753,25 @@ function GlobalVoice({ stage, context, onAnswer }) {
           <VoiceOrb level={voice.level} active={voice.listening} thinking={state === 'thinking'} size={52} />
         </button>
 
+        {/* The inner wrapper is what the collapse animates against. A grid
+            column can go from 0fr to 1fr smoothly; the flex row inside it
+            cannot, and display: none cannot be transitioned at all. */}
         <div className="gv-side">
-          <span className="gv-hint">
-            {state === 'listening' ? (voice.heard || 'Listening')
-              : state === 'thinking' ? 'Working it out'
-              : wake ? 'Say "Hey Rationale"' : 'Hold space to talk'}
-          </span>
-          <label className="gv-wake" title="Listen continuously for the wake phrase">
-            <input type="checkbox" checked={wake} onChange={(e) => setWake(e.target.checked)} />
-            <span>Wake word</span>
-          </label>
-          <label className="gv-wake" title="Read answers aloud">
-            <input type="checkbox" checked={speakBack} onChange={(e) => setSpeakBack(e.target.checked)} />
-            <span>Speak</span>
-          </label>
+          <div className="gv-side-in">
+            <span className="gv-hint">
+              {state === 'listening' ? (voice.heard || 'Listening')
+                : state === 'thinking' ? 'Working it out'
+                : wake ? 'Say "Hey Rationale"' : 'Hold space to talk'}
+            </span>
+            <label className="gv-wake" title="Listen continuously for the wake phrase">
+              <input type="checkbox" checked={wake} onChange={(e) => setWake(e.target.checked)} />
+              <span>Wake word</span>
+            </label>
+            <label className="gv-wake" title="Read answers aloud">
+              <input type="checkbox" checked={speakBack} onChange={(e) => setSpeakBack(e.target.checked)} />
+              <span>Speak</span>
+            </label>
+          </div>
         </div>
       </div>
 

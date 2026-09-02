@@ -7,6 +7,18 @@
 # This runs a persistent Node process on purpose. The chain is an in-process
 # EVM, so a serverless target such as Vercel or Netlify functions cannot host
 # this: there is no process to keep the chain alive between requests.
+#
+# One instance for now, but no longer because it has to be. Workspaces,
+# approvals, payment records and the audit trail live in Postgres, and writes
+# take a per-workspace lock with an optimistic version check behind it, so a
+# second instance would be correct rather than catastrophic. Staying at one is a
+# cost decision, not a correctness one.
+#
+# Boot compiles the contracts with solc, deploys three of them and registers
+# fifteen suppliers on chain. That takes a few seconds and peaks near 290MB, so
+# it fits the free instance, but a free instance also sleeps after inactivity
+# and pays that cost again on the next request. For a judged demo, open the URL
+# a minute before you present.
 
 services:
   - type: web
@@ -20,10 +32,51 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "20"
-      # Set these in the Render dashboard, not here. Never commit a key.
+
+      # Signs the role tokens. Left unset, a random secret is minted at boot,
+      # which means every restart signs all three desks out mid-demo. Use
+      # generateValue so Render creates one once and keeps it across deploys.
+      - key: LIMEN_SESSION_SECRET
+        generateValue: true
+
+      # Where state lives. Without it the server runs on the in-memory adapter
+      # and says so at boot, and every purchase is lost when the instance
+      # sleeps. Point it at any Postgres: Neon and Supabase both have free tiers
+      # that do not expire the way Render's own free database does.
+      - key: DATABASE_URL
+        sync: false
+
+      # Derives one on-chain buyer wallet per workspace. There is no default on
+      # a public network: the development phrase is published in every tutorial,
+      # so the server refuses to start with it rather than deriving keys anyone
+      # can regenerate. Ignored entirely on the local chain.
+      - key: LIMEN_BUYER_MNEMONIC
+        sync: false
+
+      # sync: false means "set this in the dashboard, never in the repo".
+      # Every one of these is a secret. None may ever reach the browser.
       - key: LLM_API_KEY
         sync: false
       - key: LLM_BASE_URL
         sync: false
       - key: LLM_MODEL
+        sync: false
+
+      # Payments. Leave all four unset and payouts run on the local rail, which
+      # exercises the same code path including the webhook. Set them to move the
+      # demo onto Razorpay test mode.
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_ACCOUNT_NUMBER
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+
+      # A JSON map of supplier id to Razorpay fund account id. Empty by default,
+      # because a fund account is a real record against verified bank details
+      # and there is no honest way to seed one. A payout for a supplier with no
+      # entry is refused before it reaches the rail.
+      - key: RAZORPAY_FUND_ACCOUNTS
         sync: false

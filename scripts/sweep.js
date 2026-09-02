@@ -25,15 +25,49 @@ function check(name, ok, detail) {
   return false;
 }
 
-async function call(method, path, body) {
+/*
+ * The sweep drives the whole workflow, so it holds all three tokens and
+ * presents whichever one owns the route it is calling, exactly as three people
+ * at three screens would. It never sends a role: it sends a signed token and
+ * the server reads the role out of the signature.
+ */
+const TOKENS = {};
+
+function roleFor(path) {
+  if (/^\/api\/(brief|candidates|negotiate|recommend)$/.test(path)) return 'sales';
+  if (/^\/api\/purchase\/(submit|send-to-head|confirm-receipt)$/.test(path)) return 'sales';
+  if (path === '/api/deal/deliver') return 'sales';
+  if (path === '/api/policy' || path === '/api/document/sign') return 'head';
+  if (path === '/api/deal' || /^\/api\/purchase\/(approve|reject)$/.test(path)) return 'head';
+  if (path === '/api/deal/release' || path === '/api/purchase/release') return 'finance';
+  return 'sales'; // reads: every role holds them
+}
+
+async function call(method, path, body, opts) {
+  const o = opts || {};
+  const ws = o.workspace || WS;
+  const token = o.token !== undefined ? o.token : (o.tokens || TOKENS)[roleFor(path)];
   const res = await fetch(BASE + path, {
     method,
-    headers: { 'content-type': 'application/json', 'x-workspace': WS },
+    headers: {
+      'content-type': 'application/json',
+      'x-workspace': ws,
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+    },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const type = res.headers.get('content-type') || '';
   const payload = type.includes('json') ? await res.json() : Buffer.from(await res.arrayBuffer());
   return { status: res.status, body: payload, type };
+}
+
+async function signIn(workspace, into) {
+  for (const [role, name] of [['sales', 'S. Negi'], ['head', 'A Buyer'], ['finance', 'F. Operator']]) {
+    const r = await call('POST', '/api/session/login', { role, name }, { workspace, token: null });
+    if (!r.body.token) throw new Error(`login failed for ${role}: ${JSON.stringify(r.body)}`);
+    into[role] = r.body.token;
+  }
+  return into;
 }
 
 const REQUEST = 'I need 500 kg of bottle-grade PET resin. Budget is $1,200 total. Delivery within 14 days. Must be FDA food-contact certified.';
@@ -52,8 +86,14 @@ async function waitForChain() {
 (async () => {
   console.log('sweep against ' + BASE + ' workspace ' + WS + '\n');
 
-  console.log('Status and catalogue');
+  console.log('Sign-in');
   const status = await waitForChain();
+  await signIn(WS, TOKENS);
+  check('three roles can sign in', !!(TOKENS.sales && TOKENS.head && TOKENS.finance));
+  const anon = await call('POST', '/api/brief', { text: REQUEST }, { token: null });
+  check('an unsigned caller cannot start a run', anon.status >= 400, String(anon.status));
+
+  console.log('\nStatus and catalogue');
   check('status reports a ready chain', status.ready === true);
   check('status names a chain id', Number.isFinite(status.chainId));
   check('status counts suppliers and listings', status.supplierCount > 0 && status.listingCount > 0,
@@ -135,15 +175,20 @@ async function waitForChain() {
   const pdf = await call('GET', '/api/document/agreement.pdf');
   check('agreement PDF is a real PDF', Buffer.isBuffer(pdf.body) && pdf.body.slice(0, 5).toString() === '%PDF-');
 
-  const signed = await call('POST', '/api/document/sign', { signer: 'A Buyer' });
-  check('signing records a signer', signed.status === 200 && signed.body.signer === 'A Buyer');
-  check('signing records a content hash', typeof signed.body.hash === 'string' && signed.body.hash.length > 0);
-  const badSign = await call('POST', '/api/document/sign', { signer: '' });
-  check('an empty signature is refused', badSign.status >= 400);
+  // Signing used to happen here, at any state, by anyone, under any name typed
+  // into the body. It is now the head's act at the point the workflow waits for
+  // it, so it has moved into the approval chain below.
+  const earlySign = await call('POST', '/api/document/sign', {});
+  check('the agreement cannot be signed before it is sent for approval', earlySign.status >= 400,
+    earlySign.body.error);
+  const salesSign = await call('POST', '/api/document/sign', {}, { token: TOKENS.sales });
+  check('sales cannot sign the agreement', salesSign.status >= 400, salesSign.body.error);
 
   console.log('\nAuthority and the spending ceiling');
   const policy = await call('POST', '/api/policy', {});
-  check('policy publishes', policy.status === 200);
+  check('policy publishes', policy.status === 200, policy.body.error);
+  const salesPolicy = await call('POST', '/api/policy', {}, { token: TOKENS.sales });
+  check('sales cannot publish the spending ceiling', salesPolicy.status >= 400, salesPolicy.body.error);
   const afterPolicy = await call('GET', '/api/status');
   check('policy ceiling matches the stated budget', afterPolicy.body.policy && afterPolicy.body.policy.maxPerDeal === 1200,
     JSON.stringify(afterPolicy.body.policy));
@@ -159,15 +204,60 @@ async function waitForChain() {
     String(escalate.body.buyerCapAfter));
   check('the raised self-cap still cannot spend', escalate.body.spendRejected === true);
 
+  console.log('\nThe approval chain');
+  const st0 = await call('GET', '/api/purchase');
+  check('a finished run sits at AI_COMPLETED', st0.body.state === 'AI_COMPLETED', st0.body.state);
+
+  const jump = await call('POST', '/api/purchase/send-to-head', {});
+  check('a purchase cannot skip sales review', jump.status >= 400, jump.body.error);
+
+  const submitted = await call('POST', '/api/purchase/submit', {});
+  check('sales submits the run for review', submitted.status === 200 && submitted.body.state === 'SALES_REVIEW',
+    JSON.stringify(submitted.body));
+  check('the submission records who made it', !!submitted.body.submittedBy);
+
+  const sent = await call('POST', '/api/purchase/send-to-head', {});
+  check('sales sends it to the head', sent.status === 200 && sent.body.state === 'HEAD_APPROVAL', sent.body.state);
+
+  const selfApprove = await call('POST', '/api/purchase/approve', {}, { token: TOKENS.sales });
+  check('sales cannot approve its own purchase', selfApprove.status >= 400, selfApprove.body.error);
+
+  const wrongAmount = await call('POST', '/api/purchase/approve', { amount: 999 });
+  check('the head cannot approve an amount the purchase does not contain', wrongAmount.status >= 400,
+    wrongAmount.body.error);
+
+  const approved = await call('POST', '/api/purchase/approve', {});
+  check('the head approves', approved.status === 200, JSON.stringify(approved.body).slice(0, 200));
+  check('the approval records the sanctioned amount', approved.body.approval && approved.body.approval.approvedAmount === 1175,
+    JSON.stringify(approved.body.approval));
+  check('approving commits the funds to escrow', !!approved.body.funded && !!approved.body.funded.dealId,
+    approved.body.contractError || 'no funding');
+  check('approving does not pay anyone', approved.body.state === 'FUNDED', approved.body.state);
+
   console.log('\nSettlement');
-  const deal = await call('POST', '/api/deal', {});
-  check('escrow is funded', deal.status === 200 && !!deal.body.dealId);
-  const delivered = await call('POST', '/api/deal/deliver', {});
-  check('delivery is confirmed', delivered.status === 200);
+  const earlyPay = await call('POST', '/api/purchase/release', {});
+  check('finance cannot pay before receipt is confirmed', earlyPay.status >= 400, earlyPay.body.error);
+
+  const delivered = await call('POST', '/api/purchase/confirm-receipt', {});
+  check('sales confirms receipt', delivered.status === 200, delivered.body.error);
+  check('confirming receipt makes it payable', delivered.body.state === 'PAYMENT_READY', delivered.body.state);
+  check('the receipt records who confirmed it', !!(delivered.body.receipt && delivered.body.receipt.confirmedBy));
+
+  const salesPay = await call('POST', '/api/purchase/release', {}, { token: TOKENS.sales });
+  check('sales cannot release the payment', salesPay.status >= 400, salesPay.body.error);
+  const headPay = await call('POST', '/api/purchase/release', {}, { token: TOKENS.head });
+  check('the head cannot release the payment', headPay.status >= 400, headPay.body.error);
+
   const released = await call('POST', '/api/deal/release', {});
-  check('payment is released', released.status === 200 && !!released.body.txHash);
+  check('finance releases the payment', released.status === 200 && !!released.body.txHash,
+    JSON.stringify(released.body).slice(0, 200));
   check('escrow is emptied by the release', Number(released.body.escrowBalance) === 0, String(released.body.escrowBalance));
   check('supplier reputation is updated on release', !!released.body.reputation);
+  // A created payout is an accepted instruction, not money in an account.
+  check('the purchase is processing, not settled', released.body.state === 'PAYMENT_PROCESSING', released.body.state);
+  check('a payout id is persisted for reconciliation', !!(released.body.payment && released.body.payment.payoutId));
+  const doublePay = await call('POST', '/api/purchase/release', {});
+  check('the payment cannot be released twice', doublePay.status >= 400, doublePay.body.error);
 
   const settle = await call('GET', '/api/document/settlement');
   check('settlement record is built', settle.status === 200 && !!settle.body.reference);
@@ -203,14 +293,9 @@ async function waitForChain() {
   // supposed to walk away rather than talk itself into a bad purchase, so this
   // checks the refusal is clean all the way out to the document route.
   const nd = 'nodeal-' + Date.now().toString(36);
-  const ncall = async (m, p2, b) => {
-    const r = await fetch(BASE + p2, {
-      method: m,
-      headers: { 'content-type': 'application/json', 'x-workspace': nd },
-      body: b === undefined ? undefined : JSON.stringify(b),
-    });
-    return { status: r.status, body: await r.json() };
-  };
+  const NT = {};
+  await signIn(nd, NT);
+  const ncall = (m, p2, b) => call(m, p2, b, { workspace: nd, tokens: NT });
   await ncall('POST', '/api/brief', { text: 'I need 500 kg of bottle-grade PET resin. Budget is $200 total. Delivery within 3 days. Must be FDA food-contact certified.' });
   await ncall('POST', '/api/candidates');
   const nneg = await ncall('POST', '/api/negotiate');
@@ -235,14 +320,9 @@ async function waitForChain() {
    * exist so that can never quietly come back.
    */
   const gate = 'gate-' + Date.now().toString(36);
-  const gcall = async (m, p2, b) => {
-    const r = await fetch(BASE + p2, {
-      method: m,
-      headers: { 'content-type': 'application/json', 'x-workspace': gate },
-      body: b === undefined ? undefined : JSON.stringify(b),
-    });
-    return { status: r.status, body: await r.json() };
-  };
+  const GT = {};
+  await signIn(gate, GT);
+  const gcall = (m, p2, b, o) => call(m, p2, b, { workspace: gate, tokens: GT, ...(o || {}) });
   const gRun = async () => {
     await gcall('POST', '/api/brief', { text: REQUEST });
     await gcall('POST', '/api/candidates');
@@ -253,9 +333,16 @@ async function waitForChain() {
   await gRun();
   const balBefore = (await gcall('GET', '/api/status')).body.buyerBalanceUsdc;
 
-  const fundUnsigned = await gcall('POST', '/api/deal', {});
-  check('funding without a signature is refused', fundUnsigned.status >= 400, String(fundUnsigned.status));
-  check('the refusal says approval is missing', /approv/i.test(fundUnsigned.body.error || ''), fundUnsigned.body.error);
+  // With no credential at all: the shape of the original bypass.
+  for (const p2 of ['/api/deal', '/api/deal/deliver', '/api/deal/release']) {
+    const r = await gcall('POST', p2, {}, { token: null });
+    check('an unsigned caller is refused at ' + p2, r.status >= 400, String(r.status));
+  }
+
+  const fundUnapproved = await gcall('POST', '/api/deal', {});
+  check('funding without an approval is refused', fundUnapproved.status >= 400, String(fundUnapproved.status));
+  check('the refusal says approval is missing', /approv/i.test(fundUnapproved.body.error || ''),
+    fundUnapproved.body.error);
 
   const deliverUnfunded = await gcall('POST', '/api/deal/deliver', {});
   check('delivery on an unfunded deal is refused', deliverUnfunded.status >= 400);
@@ -267,18 +354,25 @@ async function waitForChain() {
     `${balBefore} -> ${balAfterAttack}`);
 
   // An approval belongs to the terms it was given. A new run is new terms.
-  await gcall('POST', '/api/document/sign', { signer: 'A Buyer' });
+  const toHead = async () => {
+    await gcall('POST', '/api/purchase/submit', {});
+    await gcall('POST', '/api/purchase/send-to-head', {});
+  };
+  await gcall('POST', '/api/policy', {});
+  await toHead();
+  await gcall('POST', '/api/purchase/approve', {});
   await gRun();
   const staleApproval = await gcall('POST', '/api/deal', {});
   check('an approval from an earlier run does not authorise a new one', staleApproval.status >= 400,
     String(staleApproval.status));
 
   // And the honest path still works, which is the half that matters.
-  const signOk = await gcall('POST', '/api/document/sign', { signer: 'A Buyer' });
-  check('signing succeeds on the current terms', signOk.status === 200);
-  const fundOk = await gcall('POST', '/api/deal', {});
-  check('funding succeeds once approved', fundOk.status === 200 && !!fundOk.body.dealId,
-    JSON.stringify(fundOk.body).slice(0, 80));
+  await toHead();
+  const approveOk = await gcall('POST', '/api/purchase/approve', {});
+  check('approving succeeds on the current terms', approveOk.status === 200,
+    JSON.stringify(approveOk.body).slice(0, 120));
+  check('funding succeeds once approved', !!(approveOk.body.funded && approveOk.body.funded.dealId),
+    approveOk.body.contractError || 'no funding');
   check('delivery succeeds on a funded deal', (await gcall('POST', '/api/deal/deliver', {})).status === 200);
   const relOk = await gcall('POST', '/api/deal/release', {});
   check('release succeeds after delivery', relOk.status === 200 && !!relOk.body.txHash);
@@ -308,14 +402,9 @@ async function waitForChain() {
   // table, so each one is asked for in a workspace standing at that step
   // rather than all four at the end.
   const briefWs = 'brief-' + Date.now().toString(36);
-  const bcall = async (m, p, b) => {
-    const r = await fetch(BASE + p, {
-      method: m,
-      headers: { 'content-type': 'application/json', 'x-workspace': briefWs },
-      body: b === undefined ? undefined : JSON.stringify(b),
-    });
-    return { status: r.status, body: await r.json() };
-  };
+  const BT = {};
+  await signIn(briefWs, BT);
+  const bcall = (m, p, b) => call(m, p, b, { workspace: briefWs, tokens: BT });
   await bcall('POST', '/api/brief', { text: REQUEST });
   await bcall('POST', '/api/candidates');
   await bcall('POST', '/api/negotiate');
@@ -325,12 +414,16 @@ async function waitForChain() {
     ['policy', () => bcall('POST', '/api/policy', {})],
     // Signing is part of advancing now: the server refuses to fund an
     // unapproved purchase, which is the whole point of the gate above.
+    // Advancing is the whole workflow now: sales raises it, the head sanctions
+    // it, and only then is there anything to fund. The server refuses every
+    // shortcut, which is the point of the gate above.
     ['fund', async () => {
-      await bcall('POST', '/api/document/sign', { signer: 'A Buyer' });
-      return bcall('POST', '/api/deal', {});
+      await bcall('POST', '/api/purchase/submit', {});
+      await bcall('POST', '/api/purchase/send-to-head', {});
+      return bcall('POST', '/api/purchase/approve', {});
     }],
-    ['deliver', () => bcall('POST', '/api/deal/deliver', {})],
-    ['release', () => bcall('POST', '/api/deal/release', {})],
+    ['deliver', () => bcall('POST', '/api/purchase/confirm-receipt', {})],
+    ['release', () => bcall('POST', '/api/purchase/release', {})],
   ];
   for (const [point, advance] of steps) {
     const b = await bcall('POST', '/api/decision-brief', { point });

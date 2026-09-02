@@ -36,6 +36,12 @@
 
 /* Non-colour tokens. Identical in both themes, so they live on their own. */
 :root {
+  /* The bar's height is a layout constant: four sticky elements below it offset
+     themselves by exactly this, so it cannot be a number typed six times. It is
+     60 rather than 56 because the activity island docks inside the bar, and in
+     its expanded form the island is 58px tall. */
+  --bar-h: 64px;
+
   /* ---- type. No web font is fetched: the product must run with no network.
      The modern system UI faces are excellent and load instantly. */
   --sans: "Inter", "Inter var", -apple-system, BlinkMacSystemFont,
@@ -44,9 +50,10 @@
 
   /* ---- radius. Controls read as instruments, panels read as paper. */
   --r-xs: 4px;
-  --r-sm: 6px;
-  --r-md: 10px;
-  --r-lg: 14px;
+  --r-sm: 8px;
+  --r-md: 14px;
+  --r-lg: 20px;
+  --r-pill: 100px;
 
   /* ---- motion. Four durations, two curves. */
   --t-fast:  150ms;   /* hover, focus, press */
@@ -58,9 +65,9 @@
   --spring:    cubic-bezier(.34, 1.56, .48, 1);
 
   /* ---- layout */
-  --side-w:   258px;
-  --ledger-w: 316px;
-  --read:     880px;
+  --side-w:   200px;
+  --ledger-w: 330px;
+  --read:     960px;
 }
 
 /* ============================================================== themes ====
@@ -175,11 +182,17 @@
 [data-theme="dark"] {
   color-scheme: dark;
 
-  --canvas:      #101317;
-  --canvas-deep: #0B0E11;
+  /* The canvas sits well below the surfaces rather than beside them. At the
+     old #101317 the page and the cards on it were seven values apart, which is
+     invisible: the whole workspace read as one flat sheet with hairlines drawn
+     on it. Dropping the canvas rather than lifting the cards keeps every
+     measured contrast ratio below intact, since text on a surface has not
+     moved and text on the canvas has more room, not less. */
+  --canvas:      #0A0D10;
+  --canvas-deep: #06090B;
   --surface:     #171B20;
   --surface-2:   #1C2127;
-  --sunk:        #14181C;
+  --sunk:        #12161A;
 
   --ink:    #ECEAE5;   /* 15.49:1 on canvas */
   --ink-2:  #B4BCC4;   /*  9.69:1 */
@@ -224,7 +237,7 @@
   --scrim-soft: rgba(0,0,0,.45);
   --lip: inset 0 1px 0 rgba(255,255,255,.05);
   --sidebar-veil: linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.012));
-  --bar-veil: rgba(16,19,23,.9);
+  --bar-veil: rgba(10,13,16,.88);
 
   --doc-bg: #191D22;
 
@@ -398,158 +411,332 @@ button { font: inherit; color: inherit; }
 [data-stage="settle"]    .aura .a1 { opacity: 1; }
 [data-stage="settle"]    .aura .a2 { opacity: .25; }
 
-/* ================================================================= shell == */
+/* ================================================================= shell ==
+
+   A product frame rather than a document. Top bar, nav rail, one work column
+   and a context rail. The frame holds still; only the work column moves.
+   ========================================================================= */
+
+.app-chrome { position: relative; z-index: 1; }
+
+/* --------------------------------------------------------------- top bar */
+
+.topbar {
+  position: sticky; top: 0; z-index: 60;
+  display: flex; align-items: center; gap: 14px;
+  height: var(--bar-h); padding: 0 16px 0 14px;
+  background: var(--bar-veil);
+  backdrop-filter: blur(14px) saturate(1.3);
+  border-bottom: 1px solid var(--hair);
+}
+
+.tb-brand {
+  display: flex; align-items: center; gap: 9px;
+  background: none; border: 0; cursor: pointer; font: inherit; color: inherit;
+  padding: 6px 8px; margin-left: -8px; border-radius: var(--r-sm);
+  transition: background var(--t-fast) var(--ease);
+}
+.tb-brand:hover { background: var(--sunk); }
+.tb-brand:focus-visible { outline: 2px solid var(--pine); outline-offset: 2px; }
+.tb-name { font-size: 15px; font-weight: 640; letter-spacing: -.024em; }
+
+.tb-sep { width: 1px; height: 20px; background: var(--hair-strong); flex: none; }
+
+.tb-crumb { display: flex; align-items: baseline; gap: 7px; flex: none; }
+.tb-crumb-k { font-size: 11.5px; color: var(--ink-4); }
+.tb-crumb-v { font-size: 12.5px; color: var(--ink-2); }
+
+/* The island sits here and centres itself in whatever room is left. */
+.tb-live { flex: 1 1 auto; min-width: 0; display: flex; justify-content: center; }
+
+/* A search field, not a chip. It was 92px of grey with the word "Search" set in
+   the same weight and colour as the crumb beside it, so it read as a label
+   rather than something to click. It now has the width, the glyph and the
+   resting sunken surface a field is recognised by, and it says what it
+   searches on focus rather than only in a title attribute. */
+.tb-cmd {
+  display: flex; align-items: center; gap: 8px; flex: none;
+  width: 210px; padding: 0 8px 0 11px; height: 34px;
+  border-radius: var(--r-pill);
+  background: var(--sunk); border: 1px solid var(--hair-strong);
+  color: var(--ink-3); font: inherit; font-size: 13px; cursor: pointer;
+  transition: border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease),
+              background var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+.tb-cmd:hover {
+  border-color: var(--ink-4); color: var(--ink-2); background: var(--surface);
+}
+.tb-cmd:focus-visible {
+  outline: none; border-color: var(--pine); color: var(--ink-2);
+  background: var(--surface); box-shadow: 0 0 0 3px var(--pine-wash);
+}
+.tb-cmd-ico { width: 15px; height: 15px; flex: none; opacity: .8; }
+.tb-cmd-label { color: inherit; flex: 1 1 auto; text-align: left; }
+.tb-cmd kbd {
+  font: inherit; font-size: 10.5px; font-weight: 560; color: var(--ink-4);
+  padding: 2px 6px; border-radius: 5px; flex: none;
+  background: var(--surface-2); border: 1px solid var(--hair);
+}
+
+/* The island shrinks with its slot before anything else in the bar gives way,
+   and steps aside entirely on a phone, where the rail below already carries
+   the run's position. */
+.di-shell { min-width: 0; }
+/*
+ * The bar gained a "who is at this desk" chip, and the island was the thing
+ * that paid for it: at 1200px both its title and its subtitle were clipped
+ * mid-word. The island is the least load-bearing thing here, since the workflow
+ * rail directly beneath says the same thing with more room, so it is the first
+ * to go rather than the last.
+ */
+@media (max-width: 1120px) { .tb-cmd { width: 150px; } .tb-cmd-label { display: none; } }
+@media (max-width: 1240px) { .tb-live { display: none; } }
+@media (max-width: 560px) {
+  /* The role still shows. It is the one word on this bar that changes what the
+     screen below is allowed to do. */
+  .tb-who-name { display: none; }
+  .tb-env { padding: 6px; gap: 0; }
+  .tb-env-label { display: none; }
+}
+
+.tb-env {
+  display: inline-flex; align-items: center; gap: 7px; flex: none;
+  font-size: 11.5px; font-weight: 560; letter-spacing: .01em;
+  padding: 5px 11px; border-radius: 100px;
+  background: var(--amber-wash); color: var(--amber);
+  border: 1px solid var(--amber-line);
+}
+.tb-env-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.tb-env.ok { background: var(--pine-wash); color: var(--pine); border-color: var(--pine-line); }
+.tb-env.wait .tb-env-dot { animation: breathe 1.6s var(--ease) infinite; }
+
+
+/* ---- Recovered primitives ------------------------------------------------
+   The shell rewrite removed the sidebar block wholesale, and these lived
+   inside it. .offline, .dotpulse and the fatal card had no rules at all even
+   before that, so an error state rendered as bare text. */
+
+/* The mark is a shape now, not a letter in a box, so it takes the accent
+   colour directly and carries no container of its own. A tile behind a logo is
+   what a product does when the logo cannot hold its own weight. */
+.brand-mark { flex: none; color: var(--pine); display: block; }
+.brand-name { display: block; font-size: 15.5px; font-weight: 620; letter-spacing: -.026em; line-height: 1.1; }
+.brand-role { display: block; font-size: 12px; color: var(--ink-3); letter-spacing: -.004em; margin-top: 2px; }
+
+.panel-title { font-size: 14.5px; font-weight: 640; letter-spacing: -.016em; }
+
+.netdot { width: 7px; height: 7px; border-radius: 50%; background: var(--pine); flex: none; }
+.netdot.idle { background: var(--ink-4); }
+.netdot.live { animation: breathe 2s var(--ease) infinite; }
+
+/* Connection lost. Sits under the top bar rather than over the content. */
+.offline {
+  position: sticky; top: var(--bar-h); z-index: 55;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 9px 16px; font-size: 13px; font-weight: 540;
+  background: var(--amber-wash); color: var(--amber);
+  border-bottom: 1px solid var(--amber-line);
+}
+.dotpulse {
+  width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none;
+  animation: breathe 1.4s var(--ease) infinite;
+}
+
+/* The render fallback. It has to look deliberate: a blank page where money is
+   in escrow reads as money lost. */
+.fatal { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+.fatal-card {
+  max-width: 520px; padding: 28px; border-radius: var(--r-lg);
+  background: var(--surface); border: 1px solid var(--hair); box-shadow: var(--e3);
+  display: grid; gap: 12px;
+}
+.fatal-card h2 { font-size: 20px; letter-spacing: -.024em; }
+.fatal-card p { font-size: 14px; color: var(--ink-2); line-height: 1.6; }
+.fatal-detail {
+  font-family: var(--mono); font-size: 12px; color: var(--ink-3);
+  padding: 10px 12px; border-radius: var(--r-sm);
+  background: var(--sunk); border: 1px solid var(--hair);
+  white-space: pre-wrap; word-break: break-word;
+}
+
+/* ------------------------------------------------------------- nav rail */
 
 .root {
   position: relative; z-index: 1;
   display: grid;
-  grid-template-columns: var(--side-w) minmax(0, 1fr) var(--ledger-w);
-  min-height: 100%;
+  grid-template-columns: 200px minmax(0, 1fr) var(--ledger-w);
   align-items: start;
 }
 
-/* ------------------------------------------------------------- sidebar --- */
-
-.sidebar {
-  position: sticky; top: 0; height: 100vh;
-  display: flex; flex-direction: column;
-  padding: 20px 16px 16px 20px;
+.rail2 {
+  position: sticky; top: var(--bar-h);
+  height: calc(100vh - var(--bar-h));
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 16px 12px;
   border-right: 1px solid var(--hair);
-  background: var(--sidebar-veil);
-  backdrop-filter: blur(8px);
 }
+.rail2-item {
+  display: flex; align-items: center; gap: 11px;
+  padding: 9px 11px; border-radius: var(--r-sm);
+  background: none; border: 0; cursor: pointer; font: inherit;
+  font-size: 13.5px; font-weight: 520; color: var(--ink-2);
+  text-align: left; width: 100%;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.rail2-item svg { width: 18px; height: 18px; flex: none; }
+.rail2-item:hover { background: var(--sunk); color: var(--ink); }
+.rail2-item.on { background: var(--pine-wash); color: var(--pine); font-weight: 600; }
+.rail2-item:focus-visible { outline: 2px solid var(--pine); outline-offset: -2px; }
 
-/* A button now, so it needs the button reset as well as the layout. The hit
-   area keeps its old padding at the bottom, but the hover treatment is pulled
-   in tight around the mark and the words rather than washing the gap below. */
-.side-brand {
-  display: flex; align-items: center; gap: 10px;
-  padding: 6px 8px; margin: -4px -8px 16px;
-  background: none; border: 0; cursor: pointer;
-  text-align: left; color: inherit; font: inherit;
-  border-radius: var(--r-sm);
-  transition: background var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
-}
-.side-brand:hover { background: var(--sunk); }
-.side-brand:active { transform: scale(.985); }
-.side-brand:focus-visible { outline: 2px solid var(--pine); outline-offset: 2px; }
-.side-brand:hover .brand-mark { box-shadow: var(--e2); }
-.brand-mark {
-  width: 26px; height: 26px; flex: none; border-radius: var(--r-sm);
-  background: var(--invert-bg); color: var(--invert-fg);
-  display: grid; place-items: center;
-  font-size: 13px; font-weight: 650; letter-spacing: -.03em;
-  box-shadow: var(--e1);
-}
-.brand-name { display: block; font-size: 15.5px; font-weight: 620; letter-spacing: -.026em; line-height: 1.1; }
-.brand-role { display: block; font-size: 12px; color: var(--ink-3); letter-spacing: -.004em; margin-top: 2px; }
+/* -------------------------------------------------------------- stepper */
 
-.rail-head {
-  font-size: 12px; font-weight: 620; text-transform: uppercase; letter-spacing: .09em;
-  color: var(--ink-4); padding: 0 4px 10px;
+/* Laid out as a rail rather than eight cells in a row.
+ *
+ * The first version gave every step `flex: 1 1 0`, so all eight were forced to
+ * the same width and the label sat beside the dot. That left 54px for text.
+ * "Recommendation" needs 105px, so half the rail rendered as "Reco...",
+ * "Negoti...", "Settlem...". A progress tracker whose step names are unreadable
+ * is worse than no tracker, since the reader cannot even tell 02 from 03.
+ *
+ * Stacking the label under the dot buys the full column width for the text, and
+ * `flex-shrink: 0` means a step never compresses below its own label: when the
+ * eight genuinely do not fit, the rail scrolls, which is honest, rather than
+ * truncating, which is not.
+ */
+.runsteps {
+  position: sticky; top: var(--bar-h); z-index: 40;
+  list-style: none; margin: 0; padding: 12px clamp(18px, 3vw, 34px) 11px;
+  display: flex; gap: 0; align-items: stretch;
+  background: var(--bar-veil); backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--hair);
+  overflow-x: auto; scrollbar-width: none;
 }
+.runsteps::-webkit-scrollbar { display: none; }
+.runstep { flex: 1 0 auto; min-width: 0; position: relative; }
 
-.rail { list-style: none; margin: 0; padding: 0; }
-
-/* A stage is a row with a marker, a name and the party responsible for it.
-   The three actors (you, the agent, the contract) are the spine of the story,
-   so the actor tag is never dropped, even at narrow widths. */
-.rail-item {
-  position: relative;
-  display: grid; grid-template-columns: 26px minmax(0,1fr); gap: 11px;
-  align-items: center;
-  padding: 7px 8px; margin: 1px 0;
-  border-radius: var(--r-sm);
-  color: var(--ink-4);
-  transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+/* The connector belongs to the step on its right, drawn leftward from the dot,
+   so the rail never grows a tail past the last step. */
+.runstep + .runstep::before {
+  content: ""; position: absolute; z-index: 0;
+  top: 17px; right: 50%; left: -50%; height: 1.5px;
+  background: var(--hair-strong);
+  transition: background var(--t-mid) var(--ease);
 }
-/* connector between markers */
-.rail-item::before {
-  content: ""; position: absolute; left: 20.5px; top: 34px; bottom: -2px;
-  width: 2px; background: var(--hair-strong); border-radius: 1px;
-  transition: background var(--t-major) var(--ease);
-}
-.rail-item:last-child::before { display: none; }
+.runstep.done::before, .runstep.now::before { background: var(--pine); }
 
-.rail-idx {
+.runstep-hit {
+  position: relative; z-index: 1;
+  width: 100%; display: grid; justify-items: center; gap: 5px;
+  padding: 4px 8px 3px; border-radius: var(--r-sm);
+  background: none; border: 0; cursor: pointer; font: inherit; text-align: center;
+  transition: background var(--t-fast) var(--ease);
+}
+.runstep-hit:hover { background: var(--sunk); }
+.runstep-hit:focus-visible { outline: 2px solid var(--pine); outline-offset: -2px; }
+.runstep-dot {
   width: 26px; height: 26px; border-radius: 50%; flex: none;
-  display: grid; place-items: center; position: relative;
-  border: 1.5px dashed var(--hair-strong); background: var(--canvas);
-  font-size: 11.5px; font-weight: 650; color: var(--ink-4);
-  font-variant-numeric: tabular-nums; letter-spacing: -.02em;
-  transition: background var(--t-mid) var(--ease), border-color var(--t-mid) var(--ease),
-              color var(--t-mid) var(--ease), box-shadow var(--t-mid) var(--ease);
+  display: grid; place-items: center;
+  font-size: 10.5px; font-weight: 640;
+  border: 1.5px solid var(--hair-strong); color: var(--ink-4);
+  /* Opaque, so the connector passes behind the dot rather than through it. */
+  background: var(--canvas);
+  transition: all var(--t-mid) var(--ease);
 }
-.rail-name { display: block; font-size: 14px; font-weight: 500; line-height: 1.25; }
-.rail-actor {
-  display: block;
-  font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: .07em;
-  color: var(--ink-4); margin-top: 2px; line-height: 1.2;
+.runstep-dot svg { width: 11px; height: 11px; }
+.runstep-text { display: grid; gap: 1px; justify-items: center; min-width: 0; }
+.runstep-label {
+  font-size: 12px; font-weight: 560; color: var(--ink-3); line-height: 1.25;
+  white-space: nowrap;
 }
-
-.rail-item.done { color: var(--ink-2); }
-.rail-item.done .rail-idx {
-  background: var(--pine); border: 1.5px solid var(--pine); color: var(--on-accent);
-  animation: markSet var(--t-major) var(--ease) both;
-}
-.rail-item.done::before { background: var(--pine-line); }
-@keyframes markSet {
-  0%   { transform: scale(.86); }
-  55%  { transform: scale(1.06); }
-  100% { transform: scale(1); }
+.runstep-by {
+  font-size: 9.5px; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--ink-4); line-height: 1.4;
 }
 
-.rail-item.current { color: var(--ink); background: var(--glass); box-shadow: var(--e1); }
-.rail-item.current .rail-name { font-weight: 620; }
-.rail-item.current .rail-actor { color: var(--pine); }
-.rail-item.current .rail-idx {
-  border: 1.5px solid var(--pine); color: var(--pine); background: var(--pine-wash);
+.runstep.done .runstep-dot { background: var(--pine); border-color: var(--pine); color: var(--on-accent); }
+.runstep.done .runstep-label { color: var(--ink-2); }
+.runstep.now .runstep-dot {
+  border-color: var(--pine); color: var(--pine); background: var(--pine-wash);
+  box-shadow: 0 0 0 4px var(--pine-wash);
 }
-/* One quiet ring on the live stage. It breathes; it does not spin. */
-.rail-item.current .rail-idx::after {
-  content: ""; position: absolute; inset: -5px; border-radius: 50%;
-  border: 1.5px solid var(--pine); opacity: 0;
-  animation: ring 2.6s var(--ease) infinite;
+.runstep.now .runstep-label { color: var(--ink); font-weight: 640; }
+.runstep.now .runstep-by { color: var(--pine); }
+
+/* The checkpoint is the only step a person must perform, so it is drawn
+   heavier than its neighbours whenever the run is standing on it. */
+.runstep.runstep-gate.now .runstep-dot {
+  border-color: var(--amber); color: var(--amber); background: var(--amber-wash);
+  box-shadow: 0 0 0 4px var(--amber-wash);
 }
-@keyframes ring {
-  0%   { opacity: .34; transform: scale(.9); }
-  70%  { opacity: 0;   transform: scale(1.14); }
-  100% { opacity: 0;   transform: scale(1.14); }
+.runstep.runstep-gate.now .runstep-by { color: var(--amber); }
+/* Before the run arrives, the checkpoint is marked but not shouted: a tinted
+   ring on the number, so a reader can see in advance where they will be asked
+   to act without it competing with the step the run is actually on. */
+.runstep.runstep-gate:not(.now):not(.done) .runstep-dot {
+  border-color: var(--amber-line); color: var(--amber);
 }
+.runstep.runstep-gate:not(.now) .runstep-by { color: var(--amber); opacity: .78; }
 
-/* A stage the contract controls is marked, because that is the claim. */
-.rail-item.enforced .rail-actor { color: var(--ink-2); }
-.rail-item.enforced.current .rail-actor { color: var(--pine); }
+/* -------------------------------------------------------------- canvas */
 
-.side-foot { margin-top: auto; padding-top: 16px; display: grid; gap: 8px; }
-
-.netchip {
-  display: flex; align-items: center; gap: 8px;
-  padding: 8px 10px; border-radius: var(--r-sm);
-  background: var(--glass-soft); border: 1px solid var(--hair);
-  font-size: 12.5px; color: var(--ink-2); font-variant-numeric: tabular-nums;
+.canvas { min-width: 0; padding-bottom: 120px; }
+/* The explicit minmax(0, 1fr) is load-bearing. A grid column defaults to a
+   min-content floor, so on a phone the widest panel on the page, the agreement,
+   pushed the column to 408px inside a 390px viewport and every section on the
+   canvas inherited that width and hung off the right edge. Pinning the minimum
+   at 0 makes the panels fit the screen instead of the screen fitting them. */
+.canvas-inner {
+  max-width: var(--read); margin: 0 auto;
+  padding: 28px clamp(18px, 3vw, 34px) 0;
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 30px;
 }
-.netdot { width: 7px; height: 7px; border-radius: 50%; background: var(--pine); flex: none; }
-.netdot.idle { background: var(--ink-4); }
-.netdot.live { animation: breathe 2s var(--ease) infinite; }
-@keyframes breathe { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+.canvas-inner > * { min-width: 0; }
 
-.idchip {
-  display: grid; gap: 2px; padding: 9px 10px; border-radius: var(--r-sm);
-  background: var(--glass-soft); border: 1px solid var(--hair);
+/* --------------------------------------------------------- context rail */
+
+.ctx {
+  position: sticky; top: var(--bar-h);
+  height: calc(100vh - var(--bar-h)); overflow-y: auto; overscroll-behavior: contain;
+  padding: 20px 18px 40px;
+  border-left: 1px solid var(--hair);
+  scrollbar-width: thin;
 }
-.id-mode {
-  display: block;
-  font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: .08em;
-  color: var(--ink-4);
+.ctx::-webkit-scrollbar { width: 6px; }
+.ctx::-webkit-scrollbar-thumb { background: var(--hair-strong); border-radius: 3px; }
+.ctx::-webkit-scrollbar-track { background: transparent; }
+
+@media (max-width: 1180px) {
+  .root { grid-template-columns: 64px minmax(0, 1fr) var(--ledger-w); }
+  .rail2-item span:not(.sr) { display: none; }
+  .rail2-item { justify-content: center; padding: 11px 0; }
 }
-.id-addr { display: block; font-size: 12.5px; color: var(--ink-2); }
-.id-bal { display: block; font-size: 15px; font-weight: 620; font-variant-numeric: tabular-nums; letter-spacing: -.018em; }
-
-/* -------------------------------------------------------------- canvas --- */
-
-.canvas { min-width: 0; padding: 30px 34px 120px; }
-.canvas-inner { max-width: var(--read); margin: 0 auto; display: grid; gap: 34px; }
+@media (max-width: 960px) {
+  .root { grid-template-columns: minmax(0, 1fr); }
+  .rail2 {
+    position: sticky; top: var(--bar-h); height: auto; flex-direction: row;
+    border-right: 0; border-bottom: 1px solid var(--hair);
+    padding: 8px 12px; background: var(--bar-veil); backdrop-filter: blur(12px); z-index: 39;
+  }
+  /* Horizontal now, so the gap between items has to beat the gap between an
+     item's own icon and label or the row reads as icons belonging to the word
+     on their right. */
+  .rail2 { gap: 4px; overflow-x: auto; scrollbar-width: none; }
+  .rail2::-webkit-scrollbar { display: none; }
+  .rail2-item { width: auto; gap: 8px; flex: none; }
+  .rail2-item span:not(.sr) { display: inline; }
+  .runsteps { top: calc(var(--bar-h) + 52px); }
+  .ctx { position: static; height: auto; border-left: 0; border-top: 1px solid var(--hair); padding: 24px clamp(18px, 3vw, 34px) 48px; }
+}
+@media (max-width: 720px) {
+  .tb-crumb, .tb-cmd, .tb-sep { display: none; }
+  .topbar { gap: 10px; }
+  .runsteps { padding-inline: 14px; }
+  /* The actor line is the first thing to go: on a phone the rail is already
+     scrolling, and step names earn the width before "AGENT" repeated six times
+     does. The rail keeps its own record of who acts in the panel below. */
+  .runstep-by { display: none; }
+  .runstep-hit { padding-inline: 7px; }
+}
 
 /* Section heads carry the whole hierarchy, so they are typographic, not boxed. */
 .view-head { display: grid; gap: 5px; }
@@ -637,13 +824,23 @@ table.grid tbody tr:nth-child(n+6) { animation-delay: 170ms; }
 .lcard { transition: box-shadow var(--t-mid) var(--ease), border-color var(--t-mid) var(--ease); }
 .lcard:hover { box-shadow: var(--e2); border-color: var(--hair-strong); }
 .panel.lift { box-shadow: var(--e2); }
+/* ---- Panel, restated -----------------------------------------------------
+   The tinted header strip made every card look like a table widget from an
+   admin template. A card is now one surface: a typographic header sitting on
+   the same background as its body, separated by space rather than by a rule
+   and a fill. */
 .panel-head {
   display: flex; align-items: center; gap: 12px;
-  padding: 13px 18px; border-bottom: 1px solid var(--hair);
-  background: linear-gradient(180deg, var(--surface), var(--surface-2));
+  padding: 16px 20px 0;
+  border-bottom: 0; background: none;
 }
-.panel-title { font-size: 14px; font-weight: 620; letter-spacing: -.014em; }
-.panel-body { padding: 18px; }
+.panel-body { padding: 16px 20px 20px; }
+.panel {
+  border-radius: var(--r-md);
+  transition: box-shadow var(--t-mid) var(--ease), transform var(--t-mid) var(--ease),
+              border-color var(--t-mid) var(--ease);
+}
+.panel:hover { box-shadow: var(--e2); transform: translateY(-1px); }
 
 /* =============================================================== controls = */
 
@@ -709,14 +906,27 @@ table.grid tbody tr:nth-child(n+6) { animation-delay: 170ms; }
   box-shadow: inset 0 2px 5px rgba(16,20,24,.12); transition-duration: 70ms;
 }
 
-/* One pass of light across the face on hover, clipped to the button. */
+/* One pass of light across the face on hover.
+ *
+ * The comment above this rule used to say "clipped to the button" and it was
+ * not. The sweep parked itself at translateX(-120%) at rest, and since .btn is
+ * an isolated stacking context with overflow visible, that put a lit rectangle
+ * one button-width to the LEFT of every button on the site, painted over
+ * whatever surface happened to be there. It showed up as a grey diagonal smear
+ * beside "Run sourcing" in both themes.
+ *
+ * Moving the gradient inside its own background box instead of moving the box
+ * means there is nothing to escape with: the pseudo-element never leaves the
+ * button's bounds, at rest or in motion.
+ */
 .btn::before {
   content: ""; position: absolute; inset: 0; border-radius: inherit; z-index: -1;
   background: linear-gradient(105deg, transparent 35%, var(--sheen) 50%, transparent 65%);
-  transform: translateX(-120%); pointer-events: none;
-  transition: transform var(--t-panel) var(--ease);
+  background-size: 260% 100%; background-position: 145% 0;
+  pointer-events: none;
+  transition: background-position var(--t-panel) var(--ease);
 }
-.btn:hover:not(:disabled)::before { transform: translateX(120%); }
+.btn:hover:not(:disabled)::before { background-position: -45% 0; }
 
 .btn-quiet { background: transparent; color: var(--ink-2); padding: 7px 10px; }
 .btn-quiet:hover:not(:disabled) { color: var(--ink); background: var(--sunk); }
@@ -934,14 +1144,26 @@ table.grid tbody tr:nth-child(n+6) { animation-delay: 170ms; }
    bar is the fraction of phases actually finished.
    ========================================================================== */
 
+/* Docked, not floating.
+ *
+ * The comment on .tb-live says the island lives in the bar. It did not: this
+ * rule still pinned it to the viewport at top:14px, left:50%, above everything
+ * at z-index 85. Centred on the viewport rather than on the slot, it drifted
+ * over the search control and the environment chip and covered them both, and
+ * clicking where the search control plainly was hit the island instead.
+ *
+ * Being an ordinary occupant of its slot is what makes the behaviour correct
+ * rather than tuned: the flex row reserves the space, so the island cannot
+ * overlap a sibling however wide it grows, at any viewport, in any state.
+ */
 .di {
-  position: fixed; top: 14px; left: 50%; z-index: 85;
-  transform: translateX(-50%);
+  position: relative; z-index: 1;
+  min-width: 0; max-width: 100%;
   pointer-events: none;
   transition: opacity 320ms var(--ease), transform 520ms var(--spring);
 }
-.di.off { opacity: 0; transform: translateX(-50%) translateY(-16px) scale(.86); }
-.di.on  { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+.di.off { opacity: 0; transform: translateY(-12px) scale(.9); }
+.di.on  { opacity: 1; transform: translateY(0) scale(1); }
 
 /* The shell carries the morph. Width, radius and shadow all travel on the same
    spring so the capsule changes proportion as one object. */
@@ -957,13 +1179,15 @@ table.grid tbody tr:nth-child(n+6) { animation-delay: 170ms; }
   /* Wide enough that the longest phase title, "Screening the catalogue", still
      fits beside the spinner and the counter without ellipsis. Narrower than
      this and the compact form truncates the one word carrying the meaning. */
-  width: 302px;
+  width: 302px; max-width: 100%;
   transition:
     width 560ms var(--spring),
     border-radius 560ms var(--spring),
     box-shadow 420ms var(--ease);
 }
-.di.wide .di-shell { width: min(468px, calc(100vw - 28px)); }
+/* Capped by the slot as well as by the viewport, so widening squeezes nothing
+   to its right. */
+.di.wide .di-shell { width: min(468px, 100%); }
 .di.stop .di-shell { box-shadow: var(--e4), var(--glow-warn); }
 .di.work .di-shell { box-shadow: var(--e4), var(--glow-soft); }
 .di.done .di-shell { box-shadow: var(--e4), var(--glow-ok, var(--glow-soft)); }
@@ -972,7 +1196,7 @@ table.grid tbody tr:nth-child(n+6) { animation-delay: 170ms; }
   display: grid;
   grid-template-columns: 20px minmax(0, 1fr) auto;
   align-items: center; gap: 12px;
-  width: 100%; padding: 10px 16px 11px 14px;
+  width: 100%; padding: 8px 16px 9px 14px;
   background: none; border: 0; cursor: pointer; text-align: left;
   color: inherit; font: inherit;
 }
@@ -1227,21 +1451,55 @@ table.grid tbody tr:nth-child(n+6) { animation-delay: 170ms; }
    something to say.
    ======================================================================== */
 
+/* Parked at the left of the bottom edge, not the middle.
+ *
+ * Centred, the dock sat directly over the reading column and, on a phone, on
+ * top of the rationale button as well: two floating controls fighting for the
+ * same corner. It also showed its full label row at rest, so a control nobody
+ * had invoked yet occupied a permanent 560px strip across the content.
+ *
+ * At rest it is now the orb alone. The hint and the wake-word switch appear on
+ * hover, on keyboard focus, and whenever it is actually listening, which is
+ * when a person needs to read them.
+ */
 .gv {
-  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
-  z-index: 70; display: grid; justify-items: center; gap: 10px;
+  position: fixed; left: max(20px, calc(50vw - 700px)); bottom: 20px;
+  z-index: 70; display: grid; justify-items: start; gap: 10px;
   pointer-events: none; width: min(560px, calc(100vw - 32px));
 }
 .gv > * { pointer-events: auto; }
 
+/* An opaque surface, not glass. Collapsed to a circle the dock is 70px of
+   rgba(255,255,255,.16) sitting on a white rail, which is nothing: the orb
+   appeared to float unattached, like a rendering fault rather than a button. */
 .gv-dock {
   display: flex; align-items: center; gap: 12px;
-  padding: 8px 8px 8px 8px; border-radius: 100px;
-  background: var(--glass); border: 1px solid var(--hair);
+  padding: 8px; border-radius: 100px;
+  background: var(--surface); border: 1px solid var(--hair-strong);
   box-shadow: var(--e3), inset 0 1px 0 var(--sheen);
   backdrop-filter: blur(16px) saturate(1.2);
-  transition: gap var(--t-panel) var(--ease), padding var(--t-panel) var(--ease);
+  transition: gap var(--t-panel) var(--ease), padding var(--t-panel) var(--ease),
+              border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
 }
+.gv:hover .gv-dock, .gv:focus-within .gv-dock { border-color: var(--ink-4); }
+.gv.listening .gv-dock { border-color: var(--pine); box-shadow: var(--e3), 0 0 0 3px var(--pine-wash); }
+/* Collapsed at rest. A grid column animates from 0fr to 1fr where
+   display: none cannot animate at all, so the row slides open. */
+/* min-width: 0 on both halves is what makes the 0fr track actually collapse.
+   Without it the track keeps its automatic min-content floor and the row stays
+   at full width, which is exactly what it did on the first attempt. */
+.gv-side {
+  display: grid; grid-template-columns: 0fr; overflow: hidden; opacity: 0;
+  min-width: 0;
+  transition: grid-template-columns var(--t-panel) var(--ease),
+              opacity var(--t-panel) var(--ease);
+}
+.gv-side-in { min-width: 0; }
+.gv:hover .gv-side,
+.gv:focus-within .gv-side,
+.gv.listening .gv-side,
+.gv.thinking .gv-side,
+.gv.open .gv-side { grid-template-columns: 1fr; opacity: 1; }
 .gv-orb {
   padding: 0; border: 0; background: none; cursor: pointer; border-radius: 50%;
   display: grid; place-items: center;
@@ -1250,7 +1508,7 @@ table.grid tbody tr:nth-child(n+6) { animation-delay: 170ms; }
 .gv-orb:hover { transform: scale(1.06); }
 .gv-orb:active { transform: scale(.96); }
 
-.gv-side { display: flex; align-items: center; gap: 12px; padding-right: 10px; }
+.gv-side-in { display: flex; align-items: center; gap: 12px; padding-right: 10px; }
 .gv-hint {
   font-size: 12.5px; color: var(--ink-2); white-space: nowrap;
   max-width: 30ch; overflow: hidden; text-overflow: ellipsis;
@@ -1508,8 +1766,13 @@ table.grid tbody tr:nth-child(n+6) { animation-delay: 170ms; }
 .scenario-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px;
 }
+/* Two rows, the second elastic. Cards in a grid row already stretch to the
+   tallest, but with auto rows a card whose title wraps to two lines pushed its
+   description down while its neighbours' stayed up, so a row of cards had its
+   secondary text on three different baselines. */
 .scenario {
-  display: grid; gap: 3px; text-align: left; cursor: pointer;
+  display: grid; grid-template-rows: auto 1fr; gap: 5px;
+  text-align: left; cursor: pointer;
   padding: 11px 13px; border-radius: var(--r-sm);
   border: 1px solid var(--hair); background: var(--glass-soft);
   transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease),
@@ -1532,7 +1795,7 @@ table.grid tbody tr:nth-child(n+6) { animation-delay: 170ms; }
   padding: 1px 7px; white-space: nowrap; flex: none;
 }
 .scenario.on .sc-ind { color: var(--pine); border-color: var(--pine-line); }
-.sc-tag { font-size: 12px; color: var(--ink-3); line-height: 1.35; }
+.sc-tag { font-size: 12px; color: var(--ink-3); line-height: 1.35; align-self: end; }
 .scenario.on .sc-tag { color: var(--ink-2); }
 
 .chip {
@@ -1742,13 +2005,16 @@ table.grid tbody tr:nth-child(n+6) { animation-delay: 170ms; }
   background: var(--surface); box-shadow: var(--e1); overflow: hidden;
 }
 .sheet-scroll { overflow-x: auto; }
-table.grid { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 780px; }
+table.grid { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13.5px; min-width: 760px; }
 table.grid th {
   text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em;
   color: var(--ink-4); font-weight: 650; padding: 11px 14px;
   border-bottom: 1px solid var(--hair); background: var(--surface-2); white-space: nowrap;
 }
-table.grid td { padding: 13px 14px; border-bottom: 1px solid var(--hair); vertical-align: top; }
+table.grid td { padding: 14px 14px; border-bottom: 1px solid var(--hair); vertical-align: middle; }
+table.grid tbody tr:last-child td { border-bottom: 0; }
+table.grid tbody tr { transition: background var(--t-fast) var(--ease); }
+table.grid tbody tr:hover td { background: var(--sunk); }
 table.grid tr:last-child td { border-bottom: 0; }
 table.grid th.right, table.grid td.right { text-align: right; }
 table.grid tbody tr { transition: background var(--t-fast) var(--ease); }
@@ -2551,12 +2817,15 @@ table.grid tr.winner td:first-child { box-shadow: inset 3px 0 0 var(--pine); }
 
 @media (min-width: 1700px) {
   :root { --side-w: 282px; --ledger-w: 348px; --read: 940px; }
-  .canvas { padding: 38px 48px 130px; }
+  /* Vertical only. The gutter belongs to .canvas-inner, which already sets
+     it; putting it on both stacked two 18px insets on a phone and cost the
+     reading column 36px of a 390px screen. */
+  .canvas { padding-bottom: 130px; }
 }
 
 @media (max-width: 1400px) {
   :root { --side-w: 234px; --ledger-w: 288px; }
-  .canvas { padding: 26px 26px 120px; }
+  .canvas { padding-bottom: 120px; }
 }
 
 /* Ledger folds under the canvas. It is context, not primary action. */
@@ -2602,11 +2871,18 @@ table.grid tr.winner td:first-child { box-shadow: inset 3px 0 0 var(--pine); }
   }
   .side-foot .themeswitch.compact { width: auto; }
   .idchip { display: none; }
-  .canvas { padding: 22px 18px 120px; }
+  .canvas { padding-bottom: 120px; }
   .canvas-inner { gap: 28px; }
   .ledger { padding: 0 18px 36px; }
   .doc { padding: 24px 20px; }
   .doc-parties, .doc-cols { grid-template-columns: 1fr; gap: 22px; }
+  /* The approval stamp is 190px of nowrap type. Beside a headline on a 390px
+     screen there is no arrangement where both fit on one line, so the stamp
+     takes its own. */
+  .doc-head { flex-wrap: wrap; gap: 14px; }
+  .doc-title { font-size: 21px; }
+  .doc-stamp { margin-left: 0; }
+  .doc-meta { gap: 16px 26px; }
   .term { grid-template-columns: 1fr; gap: 3px; }
   .split { grid-template-columns: 1fr; }
   .mcaps { grid-template-columns: 1fr; }
@@ -2642,7 +2918,15 @@ table.grid tr.winner td:first-child { box-shadow: inset 3px 0 0 var(--pine); }
   .sidebar .netchip > span:not(.netdot) { display: none; }
 }
 
-.story { padding: clamp(28px, 5vh, 56px) 0 0; border-top: 1px solid var(--hair); }
+/* The gutter and the 1240px column are the page's, not this block's. Without
+   them the section ran the full viewport width while every other band on the
+   homepage stopped at the same inset, so the heading started 156px left of the
+   two above it and the eight step cards bled off both edges. */
+.story {
+  max-width: 1240px; margin-inline: auto; width: 100%;
+  padding: clamp(28px, 5vh, 56px) clamp(20px, 5vw, 56px) 0;
+  border-top: 1px solid var(--hair);
+}
 .story-head { max-width: 60ch; margin-bottom: 26px; }
 .story-head h2 {
   font-size: clamp(22px, 2.6vw, 32px); letter-spacing: -.03em; margin-top: 6px;
@@ -2687,15 +2971,83 @@ table.grid tr.winner td:first-child { box-shadow: inset 3px 0 0 var(--pine); }
 .story-step.gate .ss-by { color: var(--amber); border-color: var(--amber-line); background: transparent; }
 .story-step.gate .ss-label { color: var(--ink); }
 
+/* ---- The ceiling figure.
+ *
+ * This block was lost in an earlier rewrite of the homepage: the responsive and
+ * reduced-motion overrides below survived, but every base rule went, so the
+ * centrepiece of the section that argues the whole product rendered as a column
+ * of unstyled sentences. Rebuilt here.
+ *
+ * The figure is read left to right and top to bottom: what the agent settled on,
+ * what it then tried, the line it cannot cross, and the refusal. The two bars
+ * are deliberately not to scale, because the three amounts sit within six per
+ * cent of each other and a truthful scale would show three bars of the same
+ * length. The caption says so rather than letting the reader assume otherwise.
+ */
+.ceildemo {
+  margin: 0; padding: 24px 22px 18px;
+  border: 1px solid var(--hair); border-radius: var(--r-md);
+  background: var(--surface); box-shadow: var(--e1);
+}
+.cd-cap { display: grid; gap: 5px; margin-bottom: 8px; }
+.cd-eyebrow {
+  font-size: 11px; font-weight: 650; text-transform: uppercase;
+  letter-spacing: .09em; color: var(--ink-4);
+}
+.cd-title { font-size: 16px; font-weight: 600; letter-spacing: -.022em; color: var(--ink); }
+
+/* The right inset is the wall label's room. Take it away and the label, which
+   is centred on a line at 86%, hangs off the card. */
+.cd-track { position: relative; display: grid; gap: 10px; padding: 30px 56px 4px 0; }
+/* Both readings sit at the left of their bar rather than at its end. Ending the
+   bar with its own number put the amount exactly where the ceiling line has to
+   fall, so the dashed wall struck through "$1,250" and read as a deleted price
+   rather than a limit being crossed. Length still carries the magnitude. */
+.cd-settled, .cd-attempt {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 15px; border-radius: var(--r-pill);
+  border: 1px solid transparent; font-size: 13px;
+}
+.cd-settled { width: 78%; background: var(--pine-wash); border-color: var(--pine-line); }
+.cd-attempt { width: 100%; background: var(--crimson-wash); border-color: var(--crimson-line); }
+.cd-lab { color: var(--ink-2); min-width: 128px; }
+.cd-val {
+  font-family: var(--mono); font-size: 13px; font-weight: 600;
+  color: var(--ink); font-variant-numeric: tabular-nums;
+}
+
+/* Dashed, because it is a limit rather than an object. */
+.cd-wall { position: absolute; top: 0; bottom: 0; right: 14%; width: 0; }
+.cd-wall::before {
+  content: ""; position: absolute; top: 22px; bottom: 2px; left: -1px; width: 2px;
+  background: repeating-linear-gradient(180deg, var(--amber) 0 5px, transparent 5px 10px);
+}
+.cd-wall-lab {
+  position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  white-space: nowrap; font-size: 11.5px; font-weight: 620; color: var(--amber);
+}
+
+.cd-revert {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  margin-top: 18px; padding: 11px 14px; border-radius: var(--r-sm);
+  background: var(--crimson-wash); border: 1px solid var(--crimson-line);
+}
+.cd-x { color: var(--crimson); font-size: 11px; font-weight: 700; line-height: 1; }
+.cd-revert code {
+  font-family: var(--mono); font-size: 12.5px; font-weight: 600; color: var(--crimson);
+}
+.cd-note { font-size: 12.5px; color: var(--ink-2); }
+.cd-foot { margin-top: 14px; font-size: 11.5px; line-height: 1.6; color: var(--ink-3); }
+
 /* ---- homepage responsive. Reflowed, not scaled. */
 @media (max-width: 720px) {
   /* The wall label needs room the phone does not have, so the figure switches
      to labels above the bars rather than beside them. */
+  /* No room for a label centred on the line, so it right-aligns above the
+     track and the line moves out to the edge it is describing. */
   .cd-track { padding-right: 0; }
-  .cd-wall { right: 8px; }
-  .cd-wall-lab {
-    left: auto; right: 12px; top: -20px; transform: none; font-size: 11px;
-  }
+  .cd-wall { right: 2px; }
+  .cd-wall-lab { left: auto; right: 0; top: 0; transform: none; font-size: 11px; }
   .ceildemo { padding: 18px 16px 16px; }
   .story-rail { grid-template-columns: 1fr 1fr; }
 }
@@ -2705,9 +3057,9 @@ table.grid tr.winner td:first-child { box-shadow: inset 3px 0 0 var(--pine); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ceildemo, .cd-settled, .cd-attempt, .cd-revert { animation: none !important; }
-  .cd-settled { width: 78%; opacity: 1; }
-  .cd-attempt { width: 100%; opacity: 1; transform: none; }
+  /* The figure no longer animates its bars into place, so the overrides that
+     used to undo that animation are gone with it. The dashed wall is drawn with
+     a static gradient and needs nothing here. */
   .hp-eyedot { animation: none; }
   .story-step:hover { transform: none; }
 }
@@ -2922,8 +3274,9 @@ table.grid tr.winner td:first-child { box-shadow: inset 3px 0 0 var(--pine); }
 }
 .hp-hand.buyer li { color: var(--invert-dim); }
 .hp-hand.buyer li::before { background: var(--invert-accent); }
-.hp-hands-foot {
-  margin-top: 18px; font-size: 13px; color: var(--ink-2); line-height: 1.6; max-width: 74ch;
+.hp-hands-foot { margin-top: 18px; }
+.hp-hands-foot p {
+  font-size: 13px; color: var(--ink-2); line-height: 1.6; max-width: 74ch;
 }
 .hp-hands-foot code { font-family: var(--mono); font-size: 12.5px; color: var(--pine); }
 
@@ -3071,4 +3424,240 @@ table.grid tr.winner td:first-child { box-shadow: inset 3px 0 0 var(--pine); }
 }
 @media (max-width: 440px) {
   .gate-actions .btn { flex: 1 1 100%; justify-content: center; }
+}
+
+/* ==================================================== roles and workflow ==
+   The door, the workflow rail, and the two packet screens that carry the
+   approval and the payment. They share one visual grammar on purpose: the head
+   and finance are looking at the same purchase from two desks, and a reader
+   should recognise it as the same document.
+   ======================================================================== */
+
+/* ---- the door */
+.door {
+  position: relative; z-index: 1;
+  min-height: 100vh; display: grid; place-items: center;
+  padding: clamp(24px, 6vh, 72px) clamp(18px, 4vw, 40px);
+}
+.door-card {
+  width: min(560px, 100%);
+  display: grid; gap: 22px;
+  padding: clamp(24px, 4vw, 36px);
+  border: 1px solid var(--hair); border-radius: var(--r-lg, var(--r-md));
+  background: var(--surface); box-shadow: var(--e3);
+}
+.door-head { display: flex; align-items: flex-start; gap: 14px; }
+.door-head h1 { font-size: clamp(21px, 3vw, 26px); letter-spacing: -.028em; }
+.door-head p { margin-top: 6px; font-size: 14px; line-height: 1.6; color: var(--ink-2); }
+
+.door-roles { display: grid; gap: 8px; }
+.door-role {
+  display: grid; gap: 3px; text-align: left; cursor: pointer;
+  padding: 13px 15px; border-radius: var(--r-sm);
+  border: 1px solid var(--hair); background: var(--glass-soft);
+  font: inherit; color: inherit;
+  transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+}
+.door-role:hover { border-color: var(--hair-strong); background: var(--sunk); }
+.door-role.on { border-color: var(--pine); background: var(--pine-wash); box-shadow: 0 0 0 1px var(--pine) inset; }
+.door-role:focus-visible { outline: 2px solid var(--pine); outline-offset: 2px; }
+.dr-label { font-size: 14px; font-weight: 620; color: var(--ink); }
+.dr-blurb { font-size: 12.5px; color: var(--ink-3); line-height: 1.45; }
+
+.door-name { display: grid; gap: 6px; }
+.door-name span { font-size: 12.5px; color: var(--ink-2); }
+.door-name input {
+  font: inherit; font-size: 14px; color: var(--ink);
+  padding: 10px 12px; border-radius: var(--r-sm);
+  border: 1px solid var(--hair-strong); background: var(--canvas);
+}
+.door-name input:focus { outline: none; border-color: var(--pine); box-shadow: 0 0 0 3px var(--pine-wash); }
+.door-err {
+  font-size: 13px; color: var(--crimson);
+  padding: 10px 12px; border-radius: var(--r-sm);
+  background: var(--crimson-wash); border: 1px solid var(--crimson-line);
+}
+.door-foot { font-size: 12px; line-height: 1.6; color: var(--ink-4); }
+
+/* ---- who is at this desk */
+.tb-who {
+  display: flex; align-items: baseline; gap: 8px; flex: none;
+  padding: 5px 11px; border-radius: var(--r-pill);
+  border: 1px solid var(--hair-strong); background: var(--sunk);
+  font: inherit; cursor: pointer;
+  transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+}
+.tb-who:hover { border-color: var(--ink-4); background: var(--surface); }
+.tb-who:focus-visible { outline: 2px solid var(--pine); outline-offset: 2px; }
+.tb-who-role {
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--pine);
+}
+.tb-who.head .tb-who-role { color: var(--amber); }
+.tb-who.finance .tb-who-role { color: var(--ink-2); }
+.tb-who-name { font-size: 12.5px; color: var(--ink-2); max-width: 16ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.rail2-item { position: relative; }
+.rail2-flag {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--amber); flex: none;
+  margin-left: auto;
+}
+
+/* ---- the workflow rail */
+.wfbar {
+  position: sticky; top: var(--bar-h); z-index: 40;
+  padding: 12px clamp(18px, 3vw, 34px);
+  background: var(--bar-veil); backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--hair);
+}
+.wfrail { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.wfrail ol {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; align-items: center; gap: 0; flex: 1 1 auto; min-width: 0;
+  overflow-x: auto; scrollbar-width: none;
+}
+.wfrail ol::-webkit-scrollbar { display: none; }
+.wfrail li {
+  position: relative; display: flex; align-items: center; gap: 9px;
+  padding-right: 26px; flex: 0 0 auto;
+}
+.wfrail li + li { padding-left: 26px; }
+.wfrail li + li::before {
+  content: ""; position: absolute; left: 0; top: 50%; width: 26px; height: 1.5px;
+  background: var(--hair-strong);
+}
+.wfrail li.done + li::before, .wfrail li.done::before { background: var(--pine); }
+.wf-dot {
+  width: 22px; height: 22px; border-radius: 50%; flex: none;
+  display: grid; place-items: center;
+  border: 1.5px solid var(--hair-strong); background: var(--canvas);
+  color: var(--on-accent);
+}
+.wf-dot svg { width: 10px; height: 10px; }
+.wfrail li.done .wf-dot { background: var(--pine); border-color: var(--pine); }
+.wfrail li.mine .wf-dot { border-color: var(--amber); box-shadow: 0 0 0 3px var(--amber-wash); }
+.wfrail li.rejected .wf-dot, .wfrail li.failed .wf-dot { border-color: var(--crimson); }
+.wf-text { display: grid; gap: 0; min-width: 0; }
+.wf-label { font-size: 12.5px; font-weight: 560; color: var(--ink-2); white-space: nowrap; }
+.wfrail li.done .wf-label { color: var(--ink); }
+.wf-owner { font-size: 9.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-4); }
+.wf-state {
+  flex: none; font-size: 10.5px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--ink-3);
+  padding: 4px 10px; border-radius: var(--r-pill);
+  border: 1px solid var(--hair); background: var(--sunk);
+}
+.wfrail.rejected .wf-state, .wfrail.failed .wf-state {
+  color: var(--crimson); border-color: var(--crimson-line); background: var(--crimson-wash);
+}
+
+/* ---- the packet, shared by the approval and payment screens */
+.packet { display: grid; gap: 22px; }
+/* Separators are drawn by the cells, not by a coloured gap behind them.
+   With the gap approach, a row that does not divide evenly left the unused
+   cell showing as a solid grey block, which read as a broken panel rather than
+   as empty space. */
+.packet-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0;
+  background: var(--surface); border: 1px solid var(--hair); border-radius: var(--r-sm);
+  overflow: hidden;
+}
+.fact {
+  display: grid; gap: 3px; padding: 13px 15px; background: var(--surface);
+  box-shadow: inset -1px -1px 0 var(--hair);
+  min-width: 0;
+}
+/* A wallet address is one unbreakable token. Without this it sets the column's
+   min-content width and drags the whole grid past the edge of a phone. */
+.fact-v { overflow-wrap: anywhere; }
+.fact-k { font-size: 10.5px; font-weight: 650; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-4); }
+.fact-v { font-size: 15px; font-weight: 600; color: var(--ink); letter-spacing: -.014em; }
+.fact-v.mono { font-family: var(--mono); font-size: 12.5px; font-weight: 500; }
+
+.packet-block {
+  display: grid; gap: 14px;
+  padding: 18px; border-radius: var(--r-md);
+  border: 1px solid var(--hair); background: var(--surface);
+}
+.packet-block h3 { font-size: 14.5px; letter-spacing: -.018em; }
+.packet-block .packet-grid { border: 0; }
+
+.chklist { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; }
+.chk { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 10px; align-items: start; }
+.chk-mark { font-size: 12px; font-weight: 700; line-height: 1.5; }
+.chk.yes .chk-mark { color: var(--pine); }
+.chk.no .chk-mark { color: var(--crimson); }
+.chk-label { font-size: 13.5px; color: var(--ink); }
+.chk-detail { grid-column: 2; font-size: 12.5px; color: var(--ink-3); line-height: 1.5; }
+
+.tech { margin-top: 4px; }
+.tech summary {
+  font-size: 12.5px; color: var(--ink-3); cursor: pointer;
+  padding: 6px 0; list-style: none;
+}
+.tech summary::-webkit-details-marker { display: none; }
+.tech summary::before { content: "▸ "; color: var(--ink-4); }
+.tech[open] summary::before { content: "▾ "; }
+.tech .packet-grid { margin-top: 8px; }
+
+.paystate {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 16px 18px; border-radius: var(--r-md);
+  border: 1px solid var(--hair); background: var(--sunk);
+}
+.ps-k { font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-4); }
+.ps-v { font-size: 20px; font-weight: 700; letter-spacing: -.02em; color: var(--ink-3); }
+.paystate.ready { background: var(--pine-wash); border-color: var(--pine-line); }
+.paystate.ready .ps-v { color: var(--pine); }
+.paystate.processing { background: var(--amber-wash); border-color: var(--amber-line); }
+.paystate.processing .ps-v { color: var(--amber); }
+.paystate.settled { background: var(--pine-wash); border-color: var(--pine); }
+.paystate.settled .ps-v { color: var(--pine); }
+.paystate.failed .ps-v, .paystate.reversed .ps-v { color: var(--crimson); }
+.paystate.failed, .paystate.reversed { background: var(--crimson-wash); border-color: var(--crimson-line); }
+
+.evlist { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ev {
+  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+  font-size: 12.5px; padding: 8px 11px; border-radius: var(--r-sm);
+  background: var(--sunk); border: 1px solid var(--hair);
+}
+.ev-type { font-size: 11.5px; color: var(--ink-2); }
+.ev-when { font-size: 11px; color: var(--ink-4); font-variant-numeric: tabular-nums; }
+.ev-note { font-size: 11.5px; color: var(--ink-3); margin-left: auto; }
+.ev.applied { border-color: var(--pine-line); }
+.ev.ignored .ev-note { color: var(--ink-4); }
+.ev.pending { color: var(--ink-3); }
+
+.packet-act { display: grid; gap: 12px; }
+.packet-buttons { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.packet-note { font-size: 12.5px; color: var(--ink-3); line-height: 1.6; text-align: right; }
+.packet-done {
+  display: grid; gap: 4px; padding: 16px 18px; border-radius: var(--r-md);
+  border: 1px solid var(--hair); background: var(--sunk);
+}
+.packet-done strong { font-size: 14.5px; color: var(--ink); }
+.packet-done span { font-size: 13px; color: var(--ink-2); line-height: 1.6; }
+.packet-done.ok { background: var(--pine-wash); border-color: var(--pine-line); }
+.packet-done.no { background: var(--crimson-wash); border-color: var(--crimson-line); }
+
+.act-err {
+  font-size: 13.5px; line-height: 1.6; color: var(--ink);
+  padding: 12px 14px; border-radius: var(--r-sm);
+  background: var(--crimson-wash); border: 1px solid var(--crimson-line);
+}
+
+.view-empty {
+  display: grid; gap: 10px; justify-items: start;
+  padding: clamp(28px, 6vh, 56px) 0;
+  max-width: 56ch;
+}
+.view-empty h2 { font-size: 21px; letter-spacing: -.024em; }
+.view-empty p { font-size: 14.5px; color: var(--ink-2); line-height: 1.6; }
+
+@media (max-width: 620px) {
+  .packet-buttons { justify-content: stretch; }
+  .packet-buttons .btn { flex: 1 1 auto; }
+  .packet-note { text-align: left; }
+  .door-head { flex-direction: column; gap: 10px; }
 }

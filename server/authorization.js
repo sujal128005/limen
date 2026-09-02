@@ -15,6 +15,13 @@
  * suggestion with good typography. This module is where the checkpoint
  * actually lives. Every route that moves money asks it first.
  *
+ * It now also answers a second question. The original gate proved that *a*
+ * human approved; it could not say *which* human, or that the person releasing
+ * the money was not the person who approved it. One anonymous session ran the
+ * sourcing, typed a name into the signature box, funded the escrow and paid the
+ * supplier. Separation of duties is the reason a second signature exists at
+ * all, so the gate now checks state and role together, and refuses either way.
+ *
  * Note what this does and does not cover. The spending ceiling was never at
  * risk: createDeal reverts over cap whichever path calls it, because that
  * limit is contract state. What was at risk is the human decision, which is
@@ -30,28 +37,65 @@
  * A purchase walks these in order. Each transition has one gate and the gate
  * is checked server-side, so the sequence holds regardless of which client,
  * script or curl invocation is driving it.
+ *
+ * Two states carry names the lifecycle diagram does not use, and they are here
+ * because the contract requires them rather than because the workflow wanted
+ * them: FUNDED is the moment the escrow accepted the deal under the buyer's
+ * policy, and it is where an over-cap purchase dies. PAYMENT_READY is only
+ * reachable once delivery is confirmed, because ProcurementEscrow.releasePayment
+ * reverts with BadState on anything that is not Delivered.
  */
 const STATE = {
   DRAFT: 'DRAFT',                              // no recommendation yet
-  AWAITING_APPROVAL: 'AWAITING_APPROVAL',      // recommended, unsigned
-  AUTHORIZED: 'AUTHORIZED',                    // signed for these exact terms
+  AI_COMPLETED: 'AI_COMPLETED',                // agent recommended, nothing submitted
+  SALES_REVIEW: 'SALES_REVIEW',                // sales submitted it for review
+  HEAD_APPROVAL: 'HEAD_APPROVAL',              // sitting with the head, undecided
+  REJECTED: 'REJECTED',                        // head declined
+  APPROVED: 'APPROVED',                        // head sanctioned an amount
   FUNDED: 'FUNDED',                            // escrow holds the money
-  DELIVERED: 'DELIVERED',                      // buyer confirmed receipt
+  PAYMENT_READY: 'PAYMENT_READY',              // receipt confirmed, finance may pay
+  PAYMENT_PROCESSING: 'PAYMENT_PROCESSING',    // payout created, awaiting the rail
   SETTLED: 'SETTLED',                          // supplier paid, reputation written
+  FAILED: 'FAILED',                            // the rail rejected the payout
+  REVERSED: 'REVERSED',                        // the rail returned the money
 };
 
-/** Where a workspace currently stands. Derived, never stored, so it cannot drift. */
+/* Terminal for the purpose of the gate: nothing may proceed from here. */
+const TERMINAL = new Set([STATE.SETTLED, STATE.REJECTED, STATE.REVERSED]);
+
+/**
+ * Where a workspace currently stands. Derived, never stored, so it cannot drift.
+ *
+ * Read most-advanced-first. Every branch keys off a field that only the route
+ * holding the matching permission can write, so the ladder cannot be climbed by
+ * asking for a state: a caller can only take an action, and the state follows.
+ */
 function purchaseState(session) {
-  const facts = (session && session.settlementFacts) || {};
+  if (!session) return STATE.DRAFT;
+
+  const pay = session.payment;
+  if (pay) {
+    if (pay.status === 'settled') return STATE.SETTLED;
+    if (pay.status === 'reversed') return STATE.REVERSED;
+    if (pay.status === 'failed') return STATE.FAILED;
+    if (pay.status === 'processing') return STATE.PAYMENT_PROCESSING;
+  }
+
+  const facts = session.settlementFacts || {};
+  // A release recorded without a payment record is the pre-Razorpay path. Kept
+  // so older workspaces and the contract-level tests still read correctly.
   if (facts.releaseTx) return STATE.SETTLED;
-  if (facts.deliveryTx) return STATE.DELIVERED;
-  if (session && session.dealId) return STATE.FUNDED;
+  if (facts.deliveryTx) return STATE.PAYMENT_READY;
+  if (session.dealId) return STATE.FUNDED;
 
-  const rec = session && session.recommendation;
+  if (session.rejection) return STATE.REJECTED;
+  if (session.headApproval) return STATE.APPROVED;
+  if (session.sentToHeadAt) return STATE.HEAD_APPROVAL;
+  if (session.submittedAt) return STATE.SALES_REVIEW;
+
+  const rec = session.recommendation;
   if (!rec || rec.status !== 'recommended') return STATE.DRAFT;
-
-  const sig = session && session.signature;
-  return sig && sig.signed ? STATE.AUTHORIZED : STATE.AWAITING_APPROVAL;
+  return STATE.AI_COMPLETED;
 }
 
 /*
@@ -74,55 +118,143 @@ function approvalMatchesTerms(session, currentTermsHash) {
   return sig.termsHash === currentTermsHash;
 }
 
+/*
+ * The head's sanction is bound the same way, and separately.
+ *
+ * Two records rather than one, because they answer different questions. The
+ * signature says the agreement was accepted; the head approval says an amount
+ * was sanctioned by someone holding the budget. A purchase whose amount moved
+ * after sanction has an intact signature and a stale approval, and the second
+ * check is the one that catches it.
+ */
+function approvalIsCurrent(session, currentTermsHash, currentAmount) {
+  const a = session && session.headApproval;
+  if (!a) return false;
+  if (a.termsHash !== currentTermsHash) return false;
+  if (currentAmount !== undefined && Number(a.approvedAmount) !== Number(currentAmount)) return false;
+  return true;
+}
+
+/*
+ * Which role may take which step.
+ *
+ * Kept beside the state guard rather than in the routes, so the separation
+ * claim is one table a reader can check, and so a new route cannot quietly
+ * acquire a money-moving power by forgetting to ask.
+ */
+const REQUIRES = {
+  submit: 'submit',
+  sendToHead: 'sendToHead',
+  approve: 'approve',
+  reject: 'reject',
+  fund: 'approve',            // funding is the mechanical half of the head's sanction
+  confirmReceipt: 'confirmReceipt',
+  release: 'releasePayment',
+};
+
+/* Where each step may legally be taken from. Anything absent is impossible. */
+const FROM = {
+  submit: [STATE.AI_COMPLETED],
+  sendToHead: [STATE.SALES_REVIEW],
+  approve: [STATE.HEAD_APPROVAL],
+  reject: [STATE.HEAD_APPROVAL],
+  fund: [STATE.APPROVED],
+  confirmReceipt: [STATE.FUNDED],
+  release: [STATE.PAYMENT_READY],
+};
+
+const HUMAN = {
+  submit: 'submitted for review',
+  sendToHead: 'sent to the head for approval',
+  approve: 'approved',
+  reject: 'rejected',
+  fund: 'committed to escrow',
+  confirmReceipt: 'confirmed as received',
+  release: 'paid',
+};
+
 /**
  * The gate. Throws with a reason a person can act on, returns the state if the
  * step is allowed.
  *
  * @param {object} session      workspace state
- * @param {string} step         'fund' | 'deliver' | 'release'
- * @param {string} currentTermsHash  fingerprint of the terms as they stand now
+ * @param {string} step         'submit' | 'sendToHead' | 'approve' | 'reject' |
+ *                              'fund' | 'confirmReceipt' | 'release'
+ * @param {object} opts
+ * @param {string} opts.termsHash  fingerprint of the terms as they stand now
+ * @param {number} opts.amount     the amount as it stands now
  */
-function assertMayProceed(session, step, currentTermsHash) {
+function assertMayProceed(session, step, opts) {
+  const o = opts || {};
   const state = purchaseState(session);
+  const allowed = FROM[step];
 
-  if (step === 'fund') {
-    if (state === STATE.DRAFT) {
-      throw new Error('No recommendation to fund. Run sourcing first.');
-    }
-    if (state === STATE.AWAITING_APPROVAL) {
-      throw new Error('This purchase has not been approved. Sign the agreement before funding escrow.');
-    }
-    if (state !== STATE.AUTHORIZED) {
-      throw new Error(`Escrow is already funded for this run. Current state: ${state}.`);
-    }
-    if (!approvalMatchesTerms(session, currentTermsHash)) {
-      // Signed, but for a different set of terms than the ones now on the table.
-      throw new Error('The commercial terms changed after approval. Review and sign again before funding.');
-    }
-    return state;
+  if (!allowed) throw new Error(`Unknown step: ${step}`);
+
+  if (state === STATE.DRAFT) {
+    throw new Error('No recommendation to act on. Run sourcing first.');
+  }
+  if (state === STATE.REJECTED) {
+    throw new Error('This purchase was rejected. Run sourcing again to raise a new one.');
+  }
+  if (TERMINAL.has(state) && !allowed.includes(state)) {
+    throw new Error(`This purchase is already ${state.toLowerCase()}. Nothing further can be done to it.`);
   }
 
-  if (step === 'deliver') {
-    if (state !== STATE.FUNDED) {
-      throw new Error(`Delivery can only be confirmed on a funded deal. Current state: ${state}.`);
-    }
-    return state;
+  if (!allowed.includes(state)) {
+    throw new Error(
+      `A purchase cannot be ${HUMAN[step]} from ${state}. ` +
+      `That step is only available at ${allowed.join(' or ')}.`
+    );
   }
 
-  if (step === 'release') {
-    /*
-     * The escrow contract also refuses this with BadState, so the money is
-     * safe either way. The check is here so the caller gets a sentence
-     * instead of a revert, and so the ordering is visible in one file rather
-     * than inferred from Solidity.
-     */
-    if (state !== STATE.DELIVERED) {
-      throw new Error(`Payment can only be released after delivery is confirmed. Current state: ${state}.`);
+  /*
+   * From here the sequence is right, so what is left is whether the thing being
+   * acted on is still the thing that was agreed. Checked at every step that
+   * moves money rather than only at the last, so a purchase cannot be walked
+   * most of the way down the workflow on stale terms.
+   */
+  if (step === 'fund' || step === 'confirmReceipt' || step === 'release') {
+    if (o.termsHash !== undefined && !approvalMatchesTerms(session, o.termsHash)) {
+      throw new Error('The commercial terms changed after approval. Review and approve again before paying.');
     }
-    return state;
+    if (o.termsHash !== undefined && !approvalIsCurrent(session, o.termsHash, o.amount)) {
+      throw new Error('The approved amount no longer matches this purchase. It must be approved again.');
+    }
   }
 
-  throw new Error(`Unknown step: ${step}`);
+  return state;
 }
 
-module.exports = { STATE, purchaseState, approvalMatchesTerms, assertMayProceed };
+/**
+ * A read-only description of where the purchase stands and what may happen next,
+ * for the workflow indicator. The interface renders this; it does not compute
+ * its own version, because two answers to "what state is this in" is one answer
+ * too many.
+ */
+function progress(session) {
+  const ORDER = [
+    STATE.DRAFT, STATE.AI_COMPLETED, STATE.SALES_REVIEW, STATE.HEAD_APPROVAL,
+    STATE.APPROVED, STATE.FUNDED, STATE.PAYMENT_READY, STATE.PAYMENT_PROCESSING, STATE.SETTLED,
+  ];
+  const state = purchaseState(session);
+  const done = (s) => ORDER.indexOf(state) >= ORDER.indexOf(s);
+  const rejected = state === STATE.REJECTED;
+  const failed = state === STATE.FAILED || state === STATE.REVERSED;
+  return {
+    state,
+    rejected,
+    failed,
+    stages: [
+      { id: 'ai', label: 'AI procurement', owner: 'Agent', done: !rejected && done(STATE.AI_COMPLETED) },
+      { id: 'sales', label: 'Sales review', owner: 'Sales', done: !rejected && done(STATE.HEAD_APPROVAL) },
+      { id: 'head', label: 'Head approval', owner: 'Head', done: !rejected && done(STATE.APPROVED), rejected },
+      { id: 'finance', label: 'Finance payment', owner: 'Finance', done: state === STATE.SETTLED, failed },
+    ],
+  };
+}
+
+module.exports = {
+  STATE, REQUIRES, FROM,
+  purchaseState, approvalMatchesTerms, approvalIsCurrent, assertMayProceed, progress,
+};
