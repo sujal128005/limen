@@ -173,16 +173,17 @@
     </p>
 
     <div class="stat" style="margin-top:44px">
-      <div><b>183</b><span>unit tests</span></div>
+      <div><b>205</b><span>unit tests</span></div>
       <div><b>139</b><span>end to end checks</span></div>
       <div><b>3</b><span>Solidity contracts</span></div>
-      <div><b>35</b><span>API routes</span></div>
+      <div><b>36</b><span>API routes</span></div>
     </div>
 
     <table style="margin-top:36px">
       <tbody>
         <tr><td class="s" style="width:34%">Product</td><td>Limen, procurement with contract-enforced spending authority</td></tr>
         <tr><td class="s">Team</td><td>Nexara9, M. Navya and Sujal Negi, IIITDM Kurnool</td></tr>
+        <tr><td class="s">Live demo</td><td class="m">limen-peqe.onrender.com</td></tr>
         <tr><td class="s">Repository</td><td class="m">github.com/sujal128005/limen</td></tr>
         <tr><td class="s">Prepared</td><td>September 2026</td></tr>
       </tbody>
@@ -217,7 +218,7 @@ npm start          <span class="c"># builds the frontend, boots the chain, serve
 
   <div class="sec">
     <h3>Check the claims</h3>
-    <pre>npm test           <span class="c"># 183 unit tests, including 23 on role separation</span>
+    <pre>npm test           <span class="c"># 205 unit tests, including 36 on roles and signatures</span>
 npm run sweep      <span class="c"># 139 checks against the running HTTP surface</span></pre>
   </div>
 
@@ -571,7 +572,7 @@ curl -XPOST localhost:4000/api/purchase/release -H "authorization: Bearer $SALES
   <div class="runhead"><span>Limen &middot; Supporting document</span><span>Test evidence</span></div>
 
   <div class="eyebrow">Test evidence, part one</div>
-  <h2>183 unit tests, grouped as they run.</h2>
+  <h2>205 unit tests, grouped as they run.</h2>
   <p style="margin-top:12px">Counts read from a run. Most attack the system rather than confirm the happy path.</p>
 
   <table>
@@ -586,12 +587,13 @@ curl -XPOST localhost:4000/api/purchase/release -H "authorization: Bearer $SALES
       <tr><td class="s">Capability boundary</td><td class="num">21</td><td>Refusals before any model call</td></tr>
       <tr><td class="s">Recommendation</td><td class="num">3</td><td>Ranking, no-deal outcomes, reasons</td></tr>
       <tr><td class="s">Imperfect input</td><td class="num">7</td><td>Typos, partial briefs, ambiguity</td></tr>
-      <tr><td class="s">Model pipeline</td><td class="num">7</td><td>Every named failure path, latency on all calls</td></tr>
-      <tr><td class="s">Documents and PDF</td><td class="num">15</td><td>Real binaries, metadata, signing, hash stability</td></tr>
-      <tr><td class="s">Storage, both adapters</td><td class="num">28</td><td>Versioning, conflicts, event claiming, pruning</td></tr>
+      <tr><td class="s">Model pipeline</td><td class="num">7</td><td>Every named failure path, latency</td></tr>
+      <tr><td class="s">Documents and PDF</td><td class="num">15</td><td>Real binaries, metadata, hash stability</td></tr>
+      <tr><td class="s">Storage, both adapters</td><td class="num">28</td><td>Versioning, conflicts, event claiming</td></tr>
       <tr><td class="s">Durability, both adapters</td><td class="num">18</td><td>Restart, concurrency, tenant isolation</td></tr>
-      <tr><td class="s">Payment rail</td><td class="num">8</td><td>Retry classification, refusal, reconciliation</td></tr>
-      <tr><td class="s">Role separation</td><td class="num">23</td><td>Listed in full overleaf</td></tr>
+      <tr><td class="s">Payment rail</td><td class="num">8</td><td>Retry, refusal, reconciliation</td></tr>
+      <tr><td class="s">Deployment</td><td class="num">9</td><td>Deploy once, attach, refuse on drift</td></tr>
+      <tr><td class="s">Roles and signatures</td><td class="num">36</td><td>Listed in full overleaf</td></tr>
     </tbody>
   </table>
 
@@ -603,7 +605,7 @@ curl -XPOST localhost:4000/api/purchase/release -H "authorization: Bearer $SALES
   <div class="runhead"><span>Limen &middot; Supporting document</span><span>Test evidence</span></div>
 
   <div class="eyebrow">Test evidence, part two</div>
-  <h2>The 23 checks that prove separation of duties.</h2>
+  <h2>The 36 checks that prove separation of duties.</h2>
   <p style="margin-top:12px">
     Every one runs over HTTP against the booted server with a real signed token,
     because a unit test of a guard function proves the function works, not that
@@ -730,7 +732,7 @@ curl -XPOST localhost:4000/api/purchase/release -H "authorization: Bearer $SALES
     <table>
       <thead><tr><th style="width:20%">Figure</th><th>How it was obtained</th></tr></thead>
       <tbody>
-        <tr><td class="s">183 / 139</td><td>Printed by the two suites on a clean run with default settings</td></tr>
+        <tr><td class="s">205 / 139</td><td>Printed by the two suites on a clean run with default settings</td></tr>
         <tr><td class="s">3.6 seconds</td><td>Boot timed from process start to the chain reporting ready</td></tr>
         <tr><td class="s">290 MB</td><td>Peak resident set size during boot</td></tr>
         <tr><td class="s">15 suppliers, 39 listings</td><td>Counted from the seeded catalogue at runtime</td></tr>
@@ -764,10 +766,10 @@ curl -XPOST localhost:4000/api/purchase/release -H "authorization: Bearer $SALES
   <table>
     <thead><tr><th style="width:27%">Limitation</th><th style="width:40%">What it means</th><th>Resolved by</th></tr></thead>
     <tbody>
-      <tr><td class="s">The chain is local</td><td>Real EVM, gas, reverts and transaction hashes, but not a public network, so there is no explorer link</td><td>RPC_URL, DEPLOYER_KEY and AGENT_KEY, plus a deploy-once step so addresses survive a restart</td></tr>
+      <tr><td class="s">Not yet on a public chain</td><td>Deployment is a deliberate step that records addresses to a manifest, and the server attaches rather than redeploying, so a testnet run is configuration rather than code</td><td>Fund a key, run the deploy script once, commit the manifest it writes</td></tr>
       <tr><td class="s">Delivery is buyer-attested</td><td>The contract controls when reputation is written, but a buyer and supplier acting together could settle a deal that never shipped</td><td>Oracle or carrier attestation</td></tr>
       <tr><td class="s">Suppliers are seeded</td><td>Fifteen suppliers shaped like a directory API response, with simulated counterparties holding private floor prices</td><td>Live directory adapter, supplier-side agents</td></tr>
-      <tr><td class="s">Signature is not legally binding</td><td>A typed name, a timestamp and a content hash recorded in the workspace</td><td>Wallet signature, or an e-signature provider</td></tr>
+      <tr><td class="s">Signing keys are not identities</td><td>An approval can carry a verified EIP-712 signature over the commercial terms; the key behind it is not bound to a verified legal identity</td><td>Identity verification at onboarding</td></tr>
       <tr><td class="s">Payouts are test mode</td><td>Test credentials, or a local rail that runs the same path including its webhook</td><td>Production credentials and a funded account</td></tr>
       <tr><td class="s">Suppliers have no bank details</td><td>A live payout needs a verified fund account per supplier, and one cannot honestly be invented for a demo</td><td>Supplier onboarding, one record each</td></tr>
       <tr><td class="s">One instance</td><td>Writes are locked per workspace and version-checked, so a second instance would be correct; running one is a cost choice</td><td>Nothing. Raise the instance count</td></tr>
@@ -806,6 +808,8 @@ curl -XPOST localhost:4000/api/purchase/release -H "authorization: Bearer $SALES
         <tr><td class="m" style="width:38%">contracts/</td><td>Three Solidity sources, compiled at boot</td></tr>
         <tr><td class="m">server/authorization.js</td><td>Workflow states and the approval gate. No imports</td></tr>
         <tr><td class="m">server/identity.js</td><td>Signed role tokens and the permission table</td></tr>
+        <tr><td class="m">server/approval.js</td><td>EIP-712 approval payloads and verification</td></tr>
+        <tr><td class="m">server/deployments.js</td><td>Deploy once, attach thereafter</td></tr>
         <tr><td class="m">server/payments.js</td><td>Payout client, idempotency, retry, webhook verification</td></tr>
         <tr><td class="m">server/store/</td><td>Memory and Postgres adapters behind one interface</td></tr>
         <tr><td class="m">server/engine/</td><td>Parsing, screening, negotiation, recommendation</td></tr>

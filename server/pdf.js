@@ -285,9 +285,18 @@ function agreementPdf(d, sig) {
   return render({
     info: { Title: `Negotiated Purchase Agreement ${d.reference}`, Author: 'Limen', Subject: 'Negotiated commercial agreement' },
     createdAt: signed && sig.signedAt ? sig.signedAt : d.issuedAt,
+    /*
+     * The disclaimer follows the evidence rather than assuming the weakest case.
+     * A key signature and a typed name are different artefacts, and a document
+     * that described them identically would be understating one of them.
+     */
     disclaimer:
       'Internal procurement document. Not a tax invoice and not a legally binding contract. ' +
-      'Signature captured in this build is a demonstration e-signature and is not legally binding. ' +
+      (signed && sig.method === 'wallet'
+        ? 'The approval carries an EIP-712 signature over the commercial terms, verified against '
+          + 'the signing address recorded below. The key is not bound to a verified legal identity. '
+        : 'The approval was captured as a typed name and is a demonstration e-signature, not a '
+          + 'cryptographic one. ') +
       'Supplier records are seeded demo data.',
     draw(doc) {
       let y = header(doc, {
@@ -354,7 +363,9 @@ function agreementPdf(d, sig) {
           date: signed ? new Date(sig.signedAt).toISOString().slice(0, 10) : null,
         },
         { role: 'Supplier representative' },
-      ], 'Demo e-signature. Not legally binding.');
+      ], signed && sig.method === 'wallet'
+        ? `Signed with key ${sig.address}. Verified against the commercial fingerprint.`
+        : 'Demo e-signature, captured as a typed name. Not legally binding.');
 
       verificationBlock(doc, y, [
         ['Document ID', d.reference],

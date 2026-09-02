@@ -7,6 +7,9 @@ const { summary } = require('./harness');
   if (require('fs').existsSync(require('path').join(__dirname, 'engine.test.js'))) {
     await require('./engine.test').run();
   }
+  if (require('fs').existsSync(require('path').join(__dirname, 'deployments.test.js'))) {
+    await require('./deployments.test').run();
+  }
   if (require('fs').existsSync(require('path').join(__dirname, 'store.test.js'))) {
     await require('./store.test').run();
   }
