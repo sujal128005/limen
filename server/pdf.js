@@ -21,11 +21,39 @@ const AMBER = '#8A5A00';
 const money = (n) =>
   '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+/*
+ * The mark, as the application draws it.
+ *
+ * This used to be the letter C in a rounded square, left over from the project's
+ * previous name, which meant every agreement and every invoice the product has
+ * ever produced went out stamped with a different company's initial. The
+ * application's own mark is a doorway with the threshold stone beneath it, so
+ * this is the same shape drawn on a 48 unit grid and scaled, rather than a
+ * second idea of what the brand looks like.
+ */
 function brandMark(doc, x, y, size = 18) {
+  const u = size / 48;
+  const X = (n) => x + n * u;
+  const Y = (n) => y + n * u;
   doc.save();
-  doc.roundedRect(x, y, size, size, 2).fill(INK);
-  doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(size * 0.58)
-    .text('C', x, y + size * 0.24, { width: size, align: 'center' });
+  doc.fillColor(INK);
+  // The opening: the agent's work.
+  doc.moveTo(X(6), Y(33))
+    .lineTo(X(6), Y(13))
+    .bezierCurveTo(X(6), Y(10.8), X(7.8), Y(9), X(10), Y(9))
+    .lineTo(X(38), Y(9))
+    .bezierCurveTo(X(40.2), Y(9), X(42), Y(10.8), X(42), Y(13))
+    .lineTo(X(42), Y(33))
+    .lineTo(X(33), Y(33))
+    .lineTo(X(33), Y(20))
+    .bezierCurveTo(X(33), Y(18.3), X(31.7), Y(17), X(30), Y(17))
+    .lineTo(X(18), Y(17))
+    .bezierCurveTo(X(16.3), Y(17), X(15), Y(18.3), X(15), Y(20))
+    .lineTo(X(15), Y(33))
+    .closePath()
+    .fill();
+  // The threshold: the line it does not cross on its own.
+  doc.roundedRect(X(4), Y(36), 40 * u, 7 * u, 3.5 * u).fill();
   doc.restore();
 }
 
@@ -79,7 +107,9 @@ function header(doc, { title, reference, version, issued, status, statusTone }) 
   doc.font('Helvetica').fontSize(8.5).fillColor(MUTED);
   const metaCols = [
     ['Document', reference],
-    ['Version', `v${version}`],
+    // Omitted rather than printed as "vnull" when there is no version to state,
+    // which is what the audit export did.
+    ...(version === null || version === undefined ? [] : [['Version', `v${version}`]]),
     ['Issued', issued],
   ];
   let mx = 54;
@@ -470,4 +500,105 @@ function invoicePdf(d, sig) {
   });
 }
 
-module.exports = { agreementPdf, invoicePdf };
+// ------------------------------------------------------------------ audit --
+
+/*
+ * The compliance pack.
+ *
+ * Every fact in here was already being recorded on each transition: who raised
+ * it, who approved it, which commercial fingerprint they approved, which
+ * transaction funded it, which payout paid it. What was missing was any way to
+ * get it out of the application, which is the first thing an auditor asks for.
+ *
+ * Rows are drawn one at a time with an explicit page break rather than handed
+ * to pdfkit as a block, because a trail of unknown length has to paginate and a
+ * table that silently runs off page one is worse than no export at all.
+ */
+function auditPdf({ workspace, reference, purchase, entries, generatedAt }) {
+  const rows = entries || [];
+  return render({
+    info: { Title: `Audit trail ${reference || workspace}`, Author: 'Limen', Subject: 'Procurement audit trail' },
+    createdAt: generatedAt,
+    disclaimer:
+      'Generated from server-side state. Every row was written as its transition occurred, not '
+      + 'reconstructed afterwards. On-chain facts are independently verifiable at the transaction '
+      + 'hashes shown.',
+    draw: (doc) => {
+      let y = header(doc, {
+        title: 'Audit trail',
+        reference: reference || workspace,
+        version: null,
+        issued: generatedAt,
+        status: `${rows.length} entries`,
+        statusTone: 'neutral',
+      });
+
+      if (purchase) {
+        y = sectionTitle(doc, 'Purchase', y + 6);
+        y = pairs(doc, [
+          ['Reference', reference || '-'],
+          ['Supplier', purchase.supplier || '-'],
+          ['Amount', purchase.amount != null ? `USD ${Number(purchase.amount).toFixed(2)}` : '-'],
+          ['Final state', purchase.state || '-'],
+          ['Raised by', purchase.submittedBy || '-'],
+          ['Approved by', purchase.approver || 'not approved'],
+          ['Terms fingerprint', purchase.termsHash || '-'],
+          ['Payout reference', purchase.payoutId || '-'],
+        ], 54, y + 4, W, 118);
+        y += 10;
+      }
+
+      y = sectionTitle(doc, 'Transitions', y + 8);
+      y += 4;
+
+      // Sums to W exactly. 504 overflowed the right margin and pdfkit wrapped
+      // the last column into a second line on every row rather than erroring.
+      const cols = [
+        { k: 'at', w: 100, label: 'When' },
+        { k: 'who', w: 112, label: 'Who' },
+        { k: 'action', w: 118, label: 'Action' },
+        { k: 'move', w: W - 330, label: 'State' },
+      ];
+      const drawHead = (yy) => {
+        let x = 54;
+        doc.font('Helvetica-Bold').fontSize(7.5).fillColor(FAINT);
+        for (const c of cols) { doc.text(c.label.toUpperCase(), x, yy, { width: c.w, characterSpacing: 0.8 }); x += c.w; }
+        rule(doc, yy + 12);
+        return yy + 19;
+      };
+      y = drawHead(y);
+
+      for (const e of rows) {
+        // 52 is the footer band. Breaking before it rather than after is what
+        // keeps a row from being half drawn across the page edge.
+        if (y > 792 - 52 - 28) {
+          doc.addPage();
+          y = drawHead(70);
+        }
+        const cells = {
+          at: e.at ? new Date(e.at).toISOString().replace('T', ' ').slice(0, 19) : '-',
+          who: [e.actorName || 'unknown', e.actorRole ? `(${e.actorRole})` : ''].filter(Boolean).join(' '),
+          action: e.action || '-',
+          move: e.fromState && e.toState && e.fromState !== e.toState
+            ? `${e.fromState} to ${e.toState}`
+            : (e.toState || '-'),
+        };
+        let x = 54;
+        let tallest = 0;
+        doc.font('Helvetica').fontSize(8).fillColor(INK);
+        for (const c of cols) {
+          const h = doc.heightOfString(cells[c.k], { width: c.w - 8 });
+          doc.text(cells[c.k], x, y, { width: c.w - 8 });
+          if (h > tallest) tallest = h;
+          x += c.w;
+        }
+        y += Math.max(tallest, 11) + 7;
+        rule(doc, y - 4, 0.4);
+      }
+
+      return y;
+    },
+  });
+}
+
+module.exports = { agreementPdf, invoicePdf, auditPdf };

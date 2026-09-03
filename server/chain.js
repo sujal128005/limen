@@ -41,9 +41,42 @@ class Chain {
     this.warnings = compiled.warnings;
 
     if (rpcUrl) {
+      /*
+       * Going to a public network is a decision, so the variables that send it
+       * there are checked before anything is built out of them.
+       *
+       * The failure this exists for: a shell that still has RPC_URL and
+       * DEPLOYER_KEY exported from an earlier deploy attempt. `npm start` in
+       * that shell inherits them, tries to reach a public chain with whatever
+       * they contain, and the first thing to complain was ethers with "invalid
+       * BytesLike value" from four frames down. Nothing in that message says
+       * DEPLOYER_KEY, or that the local demo does not need one.
+       */
       this.mode = 'rpc';
+      /* Tagged so boot prints the sentence rather than a stack trace: nothing
+         in a stack helps somebody whose shell variable is wrong. */
+      const bad = (msg) => { const e = new Error(msg); e.configuration = true; return e; };
+      if (!/^https?:\/\//.test(rpcUrl)) {
+        throw bad(
+          `RPC_URL is set to "${rpcUrl}", which is not a URL. ` +
+          'Unset it to run on the local in-process chain.'
+        );
+      }
+      if (!deployerKey) {
+        throw bad(
+          'RPC_URL is set but DEPLOYER_KEY is not, so there is no account to deploy or send from. ' +
+          'Unset RPC_URL to run on the local in-process chain, which needs neither.'
+        );
+      }
+      if (!/^0x[0-9a-fA-F]{64}$/.test(deployerKey)) {
+        throw bad(
+          `DEPLOYER_KEY is not a private key. Expected 0x followed by 64 hex characters, got ` +
+          `${deployerKey.length} characters${deployerKey.length < 12 ? ` ("${deployerKey}")` : ''}. ` +
+          'If you set this in a shell to try a deployment, it is still set: open a new terminal, ' +
+          'or run `Remove-Item Env:RPC_URL, Env:DEPLOYER_KEY`. The local demo needs neither.'
+        );
+      }
       this.provider = new ethers.JsonRpcProvider(rpcUrl);
-      if (!deployerKey) throw new Error('RPC_URL set but DEPLOYER_KEY missing');
       this.deployer = new ethers.Wallet(deployerKey, this.provider);
       this.buyer = this.deployer;
       // On a public network the agent runs with its own funded key. Falling back to
@@ -81,7 +114,37 @@ class Chain {
       // run never collides with an already-running dev server.
       this.port = process.env.EVM_PORT ? Number(process.env.EVM_PORT) : await getFreePort();
       await this.server.listen(this.port);
-      this.provider = new ethers.JsonRpcProvider(`http://127.0.0.1:${this.port}`);
+
+      /*
+       * Options chosen for an instamine chain, where every send is already
+       * confirmed by the time it returns.
+       *
+       * cacheTimeout is the one that matters. Left at its 250ms default, the
+       * provider's idea of the latest block lagged the chain by exactly one
+       * block after every transaction, which was measurable: a receipt at block
+       * 82 with getBlockNumber() still answering 81. Nothing user-visible was
+       * traced to it, but a provider whose "latest" is behind the chain is a
+       * latent source of reads that miss a write that has already happened, and
+       * this is a local chain where caching buys nothing.
+       *
+       * staticNetwork stops the periodic chain-id re-detection against a network
+       * that cannot change.
+       *
+       * batchMaxCount was set to 1 here and has been removed. The reasoning was
+       * that one slow response should not delay an unrelated one behind it,
+       * which sounds right and was never measured. What it did do was turn every
+       * contract read into its own HTTP request, so a busy page opened more than
+       * ten concurrent connections to ganache and Node started warning about a
+       * possible listener leak on every boot. There was no leak, but a scary
+       * warning printed on a healthy start is how people learn to ignore
+       * warnings. Batching is the library default for good reasons and the
+       * problem it was meant to solve was hypothetical.
+       */
+      this.provider = new ethers.JsonRpcProvider(`http://127.0.0.1:${this.port}`, undefined, {
+        cacheTimeout: -1,
+        staticNetwork: true,
+      });
+      this.provider.pollingInterval = 50;
       this.chainId = 31337;
       this.deployer = await this.provider.getSigner(0);
       this.buyer = await this.provider.getSigner(1);
@@ -182,6 +245,27 @@ class Chain {
     if (local) return local.getAddress();
     const path = `m/44'/60'/1'/0/${Chain._index(String(supplierId))}`;
     return Promise.resolve(ethers.HDNodeWallet.fromPhrase(this.buyerMnemonic, undefined, path).address);
+  }
+
+  /*
+   * The key the simulated supplier signs with.
+   *
+   * Worth being exact about what this is, because the contract now requires a
+   * supplier signature and it would be easy to read that as two independent
+   * parties. It is not, here. The supplier counterparties in this build are
+   * simulated agents and their keys live in this process, exactly as their
+   * reservation prices do during negotiation. The contract enforces that the
+   * shipment attestation comes from the supplier's address and not the buyer's,
+   * which is a real constraint that a production deployment with real supplier
+   * keys inherits unchanged. In this demo, the separation is architectural
+   * rather than actual, and the interface says so where a person can read it.
+   *
+   * Null on a public network, where nobody here holds a supplier's key and
+   * nobody should.
+   */
+  supplierSignerFor(walletIndex) {
+    if (this.mode !== 'in-process') return null;
+    return (this.signerByAccount && this.signerByAccount.get(walletIndex)) || null;
   }
 
   async _deploy(name, args = []) {
@@ -292,6 +376,80 @@ class Chain {
     return rec;
   }
 
+  /*
+   * Turn a contract revert into a sentence.
+   *
+   * A refusal by the escrow is the product working, so it is the last place
+   * that should read as a crash. Funding without a published policy surfaced as
+   * "missing revert data", which is ethers saying it could not decode the
+   * revert, and says nothing about policies to the person who pressed the
+   * button. The selector is in the error, the ABI is right here, and the two
+   * have simply never been introduced.
+   *
+   * Returns null when the error is not a decodable contract revert, so callers
+   * can fall through to their own handling rather than inventing an
+   * explanation for a network fault.
+   */
+  explainRevert(e, contractName = 'ProcurementEscrow') {
+    if (!e) return null;
+    // Ethers puts it in different places depending on whether the failure came
+    // from estimateGas, a call or a mined transaction, and ganache nests its
+    // own copy again under info.
+    const candidates = [
+      e.data,
+      e.info && e.info.error && e.info.error.data && e.info.error.data.result,
+      e.error && e.error.data && e.error.data.result,
+      e.receipt && e.receipt.revertData,
+    ];
+    const data = candidates.find((d) => typeof d === 'string' && d.startsWith('0x') && d.length >= 10);
+    if (!data) return null;
+
+    const art = this.artifacts && this.artifacts[contractName];
+    if (!art) return null;
+    let parsed;
+    try {
+      parsed = new ethers.Interface(art.abi).parseError(data);
+    } catch (_) { return null; }
+    if (!parsed) return null;
+
+    const usd = (v) => `$${(Number(v) / 1e6).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const a = parsed.args;
+    switch (parsed.name) {
+      case 'PolicyInactive':
+        return 'No spending policy is published for this buyer, so the contract will not create a deal. '
+          + 'The head publishes the policy before anything can be funded.';
+      case 'PolicyExpired':
+        return 'The spending policy has expired. It has to be published again before this can be funded.';
+      case 'ExceedsPerDealCap':
+        return `This purchase is ${usd(a[0])}, above the authorised per-deal ceiling of ${usd(a[1])}. `
+          + 'The contract refused it. Raising the ceiling is the head\'s decision, not the agent\'s.';
+      case 'ExceedsTotalCap':
+        return `This purchase is ${usd(a[0])} and only ${usd(a[1])} is left in the authorised envelope. `
+          + 'Publishing the policy again authorises more.';
+      case 'SupplierNotRegistered':
+        return 'That supplier is not in the on-chain registry, so the escrow will not pay it.';
+      case 'NotAuthorisedAgent':
+        return `The agent signing this (${a[0]}) is not the agent named in the buyer's policy (${a[1]}).`;
+      case 'DeadlineInPast':
+        return 'The delivery deadline is not in the future, so the contract refused the deal.';
+      case 'ZeroAmount':
+        return 'The amount is zero, so there is nothing to escrow.';
+      case 'NotBuyer':
+        return 'Only the buyer on this deal can take that step.';
+      case 'NotSupplier':
+        return 'Only the supplier on this deal can attest that it shipped.';
+      case 'NotShipped':
+        return 'The supplier has not attested that this shipped, so receipt cannot be confirmed. '
+          + 'Settlement needs both signatures: the supplier says it went, the buyer says it arrived.';
+      case 'AlreadyShipped':
+        return 'The supplier has already attested this shipment.';
+      case 'BadState':
+        return 'The deal is not in a state where that step is allowed.';
+      default:
+        return `The contract refused this with ${parsed.name}.`;
+    }
+  }
+
   async buyerBalance(address) {
     return this.usdc.balanceOf(address);
   }
@@ -305,6 +463,40 @@ class Chain {
   resetBuyerNonce(workspaceId) {
     const rec = this._buyers.get(String(workspaceId || 'demo'));
     if (rec && rec.signer && typeof rec.signer.reset === 'function') rec.signer.reset();
+  }
+
+  /**
+   * Send a transaction as a workspace's buyer, and put the nonce back if it fails.
+   *
+   * This exists because of a hang that was worse than an error. NonceManager
+   * increments its local count before it populates the transaction, and
+   * populating is where gas estimation happens, so a send that reverts during
+   * estimation leaves the count one ahead of the chain. The next transaction
+   * from that buyer then carries a nonce the node will not mine yet, and the
+   * wait never returns. Not a failure, not a timeout, just a request that never
+   * comes back.
+   *
+   * Nothing surfaced this until a refusal became a normal thing to hit: the
+   * delivery signatures mean confirming receipt before the supplier has attested
+   * is an ordinary mistake rather than an exotic one, and every buyer
+   * transaction after it in that workspace was dead.
+   *
+   * The revert is translated on the way out, so callers get the contract's own
+   * reason rather than an ethers internal.
+   */
+  async sendAsBuyer(workspaceId, contractName, address, method, args = []) {
+    const rec = await this.buyerFor(workspaceId);
+    const c = this.contractAt(contractName, address, rec.signer);
+    try {
+      return await c[method](...args);
+    } catch (e) {
+      this.resetBuyerNonce(workspaceId);
+      const reason = this.explainRevert(e, contractName);
+      if (!reason) throw e;
+      const err = new Error(reason);
+      err.refusedByContract = true;
+      throw err;
+    }
   }
 
   async close() {

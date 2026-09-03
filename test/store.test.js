@@ -107,7 +107,7 @@ async function checks(label, store) {
 
   await test(`${label}: the audit trail appends and reads back in order`, async () => {
     await store.appendAudit({ workspaceId: 'ws1', actorName: 'S. Negi', actorRole: 'sales', action: 'submit', fromState: 'AI_COMPLETED', toState: 'SALES_REVIEW' });
-    await store.appendAudit({ workspaceId: 'ws1', actorName: 'M. Navya', actorRole: 'head', action: 'approve', fromState: 'HEAD_APPROVAL', toState: 'APPROVED', detail: { amount: 1175 } });
+    await store.appendAudit({ workspaceId: 'ws1', actorName: 'Priya Raghavan', actorRole: 'head', action: 'approve', fromState: 'HEAD_APPROVAL', toState: 'APPROVED', detail: { amount: 1175 } });
     await store.appendAudit({ workspaceId: 'other', actorName: 'X', actorRole: 'sales', action: 'submit' });
     const rows = await store.audit('ws1');
     eq(rows.length, 2, 'another workspace must not appear');

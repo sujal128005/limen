@@ -103,6 +103,40 @@ async function run() {
     await reverts(escrowAsSupplier.confirmDelivery.staticCall(dealId), 'NotBuyer');
   });
 
+  /*
+   * Settlement now needs two signatures. Every path below that confirms a
+   * delivery has to be shipped first, which is the point of the change rather
+   * than an inconvenience to work around.
+   */
+  const ship = async (id, signer, ref) =>
+    (await chain.contractAt('ProcurementEscrow', escrowAddr, signer)
+      .attestShipment(id, ethers.id(ref || `awb-${id}`))).wait();
+
+  await test('the buyer cannot confirm a delivery nobody says was sent', async () => {
+    await reverts(escrowAsBuyer.confirmDelivery.staticCall(dealId), 'NotShipped');
+  });
+
+  await test('the buyer cannot attest the shipment themselves', async () => {
+    // The whole value of the second signature is that one key cannot produce
+    // both halves.
+    await reverts(escrowAsBuyer.attestShipment.staticCall(dealId, ethers.id('x')), 'NotSupplier');
+  });
+
+  await test('the supplier attests the shipment and it is recorded', async () => {
+    await ship(dealId, supplierSigner, 'awb-first');
+    const d = await chain.escrow.getDeal(dealId);
+    gt(d.shippedAt, 0n, 'shippedAt is set');
+    eq(d.shipmentHash, ethers.id('awb-first'), 'the evidence reference is stored verbatim');
+  });
+
+  await test('a shipment cannot be attested twice', async () => {
+    await reverts(
+      chain.contractAt('ProcurementEscrow', escrowAddr, supplierSigner)
+        .attestShipment.staticCall(dealId, ethers.id('again')),
+      'AlreadyShipped'
+    );
+  });
+
   await test('on-time delivery releases funds and raises reputation', async () => {
     await (await escrowAsBuyer.confirmDelivery(dealId)).wait();
     const supBefore = await chain.usdc.balanceOf(supplierAddr);
@@ -128,6 +162,7 @@ async function run() {
     await (await escrowAsAgent.createDeal(buyerAddr, supplier2, USDC(1000), deadline, ethers.id('terms-late'))).wait();
     const id = await chain.escrow.dealCount();
     await warp(4 * DAY); // blow through the agreed window
+    await ship(id, chain.supplierSigners[1], 'awb-late');
     await (await escrowAsBuyer.confirmDelivery(id)).wait();
     const before = await chain.registry.scoreOf(supplier2);
     await (await escrowAsBuyer.releasePayment(id)).wait();
@@ -328,6 +363,7 @@ async function run() {
     await (await e.revokeAgentPolicy()).wait(); // buyer pulls the agent's authority
 
     const eAsBuyer = chain.contractAt('ProcurementEscrow', escrowAddr, b);
+    await ship(id, supplierSigner, 'awb-revoked');
     await (await eAsBuyer.confirmDelivery(id)).wait();
     const before = await chain.usdc.balanceOf(supplierAddr);
     await (await eAsBuyer.releasePayment(id)).wait();
@@ -347,6 +383,7 @@ async function run() {
     await (await e.setAgentPolicy(agentAddr, USDC(2000), USDC(9000), (await now()) + 10 * DAY)).wait();
     await (await escrowAsAgent.createDeal(bAddr, supplierAddr, USDC(200), (await now()) + 5 * DAY, ethers.id('dup'))).wait();
     const id = await chain.escrow.dealCount();
+    await ship(id, supplierSigner, 'awb-dup');
     await (await e.confirmDelivery(id)).wait();
     await reverts(e.confirmDelivery.staticCall(id), 'BadState');
   });

@@ -52,8 +52,10 @@ contract ProcurementEscrow {
         uint128 amount;
         uint64  deliveryDeadline;
         uint64  createdAt;
+        uint64  shippedAt;    // set by the SUPPLIER, not the buyer
         uint64  deliveredAt;
         bytes32 termsHash;    // keccak256 of the exact agreed terms
+        bytes32 shipmentHash; // supplier's evidence reference, opaque to this contract
         State   state;
     }
 
@@ -74,6 +76,7 @@ contract ProcurementEscrow {
         uint64 deliveryDeadline,
         bytes32 termsHash
     );
+    event ShipmentAttested(uint256 indexed dealId, address indexed supplier, uint64 shippedAt, bytes32 shipmentHash);
     event DeliveryConfirmed(uint256 indexed dealId, uint64 confirmedAt, bool onTime);
     event PaymentReleased(uint256 indexed dealId, address indexed supplier, uint128 amount, bool onTime);
     event DealRefunded(uint256 indexed dealId, address indexed buyer, uint128 amount);
@@ -86,6 +89,9 @@ contract ProcurementEscrow {
     error SupplierNotRegistered();
     error BadState(State found);
     error NotBuyer();
+    error NotSupplier();
+    error NotShipped();
+    error AlreadyShipped();
     error NotAuthorisedAgent(address caller, address expected);
     error NotParty();
     error ZeroAmount();
@@ -175,8 +181,10 @@ contract ProcurementEscrow {
             amount: amount,
             deliveryDeadline: deliveryDeadline,
             createdAt: uint64(block.timestamp),
+            shippedAt: 0,
             deliveredAt: 0,
             termsHash: termsHash,
+            shipmentHash: bytes32(0),
             state: State.Funded
         });
 
@@ -184,13 +192,47 @@ contract ProcurementEscrow {
         emit DealCreated(dealId, buyer, supplier, amount, deliveryDeadline, termsHash);
     }
 
+    /// @notice Supplier attests that the goods were dispatched.
+    /// @dev The first of the two signatures a settlement now needs.
+    ///
+    ///      Previously the buyer alone confirmed delivery, which meant one key
+    ///      could walk a deal from funded to paid with nothing having shipped.
+    ///      A buyer who wanted to move money to a supplier under the appearance
+    ///      of a purchase needed to convince nobody.
+    ///
+    ///      Now the supplier's own key has to say it shipped and the buyer's key
+    ///      has to say it arrived. Be precise about what that buys: it does not
+    ///      make a fictitious delivery impossible, it makes it require two
+    ///      parties instead of one. A buyer and a supplier who are working
+    ///      together can still settle a deal that never moved. Closing that
+    ///      needs an attestation from somebody with no stake in the trade, which
+    ///      means a carrier or an inspector, which is a partnership rather than
+    ///      a function. See the README.
+    ///
+    ///      shipmentHash is opaque here on purpose. It is a reference to
+    ///      whatever the supplier considers evidence, an airway bill or a
+    ///      dispatch note, and this contract neither reads nor validates it. A
+    ///      contract that pretended to verify a document it cannot see would be
+    ///      worse than one that plainly stores a reference to it.
+    function attestShipment(uint256 dealId, bytes32 shipmentHash) external {
+        Deal storage d = deals[dealId];
+        if (d.state != State.Funded) revert BadState(d.state);
+        if (msg.sender != d.supplier) revert NotSupplier();
+        if (d.shippedAt != 0) revert AlreadyShipped();
+        d.shippedAt = uint64(block.timestamp);
+        d.shipmentHash = shipmentHash;
+        emit ShipmentAttested(dealId, d.supplier, d.shippedAt, shipmentHash);
+    }
+
     /// @notice Buyer confirms goods were received.
-    /// @dev MVP: the buyer attests. Production would additionally accept an attestation
-    ///      from a logistics oracle or a nominated inspector - see README.
+    /// @dev The second signature. Refuses until the supplier has attested, so
+    ///      the buyer cannot confirm receipt of something nobody claims to have
+    ///      sent.
     function confirmDelivery(uint256 dealId) external {
         Deal storage d = deals[dealId];
         if (d.state != State.Funded) revert BadState(d.state);
         if (msg.sender != d.buyer) revert NotBuyer();
+        if (d.shippedAt == 0) revert NotShipped();
         d.state = State.Delivered;
         d.deliveredAt = uint64(block.timestamp);
         emit DeliveryConfirmed(dealId, d.deliveredAt, d.deliveredAt <= d.deliveryDeadline);

@@ -52,8 +52,51 @@ function call(method, path, { body, token, workspace: ws } = {}) {
   });
 }
 
-async function login(role, name, ws) {
-  const r = await call('POST', '/api/session/login', { body: { role, name }, workspace: ws });
+const CODES = { sales: '2481', head: '7390', finance: '5162' };
+
+/*
+ * The supplier's attestation, which settlement now requires before the buyer
+ * can confirm receipt. Any signed-in desk may trigger the simulated
+ * counterparty; the contract still insists the signature comes from the
+ * supplier's own address.
+ */
+async function ship(c) {
+  const r = await call('POST', '/api/simulate/supplier-shipment', { token: c.sales, workspace: c.ws });
+  if (r.status !== 200) throw new Error(`shipment attestation failed: ${JSON.stringify(r.body)}`);
+  return r;
+}
+
+
+/*
+ * Fund the payment float, the way the finance desk does.
+ *
+ * A payout draws on a real balance now, so a test that releases money has to
+ * put money there first. It goes through the same order and signature check the
+ * browser does rather than writing a number into the session: the verification
+ * is the security property, and a test that skipped it would leave the one
+ * check in checkout.js unexercised.
+ */
+async function topUp(c, amount = 150000) {
+  const order = await call('POST', '/api/payments/order',
+    { body: { amount }, token: c.finance, workspace: c.ws });
+  if (order.status !== 200) throw new Error(`order failed: ${JSON.stringify(order.body)}`);
+  const sim = order.body.simulatedPayment;
+  if (!sim) throw new Error('no simulated payment; real credentials are configured');
+  const done = await call('POST', '/api/payments/confirm', {
+    body: {
+      orderId: order.body.orderId,
+      paymentId: sim.razorpay_payment_id,
+      signature: sim.razorpay_signature,
+    },
+    token: c.finance,
+    workspace: c.ws,
+  });
+  if (done.status !== 200) throw new Error(`confirm failed: ${JSON.stringify(done.body)}`);
+  return done.body.balance;
+}
+
+async function login(role, ws) {
+  const r = await call('POST', '/api/session/login', { body: { role, code: CODES[role] }, workspace: ws });
   if (!r.body.token) throw new Error(`login failed: ${JSON.stringify(r.body)}`);
   return r.body.token;
 }
@@ -77,9 +120,9 @@ async function restart() {
 
 async function upToHeadApproval(tag) {
   const ws = `dur-${tag}-${Date.now().toString(36)}`;
-  const sales = await login('sales', 'S. Negi', ws);
-  const head = await login('head', 'M. Navya', ws);
-  const finance = await login('finance', 'F. Operator', ws);
+  const sales = await login('sales', ws);
+  const head = await login('head', ws);
+  const finance = await login('finance', ws);
   await call('POST', '/api/brief', { body: { text: REQUEST }, token: sales, workspace: ws });
   await call('POST', '/api/candidates', { token: sales, workspace: ws });
   await call('POST', '/api/negotiate', { token: sales, workspace: ws });
@@ -104,7 +147,7 @@ async function checks(label) {
     const view = (await call('GET', '/api/purchase', { token: c.head, workspace: c.ws })).body;
     ok(view.supplier && view.supplier.name, 'the supplier survived');
     ok(view.requestedAmount > 0, 'the amount survived');
-    eq(view.submittedBy, 'S. Negi', 'who raised it survived');
+    eq(view.submittedBy, 'Rohit Deshmukh', 'who raised it survived');
   });
 
   await test(`${label}: an approval survives a restart and still authorises`, async () => {
@@ -115,11 +158,13 @@ async function checks(label) {
     await restart();
 
     const view = (await call('GET', '/api/purchase', { token: c.finance, workspace: c.ws })).body;
-    eq(view.headApproval.approver, 'M. Navya', 'the approver survived');
+    eq(view.headApproval.approver, 'Priya Raghavan', 'the approver survived');
     eq(view.approvalCurrent, true, 'the fingerprint still matches after a restart');
 
     // And the workflow continues from where it was, rather than restarting.
-    const receipt = await call('POST', '/api/purchase/confirm-receipt', { token: c.sales, workspace: c.ws });
+    const receipt = await ship(c);
+    await call('POST', '/api/purchase/confirm-receipt', { token: c.sales, workspace: c.ws });
+    await topUp(c);
     eq(receipt.status, 200, receipt.body.error);
     eq(await stateOf(c), 'PAYMENT_READY');
   });
@@ -127,7 +172,9 @@ async function checks(label) {
   await test(`${label}: a settled payment survives a restart`, async () => {
     const c = await upToHeadApproval('settle');
     await call('POST', '/api/purchase/approve', { token: c.head, workspace: c.ws });
+    await ship(c);
     await call('POST', '/api/purchase/confirm-receipt', { token: c.sales, workspace: c.ws });
+    await topUp(c);
     const rel = await call('POST', '/api/purchase/release', { token: c.finance, workspace: c.ws });
     eq(rel.status, 200, JSON.stringify(rel.body).slice(0, 160));
     const payoutId = rel.body.payment.payoutId;
@@ -142,7 +189,9 @@ async function checks(label) {
   await test(`${label}: two concurrent releases produce one payout`, async () => {
     const c = await upToHeadApproval('race');
     await call('POST', '/api/purchase/approve', { token: c.head, workspace: c.ws });
+    await ship(c);
     await call('POST', '/api/purchase/confirm-receipt', { token: c.sales, workspace: c.ws });
+    await topUp(c);
     eq(await stateOf(c), 'PAYMENT_READY', 'precondition');
 
     // Fired together, on purpose. Without the per-workspace lock both read
@@ -171,7 +220,9 @@ async function checks(label) {
   await test(`${label}: a duplicate webhook is refused across a restart`, async () => {
     const c = await upToHeadApproval('hook');
     await call('POST', '/api/purchase/approve', { token: c.head, workspace: c.ws });
+    await ship(c);
     await call('POST', '/api/purchase/confirm-receipt', { token: c.sales, workspace: c.ws });
+    await topUp(c);
     const rel = await call('POST', '/api/purchase/release', { token: c.finance, workspace: c.ws });
     const payoutId = rel.body.payment.payoutId;
 
@@ -239,6 +290,10 @@ async function checks(label) {
 
     // B's sales token, pointed at B's workspace, must not be able to reach into
     // A's deal. The contract check and the workflow check both stand in the way.
+    //
+    // No shipment attestation here on purpose: B has no funded deal to attest
+    // against, and the refusal under test is the workspace boundary rather than
+    // the delivery signatures.
     const r = await call('POST', '/api/purchase/confirm-receipt', { token: b.sales, workspace: b.ws });
     ok(r.status >= 400, `expected refusal, got ${r.status}`);
   });
@@ -251,7 +306,7 @@ async function checks(label) {
     ok(actions.includes('submit'), `expected a submit entry, got ${actions.join(', ')}`);
     ok(actions.includes('approve'), `expected an approve entry, got ${actions.join(', ')}`);
     const approve = rows.find((r) => r.action === 'approve');
-    eq(approve.actorName, 'M. Navya');
+    eq(approve.actorName, 'Priya Raghavan');
     eq(approve.actorRole, 'head');
     ok(approve.at, 'entries are timestamped');
   });

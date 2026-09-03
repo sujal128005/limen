@@ -12,7 +12,10 @@
     "dev:web": "cd web && vite",
     "prestart": "npm run build:web",
     "sweep": "node scripts/sweep.js",
-    "deploy": "node scripts/deploy.js"
+    "deploy": "node scripts/deploy.js",
+    "verify:ui": "node scripts/verify-ui.js",
+    "verify:tier4": "node scripts/verify-tier4.js",
+    "build:docs": "node scripts/build-docs.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

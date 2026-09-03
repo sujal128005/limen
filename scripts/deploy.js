@@ -31,23 +31,69 @@ const { SUPPLIERS } = require('../server/data/suppliers');
 
 const force = process.argv.includes('--force');
 
-function required(name) {
-  const v = process.env[name];
-  if (!v) {
-    console.error(`\n  ${name} is not set.\n`);
-    console.error('  A deployment needs all of:');
-    console.error('    RPC_URL               the network to deploy to');
-    console.error('    DEPLOYER_KEY          a funded key on that network');
-    console.error('    LIMEN_BUYER_MNEMONIC  derives the per-workspace buyer wallets\n');
-    process.exit(1);
+function fail(message, detail) {
+  console.error(`\n  ${message}\n`);
+  if (detail) console.error(`  ${detail}\n`);
+  console.error('  A deployment needs all three:');
+  console.error('    RPC_URL               the network, e.g. https://sepolia.base.org');
+  console.error('    DEPLOYER_KEY          a funded private key, 0x and 64 hex characters');
+  console.error('    LIMEN_BUYER_MNEMONIC  a valid BIP-39 phrase, usually twelve words\n');
+  process.exit(1);
+}
+
+/*
+ * Check the values, not just their presence.
+ *
+ * The first version only checked that these were set, so pasting a placeholder
+ * got you "invalid BytesLike value" from somewhere three libraries down. A
+ * deployment script is used once, under time pressure, by somebody who has just
+ * been through a faucet queue. Its failures have to name the variable that is
+ * wrong and what a right one looks like.
+ */
+function validate() {
+  const rpc = process.env.RPC_URL;
+  if (!rpc) fail('RPC_URL is not set.');
+  if (!/^https?:\/\//.test(rpc)) {
+    fail('RPC_URL does not look like a URL.', `Got: ${rpc}`);
   }
-  return v;
+
+  const key = process.env.DEPLOYER_KEY;
+  if (!key) fail('DEPLOYER_KEY is not set.');
+  if (!/^0x[0-9a-fA-F]{64}$/.test(key)) {
+    fail(
+      'DEPLOYER_KEY is not a private key.',
+      key.length < 12
+        ? `Got "${key}", which looks like a placeholder rather than a real key.`
+        : `Expected 0x followed by 64 hex characters, got ${key.length} characters.`
+    );
+  }
+
+  const phrase = process.env.LIMEN_BUYER_MNEMONIC;
+  if (!phrase) fail('LIMEN_BUYER_MNEMONIC is not set.');
+  if (!ethers.Mnemonic.isValidMnemonic(phrase.trim())) {
+    const words = phrase.trim().split(/\s+/).length;
+    fail(
+      'LIMEN_BUYER_MNEMONIC is not a valid recovery phrase.',
+      `Got ${words} word${words === 1 ? '' : 's'}. It must be a real BIP-39 phrase: the ` +
+      'word list and the checksum both matter, so an arbitrary twelve words will not do.'
+    );
+  }
+
+  /*
+   * The development phrase derives addresses every reader of this repository
+   * can regenerate. chain.js refuses it too; catching it here means finding out
+   * before spending gas rather than after.
+   */
+  if (phrase.trim() === 'test test test test test test test test test test test junk') {
+    fail(
+      'LIMEN_BUYER_MNEMONIC is the public development phrase.',
+      'Every address it derives is known to everyone. Use a phrase from a wallet you created.'
+    );
+  }
 }
 
 (async () => {
-  required('RPC_URL');
-  required('DEPLOYER_KEY');
-  required('LIMEN_BUYER_MNEMONIC');
+  validate();
 
   const chain = new Chain();
   await chain.init();
