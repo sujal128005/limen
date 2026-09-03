@@ -190,9 +190,23 @@ function verifyPayment({ orderId, paymentId, signature }) {
  * id is publishable and is shown in full; the secret is reported only as
  * present or absent, and its value never leaves this process.
  */
+/*
+ * Quotes that were meant for a file, in a value that came from a dashboard.
+ *
+ * .env needs quoting for anything with a space in it, and the loader strips
+ * those quotes back off. A hosting dashboard does not: type "rzp_test_x" into
+ * Render's Environment tab and the quote characters become part of the value.
+ * Razorpay then answers "Authentication failed", which sends people looking at
+ * the key rather than at the two characters around it. Cheap to detect and
+ * almost impossible to spot by eye in a masked field.
+ */
+const quoted = (v) => /^\s*["'].*["']\s*$/.test(String(v || ''));
+
 function diagnostics() {
   return {
     live: isLive(),
+    keyIdQuoted: quoted(KEY_ID),
+    secretQuoted: quoted(KEY_SECRET),
     keyId: KEY_ID || null,
     keyIdLooksTest: /^rzp_test_/.test(KEY_ID),
     keyIdLooksLive: /^rzp_live_/.test(KEY_ID),
