@@ -1430,9 +1430,45 @@ function PaymentSheet({ open, amount, live, phase, error, onPay, onClose }) {
 
             <p className="pay-note">
               {live
-                ? 'Test mode. Use a Razorpay test card; no real money moves. The float is credited only after this server verifies the payment signature, never because this page reported success.'
+                ? 'Test mode. Razorpay shows a mock bank page with Success and Failure, and no real money moves. The float is credited only after this server verifies the payment signature, never because this page reported success.'
                 : 'No Razorpay credentials are configured, so this is a local stand-in for the gateway. It signs and verifies through exactly the same server code as the live path, so the check that matters is the one being exercised.'}
             </p>
+
+            {live && (
+              <p className="pay-note">
+                Card numbers for test mode are on{' '}
+                <a href="https://razorpay.com/docs/payments/payments/test-card-details/" target="_blank" rel="noreferrer">
+                  Razorpay&#8217;s test card page
+                </a>
+                . Any future expiry and any CVV.
+              </p>
+            )}
+
+            {/*
+              * A stand-in that cannot be turned on is just a dead end.
+              *
+              * The note above is accurate and was still not enough: it explains
+              * what this is without saying what to do about it, so somebody
+              * holding a perfectly good test key can read it and conclude the
+              * gateway was never built. Naming the two variables and the
+              * restart turns a disclosure into something fixable.
+              */}
+            {!live && (
+              <div className="pay-enable">
+                <span className="pay-enable-h">To use the real gateway</span>
+                <ol>
+                  <li>
+                    Put your test key pair in <code>.env</code>:
+                    <code className="pay-env">RAZORPAY_KEY_ID</code>
+                    <code className="pay-env">RAZORPAY_KEY_SECRET</code>
+                  </li>
+                  <li>Restart the server. Credentials are read once at startup.</li>
+                  <li>
+                    Check it took: <code className="pay-env">npm run check:razorpay</code>
+                  </li>
+                </ol>
+              </div>
+            )}
           </>
         )}
       </div>

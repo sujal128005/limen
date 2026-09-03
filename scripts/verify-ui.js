@@ -187,6 +187,29 @@ async function shot(page, path) {
 
   section('Setting up a purchase at the head\'s desk');
   for (const r of ['sales', 'head', 'finance']) await api.login(r);
+
+  /*
+   * This suite needs the payment stand-in, and says so before it starts.
+   *
+   * It funds the payment float to reach settlement, and once Razorpay Checkout
+   * is configured a script cannot do that: a live order is paid with a card, by
+   * a person, in a browser. The server withholds the stand-in payment in live
+   * mode deliberately, because handing one out would let any page skip the
+   * gateway and credit itself. That is a property worth having, not a
+   * limitation to route around.
+   *
+   * Checked here rather than discovered sixty checks later as a settlement that
+   * never happens. Nothing is wrong with the product when this fires.
+   */
+  const rail = await api.get('/api/payments/float', 'finance');
+  if (rail.body && rail.body.checkout && rail.body.checkout.live) {
+    console.log('\n  Razorpay Checkout is live on this server, so the float cannot be');
+    console.log('  funded by a script. Comment out RAZORPAY_KEY_ID and');
+    console.log('  RAZORPAY_KEY_SECRET in .env, restart, and run this again.');
+    console.log('  Nothing is broken; npm test covers the live path without a card.\n');
+    await browser.close();
+    process.exit(0);
+  }
   await drive(api, [
     ['brief', '/api/brief', 'sales', { text: REQ }],
     ['candidates', '/api/candidates', 'sales'],

@@ -2369,6 +2369,20 @@ async function boot() {
   await (await usdcAsBuyer.approve(addresses.escrow, toUnits(250000))).wait();
   console.log('  reference buyer funded, per-workspace buyers derive on demand');
 
+  /*
+   * Say which payment rails are live, on the way up.
+   *
+   * Money in and money out are two Razorpay products with two sets of
+   * requirements, and they can be on different rails at the same time. That is
+   * fine and often correct, but it is the kind of thing that has to be stated
+   * rather than discovered halfway through a demo. Two lines at startup, and
+   * neither of them prints a secret.
+   */
+  console.log(`  money in:  ${checkout.isLive() ? `Razorpay Checkout, key ${checkout.diagnostics().keyId}` : 'local stand-in, no key pair configured'}`);
+  console.log(`  money out: ${payments.configured() ? 'Razorpay Payouts' : 'local rail'}${
+    !payments.configured() && checkout.isLive() ? ', RAZORPAY_ACCOUNT_NUMBER is not set' : ''
+  }`);
+
   return app;
 }
 

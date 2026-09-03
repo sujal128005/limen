@@ -37,6 +37,22 @@ const KEY_ID = process.env.RAZORPAY_KEY_ID || '';
 const KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || '';
 const TIMEOUT_MS = Number(process.env.RAZORPAY_TIMEOUT_MS || 15000);
 
+/*
+ * Where the orders API lives, overridable so the live path can be tested.
+ *
+ * The default is Razorpay and nothing in normal operation changes it. It is a
+ * variable because until now the branch that talks to Razorpay had never once
+ * been executed: every test took the simulator path, so the request shape, the
+ * Basic auth header, the paise conversion and the error handling were all
+ * unverified code that would run for the first time in front of whoever plugged
+ * in a key. Pointing this at a local stand-in lets that whole path be driven in
+ * a test, with a real HMAC and a real signature check at the end of it.
+ *
+ * This is a test seam, not a way to move money somewhere else: it is read once
+ * at startup from the server's own environment, never from a request.
+ */
+const API_BASE = (process.env.RAZORPAY_API_BASE || 'https://api.razorpay.com').replace(/\/+$/, '');
+
 /** Live when both halves of the key pair are present, and not otherwise. */
 function isLive() { return !!(KEY_ID && KEY_SECRET); }
 
@@ -107,7 +123,7 @@ async function createOrder({ amountRupees, receipt }) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const res = await fetch('https://api.razorpay.com/v1/orders', {
+    const res = await fetch(`${API_BASE}/v1/orders`, {
       method: 'POST',
       signal: controller.signal,
       headers: {
@@ -124,6 +140,18 @@ async function createOrder({ amountRupees, receipt }) {
     return { ...body, simulated: false };
   } catch (e) {
     if (e.name === 'AbortError') throw new Error('Razorpay did not respond in time. Nothing was charged.');
+    /*
+     * Say which failure this is.
+     *
+     * fetch throws a bare "fetch failed" for everything from no DNS to a closed
+     * port, and that message in front of somebody debugging their key sends
+     * them to look at the key. The two causes want opposite fixes, so they are
+     * worth telling apart: a refusal above quotes what Razorpay said, and this
+     * says the request never got there.
+     */
+    if (e instanceof TypeError || /fetch failed/i.test(e.message || '')) {
+      throw new Error(`Could not reach Razorpay at ${API_BASE}. Nothing was charged.`);
+    }
     throw e;
   } finally {
     clearTimeout(timer);
@@ -152,7 +180,29 @@ function verifyPayment({ orderId, paymentId, signature }) {
   return { ok: true, simulated: !isLive() };
 }
 
+/*
+ * What the preflight is allowed to say out loud.
+ *
+ * The most common way this feature looks broken is the least interesting one:
+ * the keys are not where the process can see them, so the app quietly runs the
+ * stand-in and nobody can tell whether that is a configuration mistake or the
+ * product. This answers that question without ever handling the secret. The key
+ * id is publishable and is shown in full; the secret is reported only as
+ * present or absent, and its value never leaves this process.
+ */
+function diagnostics() {
+  return {
+    live: isLive(),
+    keyId: KEY_ID || null,
+    keyIdLooksTest: /^rzp_test_/.test(KEY_ID),
+    keyIdLooksLive: /^rzp_live_/.test(KEY_ID),
+    secretPresent: !!KEY_SECRET,
+    apiBase: API_BASE,
+    mode: isLive() ? 'Razorpay Checkout' : 'local stand-in',
+  };
+}
+
 module.exports = {
   isLive, publicConfig, createOrder, verifyPayment,
-  localPaymentFor, toPaise, fromPaise,
+  localPaymentFor, toPaise, fromPaise, diagnostics,
 };

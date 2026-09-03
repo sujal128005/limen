@@ -4775,6 +4775,31 @@ h1, h2, h3 { text-wrap: balance; }
 
 .pay-go { width: 100%; margin-top: var(--s-5); }
 .pay-note { font-size: 11.5px; line-height: 1.6; color: var(--ink-4); margin: var(--s-4) 0 0; }
+.pay-note a { color: var(--pine); text-decoration: underline; text-underline-offset: 2px; }
+
+/* ---- how to turn the real gateway on, shown only while it is off */
+.pay-enable {
+  margin-top: var(--s-4); padding: var(--s-4);
+  border: 1px solid var(--hair); border-radius: var(--r-sm);
+  background: var(--sunk);
+}
+.pay-enable-h {
+  display: block; font-size: 10px; font-weight: 620;
+  letter-spacing: var(--track-caps); text-transform: uppercase; color: var(--ink-3);
+}
+.pay-enable ol {
+  margin: 8px 0 0; padding-left: 16px;
+  font-size: 11.5px; line-height: 1.7; color: var(--ink-3);
+}
+.pay-enable li + li { margin-top: 5px; }
+.pay-enable code { font-family: var(--mono); font-size: 10.5px; color: var(--ink-2); }
+/* Each variable on its own line: run together they read as one long token and
+   the second one gets missed, which is exactly the mistake being prevented. */
+.pay-enable code.pay-env {
+  display: block; width: fit-content; margin-top: 4px;
+  padding: 2px 6px; border-radius: 4px;
+  background: var(--surface); border: 1px solid var(--hair);
+}
 
 /* ---- settled */
 .paysheet.done { text-align: center; padding-block: var(--s-7) var(--s-5); }

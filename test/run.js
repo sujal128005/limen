@@ -13,6 +13,9 @@ const { summary } = require('./harness');
   if (require('fs').existsSync(require('path').join(__dirname, 'checkout.test.js'))) {
     await require('./checkout.test').run();
   }
+  if (require('fs').existsSync(require('path').join(__dirname, 'razorpay-live.test.js'))) {
+    await require('./razorpay-live.test').run();
+  }
   if (require('fs').existsSync(require('path').join(__dirname, 'directory.test.js'))) {
     await require('./directory.test').run();
   }
