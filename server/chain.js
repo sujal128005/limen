@@ -35,6 +35,58 @@ class Chain {
   }
 
   async init({ rpcUrl = process.env.RPC_URL, deployerKey = process.env.DEPLOYER_KEY } = {}) {
+    /*
+     * A leftover placeholder is not a decision, so it is not treated as one.
+     *
+     * These two variables send the app to a public network, and when somebody
+     * has genuinely set them and got the value wrong, stopping with a clear
+     * message is right. But there is a third case, and it is the common one:
+     * `RPC_URL` and `DEPLOYER_KEY=0x...` still exported in a shell from an
+     * earlier deployment attempt, or copied out of .env.example and never
+     * filled in. Nothing was decided there. Refusing to boot the local demo,
+     * which needs neither variable, over a value that is literally three dots
+     * is punishing the wrong mistake.
+     *
+     * So an unmistakable placeholder is treated as unset and said out loud. A
+     * value that is wrong but real still stops, because then the person meant
+     * something. `npm run deploy` keeps its own stricter check, since there the
+     * whole point is that a real key is required.
+     */
+    const placeholder = (v) => {
+      if (!v) return false;
+      const t = String(v).trim();
+      if (/^(0x)?[.…]+$/.test(t)) return true;               // 0x... or ...
+      if (/^<.*>$/.test(t)) return true;                          // <your-key>
+      if (/^(your|my|put|paste|insert|todo|changeme|replace)/i.test(t)) return true;
+      if (/^(0x)?x+$/i.test(t)) return true;                      // 0xxxxx
+      return false;
+    };
+    /*
+     * The pair is dropped together, not one at a time.
+     *
+     * Dropping only the placeholder key leaves a real-looking RPC_URL with
+     * nothing to sign with, which lands on "RPC_URL is set but DEPLOYER_KEY is
+     * not" and is no more useful than the error it replaced. The two variables
+     * are one decision and a placeholder in either half means the decision was
+     * never finished, so both are ignored and the app runs where it can.
+     *
+     * A DEPLOYER_KEY that is genuinely absent is different and still an error:
+     * that is somebody who set RPC_URL and forgot the key, which is worth
+     * saying out loud.
+     */
+    const stale = [];
+    if (placeholder(rpcUrl)) stale.push('RPC_URL');
+    if (placeholder(deployerKey)) stale.push('DEPLOYER_KEY');
+    if (stale.length) {
+      console.warn(
+        `  [chain] ${stale.join(' and ')} ${stale.length > 1 ? 'are' : 'is'} set to a placeholder, ` +
+        'so the public network settings are being ignored. Running on the local in-process ' +
+        'chain, which needs neither.'
+      );
+      rpcUrl = undefined;
+      deployerKey = undefined;
+    }
+
     const compiled = compileContracts();
     this.artifacts = compiled.artifacts;
     this.solcVersion = compiled.solcVersion;

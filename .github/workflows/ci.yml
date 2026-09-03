@@ -14,7 +14,26 @@ jobs:
         with:
           node-version: '20'
           cache: npm
-      - run: npm ci
+      # Not `npm ci`, and the reason is worth writing down so nobody switches
+      # it back.
+      #
+      # ganache pulls in chokidar 3.5.2, which declares fsevents as an optional
+      # dependency. npm resolves it, but does not carry the optional flag onto
+      # the nested lockfile entry, so `node_modules/ganache/node_modules/fsevents`
+      # is recorded as a plain requirement pinned to darwin. `npm ci` is strict
+      # about that and refuses on Linux with EBADPLATFORM, which is what broke
+      # this workflow.
+      #
+      # Checked rather than assumed: regenerating the lockfile does not fix it,
+      # a root `overrides` entry does not reach the nested copy, and
+      # `npm ci --omit=optional` fails the same way because the entry is not
+      # marked optional in the first place. Hand-editing the lockfile would fix
+      # it and would be undone by the next `npm install`.
+      #
+      # `npm install --no-save` installs the same tree from the same lockfile,
+      # skips the darwin-only package as unbuildable rather than fatal, and
+      # leaves the lockfile untouched so CI cannot quietly drift.
+      - run: npm install --no-save --no-audit --no-fund
       - run: npm test
       - run: npm run build:web
 

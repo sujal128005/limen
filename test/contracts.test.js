@@ -9,8 +9,17 @@ const DAY = 86400;
 async function run() {
   group('Smart contracts');
 
+  /*
+   * Pinned to the local chain, whatever the shell says.
+   *
+   * chain.init defaults rpcUrl to process.env.RPC_URL, so a terminal with
+   * RPC_URL and DEPLOYER_KEY still exported from a deployment attempt made the
+   * contract tests try to reach a public network and fail before the first
+   * assertion. A unit suite that passes or fails depending on a shell variable
+   * is not a unit suite.
+   */
   const chain = new Chain();
-  await chain.init();
+  await chain.init({ rpcUrl: null, deployerKey: null });
   await chain.deployAll();
 
   const provider = chain.provider;

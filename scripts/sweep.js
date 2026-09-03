@@ -130,7 +130,20 @@ async function waitForChain() {
     console.log('');
     console.log('  Nothing is broken. npm test covers the live path without a card.');
     console.log('-'.repeat(52) + '\n');
-    process.exit(0);
+    /*
+     * exitCode and return, not process.exit.
+     *
+     * process.exit tears the process down while the fetch above still has a
+     * socket closing, and libuv on Windows asserts on that:
+     *
+     *   Assertion failed: !(handle->flags & UV_HANDLE_CLOSING),
+     *   file src\win\async.c, line 76
+     *
+     * A clean stop that ends in a crash dialog is not a clean stop. Setting the
+     * code and returning lets node close its handles and exit on its own.
+     */
+    process.exitCode = 0;
+    return;
   }
   check('three roles can sign in', !!(TOKENS.sales && TOKENS.head && TOKENS.finance));
   const anon = await call('POST', '/api/brief', { text: REQUEST }, { token: null });

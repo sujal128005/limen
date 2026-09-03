@@ -1,5 +1,7 @@
 'use strict';
 
+const { launch: launchBrowser } = require('./browser');
+
 /*
  * The rendered check.
  *
@@ -22,14 +24,13 @@
  */
 
 let chromium;
-let cp;
 try {
   ({ chromium } = require('playwright-core'));
-  cp = require('@sparticuz/chromium');
-  cp = cp.default || cp;
 } catch (_) {
-  console.log('\n  verify:ui needs a browser.\n');
-  console.log('    npm install --no-save playwright-core @sparticuz/chromium\n');
+  console.log('\n  verify:ui needs Playwright.\n');
+  console.log('    npm install --no-save playwright-core\n');
+  console.log('  A browser is found separately: scripts/browser.js uses an installed');
+  console.log('  Chrome or Edge, or @sparticuz/chromium on Linux.\n');
   console.log('  Skipping, and not counting it as a pass.\n');
   process.exit(0);
 }
@@ -180,8 +181,31 @@ async function shot(page, path) {
   }
 }
 
+
+/*
+ * Is there a server to check?
+ *
+ * Without this the first API call fails with "fetch failed", which names
+ * nothing and sends people to look at the script. This suite drives a running
+ * server on purpose, so the useful message is the one that says to start it.
+ */
+async function requireServer(base) {
+  try {
+    const r = await fetch(`${base}/api/status`, { signal: AbortSignal.timeout(4000) });
+    if (r.ok) return true;
+  } catch (_) { /* falls through to the message below */ }
+  console.log(`\n  Nothing is listening on ${base}\n`);
+  console.log('  This suite drives a running server. Start one in another terminal:\n');
+  console.log('    npm start\n');
+  console.log('  Then run this again. Set LIMEN_BASE to check a different address.\n');
+  return false;
+}
+
 (async () => {
-  const browser = await chromium.launch({ executablePath: await cp.executablePath(), args: cp.args });
+  if (!await requireServer(BASE)) { process.exitCode = 0; return; }
+
+  const browser = await launchBrowser(chromium);
+  if (!browser) return;   // resolveBrowser already printed what to install
   const ws = 'v-' + Date.now().toString(36);
   const api = makeApi(ws);
 
@@ -208,7 +232,20 @@ async function shot(page, path) {
     console.log('  RAZORPAY_KEY_SECRET in .env, restart, and run this again.');
     console.log('  Nothing is broken; npm test covers the live path without a card.\n');
     await browser.close();
-    process.exit(0);
+    /*
+     * exitCode and return, not process.exit.
+     *
+     * process.exit tears the process down while the fetch above still has a
+     * socket closing, and libuv on Windows asserts on that:
+     *
+     *   Assertion failed: !(handle->flags & UV_HANDLE_CLOSING),
+     *   file src\win\async.c, line 76
+     *
+     * A clean stop that ends in a crash dialog is not a clean stop. Setting the
+     * code and returning lets node close its handles and exit on its own.
+     */
+    process.exitCode = 0;
+    return;
   }
   await drive(api, [
     ['brief', '/api/brief', 'sales', { text: REQ }],

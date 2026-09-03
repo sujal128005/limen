@@ -1,5 +1,7 @@
 'use strict';
 
+const { launch: launchBrowser } = require('./browser');
+
 /*
  * Tier 4, rendered.
  *
@@ -15,14 +17,14 @@
  */
 
 let chromium;
-let cp;
 try {
   ({ chromium } = require('playwright-core'));
-  cp = require('@sparticuz/chromium');
-  cp = cp.default || cp;
 } catch (_) {
-  console.log('\n  verify:tier4 needs a browser.\n');
-  console.log('    npm install --no-save playwright-core @sparticuz/chromium\n');
+  console.log('\n  verify:tier4 needs Playwright.\n');
+  console.log('    npm install --no-save playwright-core\n');
+  console.log('  A browser is found separately: scripts/browser.js uses an installed');
+  console.log('  Chrome or Edge, or @sparticuz/chromium on Linux.\n');
+  console.log('  Skipping, and not counting it as a pass.\n');
   process.exit(0);
 }
 
@@ -81,7 +83,28 @@ async function stillness(page) {
   await page.waitForTimeout(120);
 }
 
+
+/*
+ * Is there a server to check?
+ *
+ * Without this the first API call fails with "fetch failed", which names
+ * nothing and sends people to look at the script. This suite drives a running
+ * server on purpose, so the useful message is the one that says to start it.
+ */
+async function requireServer(base) {
+  try {
+    const r = await fetch(`${base}/api/status`, { signal: AbortSignal.timeout(4000) });
+    if (r.ok) return true;
+  } catch (_) { /* falls through to the message below */ }
+  console.log(`\n  Nothing is listening on ${base}\n`);
+  console.log('  This suite drives a running server. Start one in another terminal:\n');
+  console.log('    npm start\n');
+  console.log('  Then run this again. Set LIMEN_BASE to check a different address.\n');
+  return false;
+}
+
 (async()=>{
+  if (!await requireServer(BASE)) { process.exitCode = 0; return; }
   const ws='t4-'+Date.now().toString(36); const T={};
   for(const r of ['sales','head','finance']){const x=await fetch(BASE+'/api/session/login',{method:'POST',headers:{'content-type':'application/json','x-workspace':ws},body:JSON.stringify({role:r,code:CODES[r]})});T[r]=(await x.json()).token;}
   const post=async(p,role,b)=>{const r=await fetch(BASE+p,{method:'POST',headers:{'content-type':'application/json','x-workspace':ws,authorization:'Bearer '+T[role]},body:JSON.stringify(b||{})});return {s:r.status,j:await r.json().catch(()=>({}))};};
@@ -110,11 +133,25 @@ async function stillness(page) {
       console.log('  funded by a script. Comment out RAZORPAY_KEY_ID and');
       console.log('  RAZORPAY_KEY_SECRET in .env, restart, and run this again.');
       console.log('  Nothing is broken; npm test covers the live path without a card.\n');
-      process.exit(0);
+    /*
+     * exitCode and return, not process.exit.
+     *
+     * process.exit tears the process down while the fetch above still has a
+     * socket closing, and libuv on Windows asserts on that:
+     *
+     *   Assertion failed: !(handle->flags & UV_HANDLE_CLOSING),
+     *   file src\win\async.c, line 76
+     *
+     * A clean stop that ends in a crash dialog is not a clean stop. Setting the
+     * code and returning lets node close its handles and exit on its own.
+     */
+      process.exitCode = 0;
+      return;
     }
   }
 
-  const b=await chromium.launch({executablePath:await cp.executablePath(),args:cp.args});
+  const b = await launchBrowser(chromium);
+  if (!b) return;   // resolveBrowser already printed what to install
   const signIn=async(pg,role)=>{
     await pg.addInitScript((w)=>{localStorage.setItem('limen.workspace',w);sessionStorage.removeItem('limen.session');},ws);
     await pg.goto(BASE,{waitUntil:'networkidle'});

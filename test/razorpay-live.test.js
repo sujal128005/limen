@@ -313,6 +313,61 @@ async function run() {
     ok(threw && /RAZORPAY_ACCOUNT_NUMBER/.test(threw.message), threw && threw.message);
   });
 
+  group('A stale shell variable does not stop the local demo');
+
+  /*
+   * The failure this reproduces, verbatim.
+   *
+   *   FATAL DEPLOYER_KEY is not a private key. Expected 0x followed by 64 hex
+   *   characters, got 5 characters ("0x...").
+   *
+   * A terminal still had RPC_URL and DEPLOYER_KEY exported from a deployment
+   * attempt, with the key left as the placeholder from .env.example. npm test
+   * and npm start both refused to run, and neither needs either variable. The
+   * message was accurate and the behaviour was still wrong: nothing had been
+   * decided, so nothing should have been enforced.
+   */
+  await test('a placeholder key is ignored rather than fatal', async () => {
+    const { Chain } = require('../server/chain');
+    const chain = new Chain();
+    const warned = [];
+    const realWarn = console.warn;
+    console.warn = (...a) => warned.push(a.join(' '));
+    try {
+      await chain.init({ rpcUrl: 'https://sepolia.example.invalid', deployerKey: '0x...' });
+    } finally { console.warn = realWarn; }
+    eq(chain.mode, 'in-process', 'it falls back to the local chain');
+    ok(warned.some((w) => /DEPLOYER_KEY.*placeholder/i.test(w)), warned.join(' | ') || 'no warning');
+  });
+
+  await test('a key that is wrong but real still stops', async () => {
+    // The distinction that matters. A placeholder is a leftover. This is
+    // somebody who meant it and got it wrong, and quietly ignoring that would
+    // put them on a local chain while they believed they were on a public one.
+    const { Chain } = require('../server/chain');
+    let threw = null;
+    try {
+      await new Chain().init({
+        rpcUrl: 'https://sepolia.example.invalid',
+        deployerKey: '0xdeadbeef',
+      });
+    } catch (e) { threw = e; }
+    ok(threw, 'must refuse');
+    ok(/DEPLOYER_KEY is not a private key/.test(threw.message), threw.message);
+    eq(threw.configuration, true, 'and is tagged so boot prints the sentence, not a stack');
+  });
+
+  await test('a placeholder RPC_URL is ignored too', async () => {
+    const { Chain } = require('../server/chain');
+    const chain = new Chain();
+    const realWarn = console.warn;
+    console.warn = () => {};
+    try {
+      await chain.init({ rpcUrl: '<your-rpc-url>', deployerKey: null });
+    } finally { console.warn = realWarn; }
+    eq(chain.mode, 'in-process');
+  });
+
   // Restore the modules the rest of the suite shares, in their unconfigured shape.
   loadCheckout({ RAZORPAY_KEY_ID: '', RAZORPAY_KEY_SECRET: '', RAZORPAY_API_BASE: '' });
   loadPayments({ RAZORPAY_KEY_ID: '', RAZORPAY_KEY_SECRET: '', RAZORPAY_ACCOUNT_NUMBER: '' });

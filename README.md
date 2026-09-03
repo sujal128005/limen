@@ -95,7 +95,7 @@ The first boot compiles the contracts with solc, deploys three of them to an in-
 | `npm run dev` | Runs the server without rebuilding the frontend |
 | `npm run dev:web` | Vite dev server for frontend work, with hot reload |
 | `npm run build:web` | Builds the frontend only |
-| `npm test` | 292 unit and contract tests. No server needed |
+| `npm test` | 295 unit and contract tests. No server needed |
 | `npm run sweep` | 154 checks against a running server |
 | `npm run verify:ui` | 70 checks in a real browser |
 | `npm run verify:tier4` | 20 more, including contrast in both themes |
@@ -309,7 +309,7 @@ The desk codes deserve precision. They stop the wrong browser tab from becoming 
 ## Testing
 
 ```bash
-npm test                 # 292 unit and contract tests, no server needed
+npm test                 # 295 unit and contract tests, no server needed
 
 npm start                # in one terminal
 npm run sweep            # in another: 154 checks against the live HTTP API
@@ -323,8 +323,12 @@ node scripts/llm-check.js
 The two browser suites need a browser, so they are not part of `npm test`:
 
 ```bash
-npm install --no-save playwright-core @sparticuz/chromium
+npm install --no-save playwright-core
 ```
+
+`scripts/browser.js` then finds something to render with: an installed Chrome or Edge on Windows and macOS, or `@sparticuz/chromium` on Linux, which you can add with `npm install --no-save @sparticuz/chromium`. If none is found it prints what to install rather than failing inside a spawn call. Set `LIMEN_CHROME` to a full executable path to override the search.
+
+On Windows, `@sparticuz/chromium` alone is not enough. It ships a Linux build for AWS Lambda, and pointing Playwright at it produces `spawn ...\Temp\chromium ENOENT`. Installing Chrome, which most machines already have, is the fix.
 
 They exist because a previous round of defects passed every other check. Three nav items had no screen behind them, the approver was shown nothing to decide on, and the run stepper read a browser variable instead of the purchase. All three are questions about what is drawn, and nothing that talks to the API can see them.
 
@@ -374,6 +378,7 @@ Limen runs with none of them set.
 | `RAZORPAY_FUND_ACCOUNTS` | `{}` | Supplier id to fund account id, as JSON |
 | `RAZORPAY_WEBHOOK_SECRET` | not set | Verifies payout webhooks |
 | `LIMEN_USD_INR` | `85` | Stated USD to INR rate. Not a live feed |
+| `LIMEN_CHROME` | not set | Full path to a Chrome or Edge binary, for the rendered suites |
 | `LIMEN_SUPPLIER_FILE` | seeded catalogue | A JSON file of suppliers |
 | `LIMEN_SUPPLIER_URL` | seeded catalogue | An https endpoint returning the same JSON |
 | `LIMEN_SUPPLIER_TOKEN` | not set | Bearer token for that endpoint |
