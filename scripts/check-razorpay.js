@@ -66,6 +66,15 @@ const dim = (s) => `\x1b[2m${s}\x1b[0m`;
   console.log(`    Key secret    ${green('present')} ${dim('(never printed, never sent to the browser)')}`);
   console.log(`    Orders API    ${d.apiBase}`);
 
+  if (d.keyIdQuoted || d.secretQuoted) {
+    const which = [d.keyIdQuoted && 'RAZORPAY_KEY_ID', d.secretQuoted && 'RAZORPAY_KEY_SECRET'].filter(Boolean);
+    console.log('');
+    console.log(`  ${red('Quote characters are part of the value')} for ${which.join(' and ')}.`);
+    console.log('  A .env file has its quotes stripped; a hosting dashboard does not.');
+    console.log(`  ${dim('Remove the surrounding quotes and restart. Razorpay will otherwise')}`);
+    console.log(`  ${dim('answer "Authentication failed", which looks like a wrong key.')}`);
+  }
+
   if (d.keyIdLooksLive) {
     console.log('');
     console.log(`  ${red('That is a live key.')} This project is a demo and should run on test keys.`);

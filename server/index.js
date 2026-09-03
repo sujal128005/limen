@@ -2382,6 +2382,15 @@ async function boot() {
   console.log(`  money out: ${payments.configured() ? 'Razorpay Payouts' : 'local rail'}${
     !payments.configured() && checkout.isLive() ? ', RAZORPAY_ACCOUNT_NUMBER is not set' : ''
   }`);
+  {
+    // Caught here as well as in the preflight, because the preflight is run
+    // locally and this mistake is made in a hosting dashboard.
+    const d = checkout.diagnostics();
+    if (d.keyIdQuoted || d.secretQuoted) {
+      console.warn('  [checkout] the Razorpay credentials still have quote characters around them.');
+      console.warn('             Remove them. A .env file strips quotes; an environment variable does not.');
+    }
+  }
 
   return app;
 }
