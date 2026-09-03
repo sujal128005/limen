@@ -1,5 +1,7 @@
 'use strict';
 
+const { launch: launchBrowser } = require('./browser');
+
 /*
  * Print the documents.
  *
@@ -28,14 +30,14 @@ const path = require('path');
 const fs = require('fs');
 
 let chromium;
-let cp;
 try {
   ({ chromium } = require('playwright-core'));
-  cp = require('@sparticuz/chromium');
-  cp = cp.default || cp;
 } catch (_) {
-  console.log('\n  build:docs needs a browser.\n');
-  console.log('    npm install --no-save playwright-core @sparticuz/chromium\n');
+  console.log('\n  build:docs needs Playwright.\n');
+  console.log('    npm install --no-save playwright-core\n');
+  console.log('  A browser is found separately: scripts/browser.js uses an installed');
+  console.log('  Chrome or Edge, or @sparticuz/chromium on Linux.\n');
+  console.log('  Skipping, and not counting it as a pass.\n');
   process.exit(0);
 }
 
@@ -66,7 +68,8 @@ const JOBS = [
 ];
 
 (async () => {
-  const browser = await chromium.launch({ executablePath: await cp.executablePath(), args: cp.args });
+  const browser = await launchBrowser(chromium);
+  if (!browser) return;   // resolveBrowser already printed what to install
   const page = await browser.newPage();
   let built = 0;
 
