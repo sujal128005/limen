@@ -7,7 +7,7 @@ conversation, because it will not have.
 
 ---
 
-## Prompt 1 — for the Opus Extra session
+## Prompt 1, for the Opus Extra session
 
 Use this after switching models, before submission. It is a working session:
 find what is broken and fix it.
@@ -26,12 +26,20 @@ find what is broken and fix it.
 > **Then run everything:**
 >
 > ```
-> npm test                 # expect 280 passing, 0 failing
+> npm test                 # expect 292 passing, 0 failing
 > npm start                # in one terminal
 > npm run sweep            # in another: expect 154 passing
 > npm install --no-save playwright-core @sparticuz/chromium
 > npm run verify:ui        # expect 70 checks, 0 failing
 > npm run verify:tier4     # expect 20 checks, 0 failing
+> ```
+>
+> If `.env` has Razorpay credentials, those last three stop with an explanation
+> instead of running: they fund the payment float to reach settlement and a live
+> order needs a card. Comment out `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET`
+> and restart for a full run.
+>
+> ```
 > ```
 >
 > **Then walk the product by hand in a browser**, all three desks, as a person
@@ -72,7 +80,7 @@ find what is broken and fix it.
 
 ---
 
-## Prompt 2 — for the Opus Max session
+## Prompt 2, for the Opus Max session
 
 Use this last, for final review before submitting. It is deliberately not a
 working session: it is an audit, and the most useful thing it can produce is a
@@ -126,7 +134,7 @@ short list of things that are actually wrong.
 
 ## Where things stand
 
-* 280 unit and contract tests, 154 route checks, 70 rendered checks in
+* 292 unit and contract tests, 154 route checks, 70 rendered checks in
   `verify:ui`, 20 in `verify:tier4`.
 * Nothing is committed. Everything from the role split onwards is still working
   tree only.

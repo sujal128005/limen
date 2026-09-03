@@ -185,8 +185,26 @@ function razorpayClient() {
   };
 }
 
+/*
+ * Two rails, configured separately, because they are two products.
+ *
+ * Money in is Razorpay Checkout and needs a key pair. Money out is Razorpay
+ * Payouts, which is RazorpayX, and needs a key pair AND an account number to
+ * pay from AND a fund account per supplier. This used to switch to the live
+ * payout rail on the key pair alone, which meant that anyone who configured
+ * Checkout, a reasonable thing to do and the thing the finance desk asks for,
+ * silently moved settlement onto a rail that could not possibly work. The
+ * release step then failed with "RAZORPAY_ACCOUNT_NUMBER is not set", a long
+ * way from the change that caused it and with nothing on screen connecting the
+ * two.
+ *
+ * Gating on the account number is not a loosening. A payout without one is
+ * refused by createPayout on the very next line and always was, so the only
+ * thing the old condition bought was failing later and less clearly. Now
+ * configuring Checkout turns Checkout on and leaves settlement where it was.
+ */
 function makeClient() {
-  return KEY_ID && KEY_SECRET ? razorpayClient() : localClient();
+  return KEY_ID && KEY_SECRET && ACCOUNT ? razorpayClient() : localClient();
 }
 
 /*
@@ -345,5 +363,8 @@ module.exports = {
   fundAccountFor, reconcile,
   verifyWebhook, signWebhook, applyEvent,
   EVENT_STATE, TERMINAL,
-  configured: () => !!(KEY_ID && KEY_SECRET),
+  // Whether the payout rail is live, which needs the account to pay from and
+  // not only the key pair. Same condition as makeClient, deliberately, so a
+  // screen reporting the rail cannot disagree with the rail actually used.
+  configured: () => !!(KEY_ID && KEY_SECRET && ACCOUNT),
 };

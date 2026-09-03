@@ -98,6 +98,40 @@ async function waitForChain() {
   console.log('Sign-in');
   const status = await waitForChain();
   await signIn(WS, TOKENS);
+
+  /*
+   * This suite needs the payment stand-in, and says so before it starts.
+   *
+   * Everything from settlement onwards depends on the float being funded, and
+   * once Razorpay Checkout is configured a script cannot fund it: a live order
+   * is paid with a card, by a person, in a browser. The server withholds the
+   * stand-in payment in live mode deliberately, because handing one out would
+   * let any page skip the gateway and credit itself, so this is a property
+   * worth having rather than a limitation to route around.
+   *
+   * Detected here rather than discovered two hundred checks later as a failing
+   * release. Nothing is wrong with the product when this fires, so it stops
+   * cleanly instead of reporting a failure, and says exactly what to change.
+   */
+  const rail = await call('GET', '/api/payments/float', undefined, { token: TOKENS.finance });
+  if (rail.body && rail.body.checkout && rail.body.checkout.live) {
+    console.log('\n' + '-'.repeat(52));
+    console.log('  Razorpay Checkout is live on this server.');
+    console.log('');
+    console.log('  The sweep funds the payment float in order to reach settlement,');
+    console.log('  and a live order can only be paid with a card in a browser. The');
+    console.log('  server will not hand a script a payment it did not make, which is');
+    console.log('  the behaviour you want.');
+    console.log('');
+    console.log('  For a full sweep, comment out these two lines in .env and restart:');
+    console.log('');
+    console.log('    RAZORPAY_KEY_ID');
+    console.log('    RAZORPAY_KEY_SECRET');
+    console.log('');
+    console.log('  Nothing is broken. npm test covers the live path without a card.');
+    console.log('-'.repeat(52) + '\n');
+    process.exit(0);
+  }
   check('three roles can sign in', !!(TOKENS.sales && TOKENS.head && TOKENS.finance));
   const anon = await call('POST', '/api/brief', { text: REQUEST }, { token: null });
   check('an unsigned caller cannot start a run', anon.status >= 400, String(anon.status));

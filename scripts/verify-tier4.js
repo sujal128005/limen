@@ -89,6 +89,31 @@ async function stillness(page) {
   for(const p of ['/api/candidates','/api/negotiate','/api/recommend','/api/purchase/submit','/api/purchase/send-to-head']) await post(p,'sales');
   for(const p of ['/api/purchase/approve','/api/policy','/api/deal']) await post(p,'head');
 
+
+  /*
+   * This suite needs the payment stand-in, and says so before it starts.
+   *
+   * It funds the payment float through the gateway sheet, and once Razorpay
+   * Checkout is configured a script cannot do that: a live order is paid with a
+   * card, by a person, in a browser. The server withholds the stand-in payment
+   * in live mode deliberately, because handing one out would let any page skip
+   * the gateway and credit itself. That is a property worth having, not a
+   * limitation to route around.
+   *
+   * Checked before the browser starts, rather than discovered later as a Done
+   * button that never appears.
+   */
+  {
+    const fl = await (await fetch(BASE + '/api/payments/float', { headers: { 'x-workspace': ws, authorization: 'Bearer ' + T.finance } })).json();
+    if (fl && fl.checkout && fl.checkout.live) {
+      console.log('\n  Razorpay Checkout is live on this server, so the float cannot be');
+      console.log('  funded by a script. Comment out RAZORPAY_KEY_ID and');
+      console.log('  RAZORPAY_KEY_SECRET in .env, restart, and run this again.');
+      console.log('  Nothing is broken; npm test covers the live path without a card.\n');
+      process.exit(0);
+    }
+  }
+
   const b=await chromium.launch({executablePath:await cp.executablePath(),args:cp.args});
   const signIn=async(pg,role)=>{
     await pg.addInitScript((w)=>{localStorage.setItem('limen.workspace',w);sessionStorage.removeItem('limen.session');},ws);
