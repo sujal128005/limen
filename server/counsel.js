@@ -512,7 +512,7 @@ function answer(question, snap) {
 }
 
 const SUGGESTIONS = {
-  none: ['What does AgentSource do?', 'How does escrow work?'],
+  none: ['What does Limen do?', 'How does the escrow work?', 'What can you not do?'],
   brief: ['Why is the cheapest supplier excluded?', 'Compare the shortlisted suppliers'],
   negotiated: ['Why did the other suppliers fail?', 'Summarise this negotiation', 'How much did we save?'],
   approve: ['What should I verify before approving?', 'Why can the agent not raise its own limit?', 'What are the remaining risks?'],

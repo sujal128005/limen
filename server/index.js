@@ -7,7 +7,11 @@ const cors = require('cors');
 const { ethers } = require('ethers');
 
 const { Chain } = require('./chain');
-const { SUPPLIERS, findSupplier } = require('./data/suppliers');
+const { SUPPLIERS, findSupplier, replaceCatalogue } = require('./data/suppliers');
+const directory = require('./directory');
+/* Where this deployment's catalogue came from, so the interface can say so
+   rather than implying every list is the demo one. */
+let supplierSource = { source: 'seeded', seeded: true };
 const { parseRequest, llmParse } = require('./engine/parse');
 const { evaluateCandidates, selectForNegotiation } = require('./engine/match');
 const { negotiateAll } = require('./engine/negotiate');
@@ -19,6 +23,11 @@ const normalize = require('./normalize');
 const decisionbrief = require('./decisionbrief');
 const authorization = require('./authorization');
 const identity = require('./identity');
+const doorlock = require('./doorlock');
+const summary = require('./summary');
+const notify = require('./notify');
+const checkout = require('./checkout');
+const fx = require('./fx');
 const payments = require('./payments');
 const deployments = require('./deployments');
 const approval = require('./approval');
@@ -145,9 +154,18 @@ const wrap = (fn) => async (req, res) => {
     // 4xx traffic, not server faults. One line keeps the console readable.
     console.warn('[api] %s %s -> %s', req.method, req.path, e.shortMessage || e.message);
     const msg = String(e.shortMessage || e.message || 'Request failed');
-    // A version conflict is the one case where the caller should retry rather
-    // than correct anything, so it gets its own status.
-    res.status(e.conflict ? 409 : 400).json({ error: msg.split('\n')[0].slice(0, 300) });
+    /*
+     * The status an error asked for, then the special cases, then 400.
+     *
+     * e.status was being ignored, which meant the door's lockout was throwing a
+     * 429 that went out as a 400 and identity failures were indistinguishable
+     * from "you typed something wrong". A client cannot react to a category it
+     * cannot see: a stale token has to be told apart from a refused action, or
+     * the browser sits there apparently signed in while every request is
+     * rejected.
+     */
+    const status = e.status || (e.conflict ? 409 : 400);
+    res.status(status).json({ error: msg.split('\n')[0].slice(0, 300) });
   }
 };
 
@@ -169,26 +187,97 @@ const guard = (req, session, capability) => identity.assertCan(req.actor, capabi
  * this to make a decision. It exists so that "who approved this, and when" has
  * an answer a year from now.
  */
-const audit = (req, action, fromState, detail) => workspace.recordAudit({
-  workspaceId: req.workspaceId,
-  actorName: req.actor ? req.actor.name : null,
-  actorRole: req.actor ? req.actor.role : null,
-  action,
-  fromState: fromState || null,
-  toState: authorization.purchaseState(req.session),
-  detail: detail || null,
-});
+/*
+ * One place a transition is recorded, so one place it can also be announced.
+ *
+ * Every route that moves a purchase already calls this, which makes it the
+ * only hook a notification needs. Adding the send anywhere else would mean a
+ * step that quietly forgot to notify, and the desk that would notice is the one
+ * that never hears about its own work.
+ */
+const audit = async (req, action, fromState, detail) => {
+  const toState = authorization.purchaseState(req.session);
+  await workspace.recordAudit({
+    workspaceId: req.workspaceId,
+    actorName: req.actor ? req.actor.name : null,
+    actorRole: req.actor ? req.actor.role : null,
+    action,
+    fromState: fromState || null,
+    toState,
+    detail: detail || null,
+  });
+
+  // Only when the purchase actually moved. Publishing a policy and funding an
+  // escrow are both real acts that leave the state where it was, and a channel
+  // that pings for those is a channel somebody mutes by Thursday.
+  if (!notify.isEnabled() || toState === fromState) return;
+  const session = req.session;
+  const w = session.recommendation && session.recommendation.winner;
+  notify.notify({
+    workspace: req.workspaceId,
+    reference: session.reference || null,
+    state: toState,
+    next: authorization.nextStep(session),
+    amount: w ? w.total : null,
+    supplier: w ? w.name : null,
+  });
+};
 
 // ------------------------------------------------------------- who is asking
 
-app.get('/api/session/roles', (req, res) => {
-  res.json({ roles: identity.catalogue(), signedIn: req.actor || null });
+/*
+ * The door, and what is waiting behind each desk.
+ *
+ * Switching desks was a guess: you picked one and found out afterwards whether
+ * there was anything to do there. The whole point of three desks is the
+ * handover, so the handover should be visible at the moment you choose.
+ *
+ * Only the action is included, never an amount or a supplier. This reply is
+ * readable by anyone holding the workspace id, so it says "an approval is
+ * waiting" and stops there; the figures are behind a code.
+ */
+app.get('/api/session/roles', async (req, res) => {
+  /*
+   * Read, never create.
+   *
+   * This is the one route a caller reaches before signing in, and putting it
+   * through the normal wrapper meant every request with a fresh workspace
+   * header brought a workspace into existence. Storage is bounded by pruning
+   * the oldest, so a few hundred invented ids would have evicted real
+   * purchases: an unauthenticated GET that deletes other people's work.
+   *
+   * A workspace that does not exist has nothing waiting in it, which is the
+   * honest answer and needs no row in a table to say.
+   */
+  const session = await workspace.peekSession(req);
+  const next = session ? authorization.nextStep(session) : { role: null, state: 'DRAFT' };
+  const unread = {};
+  if (session) {
+    for (const id of identity.ROLE_IDS) unread[id] = await unreadFor(session, id);
+  }
+
+  res.json({
+    roles: identity.catalogue().map((r) => ({
+      ...r,
+      waiting: next.role === r.id ? next.action : null,
+      unread: unread[r.id] || 0,
+    })),
+    signedIn: req.actor || null,
+    state: next.state,
+    // Whether the codes on this deployment are the published demo ones. The
+    // door states which, rather than showing a code box that might be guarding
+    // nothing.
+    demoCodes: identity.usingDemoCodes(),
+  });
 });
 
 /*
- * Choosing a role at the door is the demo's whole point, so there is no
- * password. What matters is that the choice cannot be edited afterwards: the
- * reply is signed, and every guard reads the role back out of that signature.
+ * The door.
+ *
+ * Two things have to hold. The role must be one this server knows, and the
+ * caller must present its code. Neither check can be moved to the browser: the
+ * code is compared here, and the role is returned inside a signature so that
+ * what the caller holds afterwards is a token rather than a claim.
  */
 app.post('/api/session/login', wrap(async (req, res) => {
   const session = sessionFor(req);
@@ -196,11 +285,41 @@ app.post('/api/session/login', wrap(async (req, res) => {
   if (!identity.ROLES[role]) {
     throw new Error(`Choose one of: ${identity.ROLE_IDS.join(', ')}.`);
   }
-  const issued = identity.issue(role, req.body.name, session.id);
+  /*
+   * Throttled before the code is even compared.
+   *
+   * Four digits is ten thousand combinations and the general limiter allows 240
+   * requests a minute, which searches the whole space inside an hour. The check
+   * comes first so a locked-out caller learns nothing from the timing of the
+   * comparison either.
+   */
+  const key = req.ip || 'local';
+  const gate = doorlock.check(key);
+  if (!gate.allowed) {
+    const e = new Error(
+      `Too many incorrect codes. Try again in ${doorlock.describeWait(gate.waitMs)}.`
+    );
+    e.status = 429;
+    throw e;
+  }
+
+  if (!identity.checkCode(role, req.body.code)) {
+    const f = doorlock.fail(key);
+    const tail = f.waitMs
+      ? ` Wait ${doorlock.describeWait(f.waitMs)} before trying again.`
+      : '';
+    throw new Error(
+      `That is not the access code for ${identity.ROLES[role].label}. ` +
+      `Each desk has its own code, so a code for one desk will not open another.${tail}`
+    );
+  }
+  doorlock.succeed(key);
+  const issued = identity.issue(role, session.id);
   res.json({
     token: issued.token,
     role: issued.role,
     name: issued.name,
+    title: identity.ROLES[role].title,
     workspace: session.id,
     label: identity.ROLES[role].label,
     can: identity.ROLES[role].can.filter((c) => c !== 'read'),
@@ -224,6 +343,8 @@ app.get('/api/status', wrap(async (req, res) => {
     // Catalogue size, so the first screen quotes the real figure rather than a
     // number typed into the markup that drifts the moment a supplier is added.
     supplierCount: SUPPLIERS.length,
+    supplierSource: supplierSource.source,
+    supplierSeeded: !!supplierSource.seeded,
     listingCount: SUPPLIERS.reduce((n, s) => n + s.products.length, 0),
     counselModel: grok.isEnabled() ? grok.MODEL : 'local',
     addresses,
@@ -242,6 +363,14 @@ app.get('/api/status', wrap(async (req, res) => {
     dealId: session.dealId,
     workspace: session.id,
     workspaceCount: await workspace.count(),
+    /*
+     * Which store is actually behind this instance. It was only in the boot log,
+     * which meant the one question that matters after a deploy, did DATABASE_URL
+     * take effect or did it silently fall back to memory, could only be answered
+     * by someone with access to the host's logs. The kind of store is not a
+     * secret; the connection string is, and that is not what this reports.
+     */
+    store: workspace.getStore().kind,
   });
 }));
 
@@ -319,6 +448,9 @@ app.post('/api/brief', wrap(async (req, res) => {
   session.sentToHeadAt = null; session.sentToHeadBy = null;
   session.headApproval = null;
   session.rejection = null;
+  /* The supplier's attestation belongs to the deal it was made against. A new
+     run inheriting it would arrive at the finance desk already half signed. */
+  session.shipment = null;
   session.receipt = null;
   session.payment = null;
   res.json(brief);
@@ -351,6 +483,42 @@ app.post('/api/recommend', wrap(async (req, res) => {
   const rec = recommend(session.negotiations, session.candidates, session.brief);
   session.recommendation = rec;
   res.json(rec);
+}));
+
+/**
+ * The run, readable.
+ *
+ * Every artefact below was already computed and stored on the session. Until
+ * now none of them had a way out except as the response body of the POST that
+ * created them, which meant exactly one browser in the world could ever see
+ * them: the one that ran the sourcing. Everybody else, including the person
+ * being asked to sanction the money, got a supplier name and a total.
+ *
+ * A head who cannot see the rejected alternatives is not approving, they are
+ * initialling. So this is a read, open to any signed-in desk, returning the
+ * same shapes the POSTs return so one hydration path serves both.
+ *
+ * Guarded on 'read' rather than 'run'. Reading the evidence is not the act;
+ * running the sourcing is, and that is still the sales desk's alone.
+ */
+app.get('/api/run', wrap(async (req, res) => {
+  const session = sessionFor(req);
+  guard(req, session, 'read');
+  const candidates = session.candidates || [];
+  res.json({
+    workspace: session.id,
+    brief: session.brief || null,
+    candidates,
+    // Recomputed rather than stored. selectForNegotiation is deterministic over
+    // the candidate rows, so deriving it here cannot disagree with what was
+    // actually negotiated, whereas a second copy on the session could.
+    shortlist: candidates.length ? selectForNegotiation(candidates).map((r) => r.supplierId) : [],
+    negotiations: session.negotiations || [],
+    recommendation: session.recommendation || null,
+    // Whether there is anything here at all, so a screen can tell "no run yet"
+    // from "a run this desk has not loaded".
+    hasRun: !!session.brief,
+  });
 }));
 
 // ------------------------------------------------------- the approval chain
@@ -400,10 +568,16 @@ app.get('/api/purchase', wrap(async (req, res) => {
     workspace: session.id,
     reference: session.recommendation ? (await packetFor(session)).doc.reference : null,
     state,
-    progress: authorization.progress(session),
+    // The viewer's role decides only the pronoun in the next-step sentence, so
+    // the answer is still the server's rather than the screen's.
+    progress: authorization.progress(session, req.actor && req.actor.role),
     actor: req.actor,
     supplier: w ? { id: w.supplierId, name: w.name, sku: w.sku } : null,
     requestedAmount: w ? w.total : null,
+    /* The same figure in the currency the payment float is held in, computed
+       once here so no screen converts it independently and disagrees. */
+    payableInr: w ? fx.usdToInr(w.total).amount : null,
+    fxRate: fx.rate(),
     quantityKg: w ? w.quantityKg : null,
     unitPrice: w ? w.unitPrice : null,
     leadTimeDays: w ? w.leadTimeDays : null,
@@ -415,6 +589,12 @@ app.get('/api/purchase', wrap(async (req, res) => {
     signatureMethod: session.signature ? (session.signature.method || 'name') : null,
     signerAddress: session.signature ? session.signature.address || null : null,
     rejection: session.rejection,
+    /* Both halves of the delivery, so a screen can show that two keys signed
+       rather than one. */
+    shipment: session.shipment || null,
+    /* Rides the poll every desk already runs, rather than adding a second one
+       just to ask whether anybody said anything. */
+    unreadMessages: await unreadFor(session, req.actor && req.actor.role),
     receipt: session.receipt,
     /* Whether the approval still matches the purchase. Null when there is no
        approval to compare against; false is the interesting answer. */
@@ -431,6 +611,11 @@ app.get('/api/purchase', wrap(async (req, res) => {
       rail: session.payment.rail,
       amount: session.payment.amount,
       currency: session.payment.currency,
+      /* Both halves and the rate between them. Sending the converted figure
+         alone would recreate, at the API boundary, the exact problem the
+         conversion was added to fix: a number nobody can check. */
+      amountUsd: session.payment.amountUsd,
+      fxRate: session.payment.fxRate,
       createdAt: session.payment.createdAt,
       updatedAt: session.payment.updatedAt,
       events: session.payment.events,
@@ -590,6 +775,30 @@ app.post('/api/purchase/reject', wrap(async (req, res) => {
     at: new Date().toISOString(),
   };
   await audit(req, 'reject', 'HEAD_APPROVAL', { reason: session.rejection.reason });
+  /*
+   * The rejection opens the conversation rather than ending it.
+   *
+   * A refusal with a reason is the start of a renegotiation in every real
+   * procurement team, and the reason was landing in a field nobody could reply
+   * to. Posting it into the thread puts the objection where the answer to it
+   * will go. Marked as a system note so it reads as a record of a decision
+   * rather than as somebody's message.
+   */
+  try {
+    await workspace.appendMessage({
+      workspaceId: session.id,
+      reference: session.recommendation ? (await packetFor(session)).doc.reference : null,
+      authorName: req.actor.name,
+      authorRole: req.actor.role,
+      recipient: null,
+      kind: 'rejection',
+      body: session.rejection.reason,
+    });
+  } catch (e) {
+    // A thread failure must not fail the rejection it describes, for the same
+    // reason an audit failure does not fail the action it records.
+    console.warn('[messages] could not post the rejection for %s: %s', session.id, e.message);
+  }
   res.json({ state: authorization.purchaseState(session), rejection: session.rejection });
 }));
 
@@ -642,8 +851,10 @@ app.post('/api/policy', wrap(async (req, res) => {
   // Signed by the BUYER, nominating the agent. The agent is not a signer here.
   // Signed by THIS workspace's buyer, nominating the agent. The policy record
   // is keyed on msg.sender, so it lands against this buyer and no other.
-  const escrow = chain.contractAt('ProcurementEscrow', addresses.escrow, buyer.signer);
-  const tx = await escrow.setAgentPolicy(chain.agentAddress, toUnits(maxPerDeal), toUnits(maxTotal), expiry);
+  const tx = await chain.sendAsBuyer(
+    session.id, 'ProcurementEscrow', addresses.escrow, 'setAgentPolicy',
+    [chain.agentAddress, toUnits(maxPerDeal), toUnits(maxTotal), expiry]
+  );
   const rc = await tx.wait();
   await audit(req, 'publish-policy', null, { maxPerDeal, maxTotal, txHash: rc.hash });
   res.json({
@@ -687,7 +898,25 @@ async function fundEscrow(session) {
   // Signed by the AGENT, spending under THIS buyer's policy. One agent key
   // serves every workspace; the authority it spends under is per workspace.
   const escrow = chain.contractAt('ProcurementEscrow', addresses.escrow, chain.agent);
-  const tx = await escrow.createDeal(buyer.address, supplierWallet, toUnits(w.total), deadline, onChainTermsHash);
+  /*
+   * A refusal here is the product working, so it has to read like one.
+   *
+   * Funding before a policy exists came back as "missing revert data", which is
+   * ethers reporting that it could not decode the revert. The selector was in
+   * the error the whole time and the ABI is loaded in the same process; they
+   * had just never been introduced. Now the contract's own reason is what the
+   * person sees.
+   */
+  let tx;
+  try {
+    tx = await escrow.createDeal(buyer.address, supplierWallet, toUnits(w.total), deadline, onChainTermsHash);
+  } catch (e) {
+    const reason = chain.explainRevert(e);
+    if (!reason) throw e;
+    const err = new Error(reason);
+    err.refusedByContract = true;
+    throw err;
+  }
   const rc = await tx.wait();
   const dealId = Number(await chain.escrow.dealCount());
   session.dealId = dealId;
@@ -871,9 +1100,18 @@ const confirmReceipt = wrap(async (req, res) => {
   authorization.assertMayProceed(session, 'confirmReceipt', { termsHash, amount });
   // Signed by this workspace's buyer: the contract checks the caller is the
   // party the deal was created for, so another workspace cannot confirm it.
-  const buyer = await chain.buyerFor(session.id);
-  const escrow = chain.contractAt('ProcurementEscrow', addresses.escrow, buyer.signer);
-  const tx = await escrow.confirmDelivery(session.dealId);
+  /*
+   * Through sendAsBuyer, which puts the nonce back if the contract refuses.
+   *
+   * Confirming receipt before the supplier has attested is now an ordinary
+   * mistake rather than an exotic one, and a refused send used to leave this
+   * workspace's buyer with a local nonce one ahead of the chain. Every later
+   * buyer transaction then waited on a nonce the node would not mine. See
+   * chain.sendAsBuyer.
+   */
+  const tx = await chain.sendAsBuyer(
+    session.id, 'ProcurementEscrow', addresses.escrow, 'confirmDelivery', [session.dealId]
+  );
   const rc = await tx.wait();
   const deal = await chain.escrow.getDeal(session.dealId);
   const onTime = Number(deal.deliveredAt) <= Number(deal.deliveryDeadline);
@@ -885,6 +1123,85 @@ const confirmReceipt = wrap(async (req, res) => {
     onTime, state: authorization.purchaseState(session), receipt: session.receipt,
   });
 });
+
+/*
+ * The supplier's half of the delivery, simulated.
+ *
+ * Settlement now needs two signatures: the supplier attests dispatch, the buyer
+ * confirms receipt, and the contract refuses the second without the first. In a
+ * real deployment the supplier signs this from their own wallet and this route
+ * does not exist.
+ *
+ * Here the supplier is a simulated counterparty whose key lives in this process,
+ * the same way its reservation prices do during negotiation, so this route
+ * stands in for it. It is named for what it is rather than dressed up as a
+ * supplier portal, and it refuses to run against a public network, where nobody
+ * here holds a supplier's key.
+ *
+ * Guarded on 'read' rather than on a workflow permission, deliberately: it is a
+ * demonstration control, not a step any Limen desk is entitled to take. The
+ * audit records the supplier as the actor, because on chain that is who signed.
+ */
+app.post('/api/simulate/supplier-shipment', wrap(async (req, res) => {
+  const session = sessionFor(req);
+  guard(req, session, 'read');
+  if (!session.dealId) throw new Error('There is no funded deal to ship against.');
+
+  const w = session.recommendation && session.recommendation.winner;
+  const supplier = w && findSupplier(w.supplierId);
+  if (!supplier) throw new Error('No supplier on this purchase.');
+
+  const signer = chain.supplierSignerFor(supplier.walletIndex);
+  if (!signer) {
+    throw new Error(
+      'Supplier keys are not held by this server on a public network, which is correct. '
+      + 'On a public deployment the supplier signs the attestation from their own wallet.'
+    );
+  }
+
+  // A reference to whatever the supplier considers evidence. The contract does
+  // not read it, and neither does this: inventing a document and then hashing it
+  // would be theatre with a checksum on it.
+  const reference = String(req.body.reference || `SIM-AWB-${session.dealId}`).slice(0, 120);
+  const shipmentHash = ethers.id(reference);
+
+  const escrow = chain.contractAt('ProcurementEscrow', addresses.escrow, signer);
+  let tx;
+  try {
+    tx = await escrow.attestShipment(session.dealId, shipmentHash);
+  } catch (e) {
+    const reason = chain.explainRevert(e);
+    if (!reason) throw e;
+    throw new Error(reason);
+  }
+  const rc = await tx.wait();
+
+  session.shipment = {
+    reference,
+    shipmentHash,
+    txHash: rc.hash,
+    attestedBy: supplier.name,
+    supplierWallet: await signer.getAddress(),
+    at: new Date().toISOString(),
+    simulated: true,
+  };
+  await workspace.recordAudit({
+    workspaceId: req.workspaceId,
+    actorName: supplier.name,
+    actorRole: 'supplier',
+    action: 'attest-shipment',
+    fromState: 'FUNDED',
+    toState: authorization.purchaseState(session),
+    detail: { reference, txHash: rc.hash, simulated: true },
+  });
+
+  res.json({
+    ...session.shipment,
+    blockNumber: rc.blockNumber,
+    gasUsed: rc.gasUsed.toString(),
+    note: 'Simulated counterparty. In a real deployment the supplier signs this from their own wallet.',
+  });
+}));
 
 /* One handler, two paths. The original name is kept so nothing that already
    calls it breaks; re-dispatching through the router to achieve that would be
@@ -936,6 +1253,29 @@ const releasePayment = wrap(async (req, res) => {
    */
   await escrow.releasePayment.staticCall(session.dealId);
 
+  /*
+   * The float has to cover it, in the currency the float is held in.
+   *
+   * The contract says whether this payment is authorised; the float says
+   * whether it can actually be made. Both have to be true, and this is the
+   * cheaper of the two checks so it runs after the contract rather than before:
+   * a purchase the contract would refuse should be refused on those grounds,
+   * not on a balance.
+   *
+   * The conversion is the point. The purchase is in USD and the float is in
+   * INR, and the first version of this check compared them directly, which is
+   * not a comparison. See fx.js.
+   */
+  const payable = fx.usdToInr(amount);
+  const available = floatOf(session);
+  if (available < payable.amount) {
+    throw new Error(
+      `The payment float holds ${available.toFixed(2)} INR and this payout is `
+      + `${payable.amount.toFixed(2)} INR, being ${Number(amount).toFixed(2)} USD at ${payable.rate}. `
+      + 'Top it up on the finance desk before releasing.'
+    );
+  }
+
   // Step 3. The external, irreversible act, made safe to repeat.
   const key = payments.idempotencyKey(session.id, doc.reference, termsHash);
   const existing = session.payment;
@@ -945,7 +1285,10 @@ const releasePayment = wrap(async (req, res) => {
   } else {
     payout = await rail.createPayout({
       key,
-      amount,
+      // Converted, not relabelled. This used to pass the USD total with
+      // currency INR, instructing the rail to send about a eightieth of the
+      // money the head approved.
+      amount: payable.amount,
       currency: 'INR',
       supplier: w.name,
       reference: doc.reference,
@@ -958,14 +1301,43 @@ const releasePayment = wrap(async (req, res) => {
       payoutId: payout.id,
       rail: rail.mode,
       status: 'processing',
-      amount,
+      /*
+       * Both figures, and the rate that connects them.
+       *
+       * `amount` was the USD total labelled INR, which made the record
+       * unreadable: nobody could tell from it what was actually instructed. The
+       * rate travels with it so a conversion can be checked later against the
+       * number that was used rather than against whatever the constant says by
+       * then.
+       */
+      amount: payable.amount,
       currency: 'INR',
+      amountUsd: amount,
+      fxRate: payable.rate,
       reference: doc.reference,
       releasedBy: req.actor.name,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       events: [],
     };
+
+    /*
+     * Debit the float when the instruction goes out.
+     *
+     * It was checked and never subtracted, so one top-up funded an unlimited
+     * number of payouts and a balance that looked like a constraint was
+     * decoration. Debited here rather than on settlement because the money is
+     * committed the moment the rail accepts the instruction; a payout that
+     * later fails or reverses credits it back, in the webhook.
+     *
+     * Inside the else branch on purpose: a replayed release returns the
+     * original payout without creating a second one, and must not debit twice.
+     */
+    session.paymentFloat = floatOf(session) - payable.amount;
+    session.floatHolds = [
+      ...(session.floatHolds || []),
+      { payoutId: payout.id, amount: payable.amount, at: new Date().toISOString() },
+    ].slice(-20);
   }
 
   // Step 4. Commit the release on chain.
@@ -1060,10 +1432,330 @@ app.get('/api/payments/reconciliation', wrap(async (req, res) => {
  * cannot erase the history of the first. Every role can read it: a record that
  * only the people who could alter it are allowed to see is not much of a record.
  */
+/* --------------------------------------------------------- payment float
+ *
+ * Money in, so there is money to pay out with.
+ *
+ * Payouts draw on a balance. Until now that balance was assumed, which is fine
+ * for a demonstration of authority and dishonest as a description of how a
+ * company pays a supplier. Checkout funds it, finance owns it, and a payout
+ * that would overdraw it is refused before the rail is called.
+ *
+ * The float is per workspace and lives on the session, so it persists with
+ * everything else and one workspace cannot spend another's money.
+ */
+
+const floatOf = (session) => Number(session.paymentFloat || 0);
+
+app.get('/api/payments/float', wrap(async (req, res) => {
+  const session = sessionFor(req);
+  guard(req, session, 'read');
+  res.json({
+    balance: floatOf(session),
+    currency: 'INR',
+    checkout: checkout.publicConfig(),
+    topUps: (session.floatTopUps || []).slice(-10),
+    /* What has gone out and not yet settled, so the balance can be read
+       against something rather than taken on faith. */
+    holds: (session.floatHolds || []).slice(-10),
+    fx: { rate: fx.rate(), disclosure: fx.disclosure() },
+  });
+}));
+
+/*
+ * Finance opens the till, and nobody else.
+ *
+ * Sales raising a purchase and then funding the account it will be paid from
+ * would put both halves of a payment in one pair of hands, which is the thing
+ * this whole application exists to prevent.
+ */
+app.post('/api/payments/order', wrap(async (req, res) => {
+  const session = sessionFor(req);
+  guard(req, session, 'releasePayment');
+  const order = await checkout.createOrder({
+    amountRupees: req.body.amount,
+    receipt: `limen-${session.id}-${Date.now()}`,
+  });
+  session.pendingOrder = {
+    orderId: order.id,
+    amount: checkout.fromPaise(order.amount),
+    at: new Date().toISOString(),
+  };
+  res.json({
+    orderId: order.id,
+    amount: checkout.fromPaise(order.amount),
+    currency: order.currency,
+    simulated: !!order.simulated,
+    checkout: checkout.publicConfig(),
+    // Only in simulator mode, and only so a local run can complete the flow
+    // without a card. With real credentials this is absent and the browser has
+    // to go through Razorpay to obtain a signature it cannot forge.
+    ...(order.simulated ? { simulatedPayment: checkout.localPaymentFor(order.id) } : {}),
+  });
+}));
+
+app.post('/api/payments/confirm', wrap(async (req, res) => {
+  const session = sessionFor(req);
+  guard(req, session, 'releasePayment');
+
+  const pending = session.pendingOrder;
+  if (!pending) throw new Error('There is no top-up waiting to be confirmed.');
+  if (pending.orderId !== req.body.orderId) {
+    throw new Error('That payment does not match the top-up that was started.');
+  }
+
+  /*
+   * The browser's word is not the evidence. The signature is.
+   *
+   * Razorpay's handler runs in the page and a page can be edited, so a success
+   * callback proves nothing. The HMAC over order and payment id, recomputed
+   * here with a secret that never leaves this process, is what credits money.
+   */
+  const check = checkout.verifyPayment({
+    orderId: req.body.orderId,
+    paymentId: req.body.paymentId,
+    signature: req.body.signature,
+  });
+  if (!check.ok) throw new Error(check.reason);
+
+  /* The amount comes from the order this server created, never from the reply.
+     A verified signature says a payment happened, not how much it was for. */
+  const amount = pending.amount;
+  session.paymentFloat = floatOf(session) + amount;
+  session.floatTopUps = [
+    ...(session.floatTopUps || []),
+    {
+      amount,
+      paymentId: req.body.paymentId,
+      orderId: req.body.orderId,
+      by: req.actor.name,
+      at: new Date().toISOString(),
+      simulated: !!check.simulated,
+    },
+  ].slice(-20);
+  session.pendingOrder = null;
+
+  await audit(req, 'top-up-float', null, { amount, paymentId: req.body.paymentId, simulated: !!check.simulated });
+  res.json({ balance: session.paymentFloat, credited: amount, simulated: !!check.simulated });
+}));
+
+/* ------------------------------------------------------------- messages
+ *
+ * The conversation attached to a purchase.
+ *
+ * Three desks now hand work to each other and, until this, had no way to say
+ * anything about it. A head who wants a cheaper quote could reject with a
+ * reason and nothing else; there was no way to ask a question without leaving
+ * the product.
+ *
+ * A note addressed to one desk is visible only to its author and its recipient.
+ * That is what was asked for and it is implemented honestly, including the part
+ * that follows from it: a directed note is not part of the record and is marked
+ * as such, and it is left out of the audit export. Worth being plain about the
+ * trade, because it is a real one. In a product whose whole claim is an
+ * auditable trail, a private channel attached to a purchase is exactly where the
+ * real reason for a decision can end up living. Anything that should survive a
+ * question in six months belongs in the group thread or in the rejection reason.
+ */
+
+/**
+ * What this desk can see, and reading it marks it read.
+ *
+ * A thread nobody is told about is a thread nobody opens. Nobody checks a
+ * message screen on the off chance, so an unread count is not decoration here,
+ * it is the only thing that makes the feature exist at all.
+ *
+ * Read state is per desk and lives on the session, so it survives a restart
+ * with everything else. Opening the thread is what marks it read, which is the
+ * behaviour every messaging product has trained people to expect.
+ */
+app.get('/api/messages', wrap(async (req, res) => {
+  const session = sessionFor(req);
+  guard(req, session, 'read');
+  const role = req.actor.role;
+  const all = await workspace.messagesFor(session.id, 200);
+  // Filtered on the server. A directed note that reached the browser and was
+  // hidden by CSS would not be private, it would be badly hidden.
+  const visible = all.filter((m) => !m.recipient || m.recipient === role || m.authorRole === role);
+
+  /*
+   * Stamp the mark only when it would change something.
+   *
+   * This used to write `now` on every request. The thread polls every five
+   * seconds while it is open, and the workspace is stored as one document, so
+   * each poll rewrote the whole thing and bumped its version: measured at six
+   * store writes for six reads with nothing new in them. On Postgres that is a
+   * write per client per five seconds for no information gained, and every one
+   * of them a version bump that a real action could collide with.
+   *
+   * Marked at the newest message rather than at the clock, too. Stamping `now`
+   * would mark read a message that arrived in the same millisecond as the read
+   * and was never sent to this desk.
+   */
+  const newest = visible
+    .filter((m) => m.authorRole !== role)
+    .reduce((max, m) => (!max || m.at > max ? m.at : max), null);
+  const seen = (session.threadRead || {})[role] || null;
+  if (newest && (!seen || newest > seen)) {
+    session.threadRead = { ...(session.threadRead || {}), [role]: newest };
+  }
+
+  res.json({
+    workspace: session.id,
+    role,
+    messages: visible,
+    /*
+     * Where this desk had read up to when it opened the thread.
+     *
+     * Sent as it was before the mark above moved, so the interface can draw a
+     * line between what was already seen and what arrived since. Computing it
+     * after the update would always say "nothing new", which is the state the
+     * reader is about to be in rather than the one they arrived in.
+     */
+    readUpTo: seen,
+    desks: identity.catalogue().map((r) => ({ id: r.id, label: r.label, signatory: r.signatory })),
+  });
+}));
+
+/**
+ * How many notes this desk has not seen.
+ *
+ * Its own author's notes never count: you do not have unread messages from
+ * yourself, and a badge that says otherwise is one people learn to ignore.
+ */
+async function unreadFor(session, role) {
+  if (!role) return 0;
+  const since = (session.threadRead || {})[role];
+  const all = await workspace.messagesFor(session.id, 200);
+  return all.filter((m) => {
+    if (m.authorRole === role) return false;
+    if (m.recipient && m.recipient !== role) return false;
+    if (!since) return true;
+    return new Date(m.at).getTime() > new Date(since).getTime();
+  }).length;
+}
+
+app.post('/api/messages', wrap(async (req, res) => {
+  const session = sessionFor(req);
+  guard(req, session, 'read');
+  const body = String(req.body.body || '').trim().slice(0, 2000);
+  if (!body) throw new Error('Write something before sending.');
+
+  const recipient = req.body.recipient ? String(req.body.recipient) : null;
+  if (recipient && !identity.ROLES[recipient]) {
+    throw new Error(`There is no desk called ${recipient}.`);
+  }
+  if (recipient === req.actor.role) {
+    throw new Error('That note is addressed to your own desk.');
+  }
+
+  const reference = session.recommendation ? (await packetFor(session)).doc.reference : null;
+  /*
+   * A settled purchase still gets talked about.
+   *
+   * Sealing the thread at settlement was my call and it was wrong: an invoice
+   * query or a quality problem arrives after the money moves, not before, and
+   * closing the one place those conversations belong just sends them somewhere
+   * with no record. Notes added afterwards are marked, so the trail still shows
+   * what was said before the decision and what came after it.
+   */
+  const settled = authorization.purchaseState(session) === 'SETTLED';
+  const saved = await workspace.appendMessage({
+    workspaceId: session.id,
+    reference,
+    authorName: req.actor.name,
+    authorRole: req.actor.role,
+    recipient,
+    kind: settled ? 'post-settlement' : 'note',
+    body,
+  });
+  res.json({ ok: true, id: saved.id, at: saved.at });
+}));
+
+/*
+ * The summary above an approve button.
+ *
+ * Read-only, and open to any signed-in desk: finance is authorising a payment
+ * against the same facts. summary.js computes every figure and the model, if
+ * there is one, only rewords the finished sentences. See the header of that
+ * file for why that boundary is not negotiable.
+ */
+app.get('/api/summary', wrap(async (req, res) => {
+  const session = sessionFor(req);
+  guard(req, session, 'read');
+  const s = await summary.summarise(session);
+  if (!s) return res.json({ available: false });
+  res.json({ available: true, ...s });
+}));
+
 app.get('/api/audit', wrap(async (req, res) => {
   const session = sessionFor(req);
   guard(req, session, 'read');
   res.json({ workspace: session.id, entries: await workspace.auditFor(session.id, 500) });
+}));
+
+/*
+ * What an auditor is actually asking for.
+ *
+ * The facts for a compliance pack were all being recorded and none of them
+ * could leave the application. Two formats, because the two readers are
+ * different: a spreadsheet for somebody who wants to filter and total, a PDF
+ * for somebody who wants to attach it to a file and be able to point at a page.
+ */
+
+/** Shared context, so the CSV and the PDF cannot describe different purchases. */
+async function auditContext(session) {
+  const entries = await workspace.auditFor(session.id, 500);
+  let reference = null;
+  let purchase = null;
+  if (session.recommendation) {
+    const { doc, termsHash } = await packetFor(session);
+    const w = session.recommendation.winner;
+    reference = doc.reference;
+    purchase = {
+      supplier: w.name,
+      amount: w.total,
+      state: authorization.purchaseState(session),
+      submittedBy: session.submittedBy || null,
+      approver: session.headApproval ? session.headApproval.approver : null,
+      termsHash,
+      payoutId: session.payment ? session.payment.payoutId : null,
+    };
+  }
+  return { workspace: session.id, reference, purchase, entries, generatedAt: new Date().toISOString() };
+}
+
+/* RFC 4180 quoting. Every field quoted rather than only the ones that need it,
+   because a rule with an exception is a rule somebody's parser gets wrong, and
+   a leading = or + in an unquoted cell is a formula injection in Excel. */
+const csvCell = (v) => `"${String(v === null || v === undefined ? '' : v).replace(/"/g, '""')}"`;
+
+app.get('/api/audit.csv', wrap(async (req, res) => {
+  const session = sessionFor(req);
+  guard(req, session, 'read');
+  const ctx = await auditContext(session);
+  const head = ['at', 'actor', 'role', 'action', 'from_state', 'to_state', 'workspace', 'reference'];
+  const lines = [head.map(csvCell).join(',')];
+  for (const e of ctx.entries) {
+    lines.push([
+      e.at || '', e.actorName || '', e.actorRole || '', e.action || '',
+      e.fromState || '', e.toState || '', ctx.workspace, ctx.reference || '',
+    ].map(csvCell).join(','));
+  }
+  res.setHeader('content-type', 'text/csv; charset=utf-8');
+  res.setHeader('content-disposition', `attachment; filename="limen-audit-${ctx.reference || ctx.workspace}.csv"`);
+  // CRLF, because that is what RFC 4180 says and what Excel expects.
+  res.send(lines.join('\r\n') + '\r\n');
+}));
+
+app.get('/api/audit.pdf', wrap(async (req, res) => {
+  const session = sessionFor(req);
+  guard(req, session, 'read');
+  const ctx = await auditContext(session);
+  const buf = await pdf.auditPdf(ctx);
+  res.setHeader('content-type', 'application/pdf');
+  res.setHeader('content-disposition', `attachment; filename="limen-audit-${ctx.reference || ctx.workspace}.pdf"`);
+  res.send(buf);
 }));
 
 // ------------------------------------------------------------- payment rail
@@ -1127,6 +1819,28 @@ app.post('/api/webhooks/razorpay', async (req, res) => {
       if (!fresh) return res.json({ ok: true, applied: false, reason: 'no matching payment' });
 
       const out = payments.applyEvent(fresh.state.payment, { id: eventId, type });
+
+      /*
+       * Money that did not go out comes back to the float.
+       *
+       * A debit on instruction and no credit on failure would drain the balance
+       * for payouts that never happened. Guarded by the hold record rather than
+       * by the event type alone, so a duplicate failure notification cannot
+       * credit the same payout twice: the hold is removed when it is released.
+       */
+      // applyEvent reports the payment, not a bare state name. Reading a field
+      // it does not return would have made this branch dead and the credit-back
+      // silently absent, which is exactly the shape of the bug it fixes.
+      const settledState = out.payment && out.payment.status;
+      if (out.applied && (settledState === 'failed' || settledState === 'reversed')) {
+        const holds = fresh.state.floatHolds || [];
+        const hold = holds.find((h) => h.payoutId === payoutId);
+        if (hold) {
+          fresh.state.paymentFloat = Number(fresh.state.paymentFloat || 0) + hold.amount;
+          fresh.state.floatHolds = holds.filter((h) => h.payoutId !== payoutId);
+        }
+      }
+
       if (out.applied || fresh.state.payment.events) {
         await workspace.saveById(fresh.id, fresh.state, fresh.version);
       }
@@ -1589,6 +2303,23 @@ async function boot() {
   await workspace.init();
   console.log(`  store: ${workspace.getStore().kind}${workspace.getStore().kind === 'memory' ? ' (state is lost on restart, set DATABASE_URL to persist)' : ''}`);
 
+  /*
+   * The catalogue, before the chain.
+   *
+   * Suppliers are registered on chain at boot, so which suppliers exist has to
+   * be settled first. It also means a broken feed fails before any gas is
+   * spent, rather than halfway through registering a directory that turned out
+   * to be malformed at entry 300.
+   */
+  const catalogue = await directory.load();
+  if (!catalogue.seeded) {
+    const n = replaceCatalogue(catalogue.suppliers);
+    console.log(`  suppliers: ${n} from ${catalogue.source} (${catalogue.origin})`);
+  } else {
+    console.log(`  suppliers: ${SUPPLIERS.length} seeded (set LIMEN_SUPPLIER_URL or LIMEN_SUPPLIER_FILE for a real directory)`);
+  }
+  supplierSource = catalogue;
+
   await chain.init();
   console.log(`  EVM: ${chain.mode} (chainId ${chain.chainId})`);
 
@@ -1658,7 +2389,21 @@ function serve() {
 }
 
 if (require.main === module) {
-  boot().then(serve).catch((e) => { console.error('boot failed', e); process.exit(1); });
+  boot().then(serve).catch((e) => {
+    /*
+     * A misconfiguration gets the sentence; a real fault gets the stack.
+     *
+     * This used to print the whole error object either way, so a stale
+     * DEPLOYER_KEY in the shell produced twelve frames of ethers internals with
+     * the one useful fact nowhere near the top.
+     */
+    if (e && e.configuration) {
+      console.error(`\n  Limen could not start.\n\n  ${e.message}\n`);
+    } else {
+      console.error('boot failed', e);
+    }
+    process.exit(1);
+  });
 }
 
 /* setRail is exported for the test that has to count calls to the payment rail.

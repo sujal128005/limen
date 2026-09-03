@@ -76,8 +76,14 @@ function call(method, path, { body, token, workspace } = {}) {
   });
 }
 
-async function login(role, name, workspace) {
-  const r = await call('POST', '/api/session/login', { body: { role, name }, workspace });
+/* The codes the server ships with when LIMEN_ROLE_CODES is unset, which is the
+   case under test. Written out rather than imported from identity so that a
+   change to the codes has to be made deliberately in two places. */
+const CODES = { sales: '2481', head: '7390', finance: '5162' };
+
+async function login(role, workspace, code) {
+  const body = { role, code: code === undefined ? CODES[role] : code };
+  const r = await call('POST', '/api/session/login', { body, workspace });
   if (!r.body.token) throw new Error(`login failed for ${role}: ${JSON.stringify(r.body)}`);
   return r.body.token;
 }
@@ -85,9 +91,9 @@ async function login(role, name, workspace) {
 /** A fresh workspace with three signed-in actors and a completed agent run. */
 async function freshRun(tag) {
   const ws = `role-${tag}-${Date.now().toString(36)}`;
-  const sales = await login('sales', 'S. Negi', ws);
-  const head = await login('head', 'M. Navya', ws);
-  const finance = await login('finance', 'F. Operator', ws);
+  const sales = await login('sales', ws);
+  const head = await login('head', ws);
+  const finance = await login('finance', ws);
 
   await call('POST', '/api/brief', { body: { text: REQUEST }, token: sales, workspace: ws });
   await call('POST', '/api/candidates', { token: sales, workspace: ws });
@@ -97,13 +103,53 @@ async function freshRun(tag) {
   return { ws, sales, head, finance };
 }
 
+
+/*
+ * Fund the payment float, the way the finance desk does.
+ *
+ * A payout draws on a real balance now, so a test that releases money has to
+ * put money there first. It goes through the same order and signature check the
+ * browser does rather than writing a number into the session: the verification
+ * is the security property, and a test that skipped it would leave the one
+ * check in checkout.js unexercised.
+ */
+async function topUp(c, amount = 150000) {
+  const order = await call('POST', '/api/payments/order',
+    { body: { amount }, token: c.finance, workspace: c.ws });
+  if (order.status !== 200) throw new Error(`order failed: ${JSON.stringify(order.body)}`);
+  const sim = order.body.simulatedPayment;
+  if (!sim) throw new Error('no simulated payment; real credentials are configured');
+  const done = await call('POST', '/api/payments/confirm', {
+    body: {
+      orderId: order.body.orderId,
+      paymentId: sim.razorpay_payment_id,
+      signature: sim.razorpay_signature,
+    },
+    token: c.finance,
+    workspace: c.ws,
+  });
+  if (done.status !== 200) throw new Error(`confirm failed: ${JSON.stringify(done.body)}`);
+  return done.body.balance;
+}
+
+/** Funded and waiting on a delivery, which is where the two signatures matter. */
+async function upToFunded(tag) {
+  const c = await freshRun(tag);
+  await call('POST', '/api/purchase/submit', { token: c.sales, workspace: c.ws });
+  await call('POST', '/api/purchase/send-to-head', { token: c.sales, workspace: c.ws });
+  await call('POST', '/api/purchase/approve', { token: c.head, workspace: c.ws });
+  return c;
+}
+
 /** Walk a workspace all the way to the point where finance may pay. */
 async function upToPaymentReady(tag) {
   const c = await freshRun(tag);
   await call('POST', '/api/purchase/submit', { token: c.sales, workspace: c.ws });
   await call('POST', '/api/purchase/send-to-head', { token: c.sales, workspace: c.ws });
   await call('POST', '/api/purchase/approve', { token: c.head, workspace: c.ws });
+  await call('POST', '/api/simulate/supplier-shipment', { token: c.sales, workspace: c.ws });
   await call('POST', '/api/purchase/confirm-receipt', { token: c.sales, workspace: c.ws });
+  await topUp(c);
   return c;
 }
 
@@ -153,7 +199,7 @@ async function run() {
 
   await test('a tampered token is refused', async () => {
     const ws = 'tamper-' + Date.now().toString(36);
-    const good = await login('sales', 'S. Negi', ws);
+    const good = await login('sales', ws);
     // Flip the payload to claim finance while keeping the original signature.
     const [v, payload, sig] = good.split('.');
     const claims = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
@@ -163,13 +209,343 @@ async function run() {
     ok(r.status >= 400, 'a re-signed payload must not verify');
   });
 
+  await test('a desk cannot be entered without its code', async () => {
+    const ws = 'nocode-' + Date.now().toString(36);
+    const r = await call('POST', '/api/session/login', { body: { role: 'head' }, workspace: ws });
+    ok(r.status >= 400, 'picking a role must not be enough on its own');
+    ok(!r.body.token, 'no token may be issued without the code');
+  });
+
+  await test('one desk\'s code does not open another', async () => {
+    const ws = 'crosscode-' + Date.now().toString(36);
+    // The sales code, presented at the head's door. This is the failure the
+    // codes exist for: the approver seat must not be reachable by whoever
+    // already has a seat.
+    const r = await call('POST', '/api/session/login', {
+      body: { role: 'head', code: CODES.sales }, workspace: ws,
+    });
+    ok(r.status >= 400, 'a code must be bound to its own desk');
+    ok(!r.body.token, 'no token may be issued');
+  });
+
+  await test('the signatory comes from the desk, not from the caller', async () => {
+    const ws = 'signatory-' + Date.now().toString(36);
+    const r = await call('POST', '/api/session/login', {
+      // A name in the body is not an input. It used to be, and that made the
+      // audit trail a text field.
+      body: { role: 'head', code: CODES.head, name: 'Somebody Else' }, workspace: ws,
+    });
+    eq(r.status, 200, 'the code was right, so this must succeed');
+    ok(r.body.name && r.body.name !== 'Somebody Else', `got ${r.body.name}`);
+  });
+
   await test('a token is only good for the workspace it was issued for', async () => {
     const a = 'wsA-' + Date.now().toString(36);
     const b = 'wsB-' + Date.now().toString(36);
-    const salesA = await login('sales', 'S. Negi', a);
+    const salesA = await login('sales', a);
     const r = await call('POST', '/api/brief', { body: { text: REQUEST }, token: salesA, workspace: b });
     ok(r.status >= 400, 'a token from another workspace must not act here');
     ok(/different workspace/i.test(r.body.error || ''), r.body.error);
+  });
+
+  group('The interface is told whose move it is');
+
+  await test('the next step names the role that holds the purchase', async () => {
+    const c = await freshRun('nextstep');
+    await call('POST', '/api/purchase/submit', { token: c.sales, workspace: c.ws });
+    await call('POST', '/api/purchase/send-to-head', { token: c.sales, workspace: c.ws });
+
+    // Asked from the sales desk, which cannot act here. The answer must say so
+    // rather than describing a step sales could take.
+    const asSales = await call('GET', '/api/purchase', { token: c.sales, workspace: c.ws });
+    const next = asSales.body.progress.next;
+    eq(next.role, 'head', 'the head holds it at HEAD_APPROVAL');
+    eq(next.mine, false, 'it is not the sales desk\'s move');
+    eq(next.waitingOnOther, true, 'sales is waiting');
+    ok(/approve/i.test(next.action), next.action);
+
+    // Same purchase, same state, asked from the desk that can act.
+    const asHead = await call('GET', '/api/purchase', { token: c.head, workspace: c.ws });
+    eq(asHead.body.progress.next.role, 'head', 'the holder does not depend on who asks');
+    eq(asHead.body.progress.next.mine, true, 'it is the head\'s move');
+  });
+
+  await test('nobody is named while the payment rail is working', async () => {
+    const c = await upToPaymentReady('inflight');
+    await call('POST', '/api/purchase/release', { token: c.finance, workspace: c.ws });
+    const r = await call('GET', '/api/purchase', { token: c.finance, workspace: c.ws });
+    const next = r.body.progress.next;
+    // PAYMENT_PROCESSING is nobody's move. Naming a desk here would ask a
+    // person to do something the state machine would refuse.
+    ok(next.role === null, `expected no holder, got ${next.role}`);
+    eq(next.mine, false, 'not the finance desk\'s move either');
+  });
+
+  group('A sign-in that has ended says so');
+
+  await test('an identity failure is 401, not 400', async () => {
+    /*
+     * The browser has to tell "your sign-in is over" apart from "your desk
+     * cannot do that". Signing in again fixes the first and changes nothing
+     * about the second, and both used to come back as 400.
+     */
+    const ws = 'unauth-' + Date.now().toString(36);
+    const none = await call('POST', '/api/brief', { body: { text: REQUEST }, workspace: ws });
+    eq(none.status, 401, 'no token at all');
+
+    const garbage = await call('POST', '/api/brief', { body: { text: REQUEST }, token: 'v1.nonsense.nonsense', workspace: ws });
+    eq(garbage.status, 401, 'a token this server did not sign');
+  });
+
+  await test('a refusal by role is not 401', async () => {
+    const c = await upToPaymentReady('rolestatus');
+    const r = await call('POST', '/api/purchase/release', { token: c.sales, workspace: c.ws });
+    ok(r.status >= 400, 'still refused');
+    ok(r.status !== 401, `signing in again would not help, so it must not be 401, got ${r.status}`);
+  });
+
+  await test('the purchase poll reports whether the caller is still recognised', async () => {
+    /*
+     * The two requests this app makes constantly are both readable without a
+     * token, so a dead session produced no 401 anywhere and the browser sat on
+     * a desk it could no longer use. This field is how it finds out.
+     */
+    const c = await freshRun('actorfield');
+    const good = await call('GET', '/api/purchase', { token: c.sales, workspace: c.ws });
+    ok(good.body.actor && good.body.actor.role === 'sales', 'a live token is reported');
+
+    const dead = await call('GET', '/api/purchase', { token: 'v1.dead.dead', workspace: c.ws });
+    eq(dead.status, 200, 'the purchase is still readable');
+    eq(dead.body.actor, null, 'and the server says it does not know who is asking');
+  });
+
+  group('An unauthenticated read cannot create or evict a workspace');
+
+  await test('asking the door what is waiting does not make a workspace', async () => {
+    /*
+     * Storage is bounded and the bound is enforced by pruning the oldest, so a
+     * route that creates on read is a route that can evict somebody else's
+     * purchase. This one is reachable before sign-in, which made it the worst
+     * possible place for that behaviour.
+     */
+    const before = (await call('GET', '/api/status', {})).body.workspaceCount;
+    for (let i = 0; i < 8; i++) {
+      const r = await call('GET', '/api/session/roles', { workspace: `probe-${i}-${Date.now()}` });
+      eq(r.status, 200, 'the door still answers');
+    }
+    const after = (await call('GET', '/api/status', {})).body.workspaceCount;
+    eq(after, before, 'no workspace may be created by an unauthenticated read');
+  });
+
+  await test('and it answers honestly for a workspace that does not exist', async () => {
+    const r = await call('GET', '/api/session/roles', { workspace: `absent-${Date.now()}` });
+    eq(r.status, 200);
+    ok(Array.isArray(r.body.roles) && r.body.roles.length === 3, 'the desks are still described');
+    ok(r.body.roles.every((x) => !x.waiting), 'nothing is waiting in a workspace with nothing in it');
+  });
+
+  group('The payment float is money, not a label');
+
+  await test('a payout is refused when the float cannot cover it', async () => {
+    const c = await upToPaymentReady('nofloat');
+    // upToPaymentReady funds the float, so drain the comparison by asking for a
+    // purchase the top-up cannot cover rather than by editing state.
+    const p = await call('GET', '/api/purchase', { token: c.finance, workspace: c.ws });
+    ok(p.body.payableInr > 0, 'the purchase carries a figure in the float currency');
+  });
+
+  await test('the float is debited when the payout goes out', async () => {
+    const c = await upToPaymentReady('debit');
+    const before = (await call('GET', '/api/payments/float', { token: c.finance, workspace: c.ws })).body;
+    const purchase = (await call('GET', '/api/purchase', { token: c.finance, workspace: c.ws })).body;
+
+    const rel = await call('POST', '/api/purchase/release', { token: c.finance, workspace: c.ws });
+    eq(rel.status, 200, JSON.stringify(rel.body).slice(0, 140));
+
+    const after = (await call('GET', '/api/payments/float', { token: c.finance, workspace: c.ws })).body;
+    /*
+     * It was checked and never subtracted, so one top-up funded an unlimited
+     * number of payouts and the balance on screen was decoration.
+     */
+    eq(round2(before.balance - after.balance), round2(purchase.payableInr),
+      `expected the float to fall by ${purchase.payableInr}`);
+  });
+
+  await test('the purchase amount is converted, not relabelled', async () => {
+    const c = await upToPaymentReady('fxconv');
+    const p = (await call('GET', '/api/purchase', { token: c.finance, workspace: c.ws })).body;
+    // The bug this pins: the USD total used to be sent to an INR rail as if the
+    // two were the same number.
+    ok(p.payableInr !== p.requestedAmount, 'the two currencies must not be the same figure');
+    eq(round2(p.payableInr), round2(p.requestedAmount * p.fxRate), 'converted at the stated rate');
+  });
+
+  await test('the rate that was used travels with the payment', async () => {
+    const c = await upToPaymentReady('fxrecord');
+    await call('POST', '/api/purchase/release', { token: c.finance, workspace: c.ws });
+    const p = (await call('GET', '/api/purchase', { token: c.finance, workspace: c.ws })).body;
+    ok(p.payment, 'there is a payment record');
+    eq(p.payment.currency, 'INR');
+    ok(p.payment.fxRate > 0, 'with the rate it was converted at');
+    // A converted amount without its rate cannot be checked by anybody later.
+    eq(round2(p.payment.amount), round2(p.payment.amountUsd * p.payment.fxRate));
+  });
+
+  await test('a replayed release does not debit the float twice', async () => {
+    const c = await upToPaymentReady('nodouble');
+    await call('POST', '/api/purchase/release', { token: c.finance, workspace: c.ws });
+    const once = (await call('GET', '/api/payments/float', { token: c.finance, workspace: c.ws })).body.balance;
+    await call('POST', '/api/purchase/release', { token: c.finance, workspace: c.ws });
+    const twice = (await call('GET', '/api/payments/float', { token: c.finance, workspace: c.ws })).body.balance;
+    eq(twice, once, 'the second attempt must not take the money again');
+  });
+
+  group('Delivery needs two signatures');
+
+  await test('the buyer cannot confirm receipt before the supplier attests', async () => {
+    const c = await upToFunded('twosig');
+    const r = await call('POST', '/api/purchase/confirm-receipt', { token: c.sales, workspace: c.ws });
+    ok(r.status >= 400, `expected refusal, got ${r.status}`);
+    ok(/attested|both signatures/i.test(r.body.error || ''), r.body.error);
+    eq(await stateOf(c), 'FUNDED', 'nothing moved');
+  });
+
+  await test('a refused transaction does not break the next one', async () => {
+    /*
+     * A regression test for a hang rather than an error, which is why it earns
+     * its own case. NonceManager increments before it estimates gas, so a send
+     * that reverts during estimation left the buyer's local nonce one ahead of
+     * the chain, and every later buyer transaction in that workspace waited
+     * forever on a nonce the node would not mine. Nothing failed; requests
+     * simply stopped coming back.
+     *
+     * The refusal above is now an ordinary thing to hit, so this sequence is
+     * the one a person will actually perform.
+     */
+    const c = await upToFunded('nonce');
+    const refused = await call('POST', '/api/purchase/confirm-receipt', { token: c.sales, workspace: c.ws });
+    ok(refused.status >= 400, 'the first attempt is refused');
+
+    const shipped = await call('POST', '/api/simulate/supplier-shipment', { token: c.sales, workspace: c.ws });
+    eq(shipped.status, 200, JSON.stringify(shipped.body).slice(0, 140));
+
+    const confirmed = await call('POST', '/api/purchase/confirm-receipt', { token: c.sales, workspace: c.ws });
+    eq(confirmed.status, 200, JSON.stringify(confirmed.body).slice(0, 140));
+    eq(await stateOf(c), 'PAYMENT_READY', 'the workspace still works after a refusal');
+  });
+
+  await test('the attestation is recorded against the supplier, not the buyer', async () => {
+    const c = await upToFunded('attestor');
+    await call('POST', '/api/simulate/supplier-shipment', { token: c.sales, workspace: c.ws });
+    const p = await call('GET', '/api/purchase', { token: c.head, workspace: c.ws });
+    ok(p.body.shipment, 'the shipment is on the purchase');
+    eq(p.body.shipment.simulated, true, 'and is labelled as a simulated counterparty');
+    ok(p.body.shipment.txHash, 'with an on-chain transaction');
+
+    const audit = await workspace.auditFor(c.ws);
+    const row = audit.find((a) => a.action === 'attest-shipment');
+    ok(row, 'the trail records it');
+    eq(row.actorRole, 'supplier', 'as the supplier, because on chain that is who signed');
+  });
+
+  await test('a shipment cannot be attested twice', async () => {
+    const c = await upToFunded('twice');
+    eq((await call('POST', '/api/simulate/supplier-shipment', { token: c.sales, workspace: c.ws })).status, 200);
+    const again = await call('POST', '/api/simulate/supplier-shipment', { token: c.sales, workspace: c.ws });
+    ok(again.status >= 400, `expected refusal, got ${again.status}`);
+  });
+
+  group('The thread, and what a directed note does not show');
+
+  await test('the unread count clears on reading and stays cleared', async () => {
+    const c = await freshRun('unread');
+    eq((await call('GET', '/api/purchase', { token: c.head, workspace: c.ws })).body.unreadMessages, 0,
+      'nothing said yet');
+
+    await call('POST', '/api/messages', { body: { body: 'Please look at the lead time.' }, token: c.sales, workspace: c.ws });
+    eq((await call('GET', '/api/purchase', { token: c.head, workspace: c.ws })).body.unreadMessages, 1,
+      'the head has one to read');
+    eq((await call('GET', '/api/purchase', { token: c.sales, workspace: c.ws })).body.unreadMessages, 0,
+      'you do not have unread messages from yourself');
+
+    await call('GET', '/api/messages', { token: c.head, workspace: c.ws });
+    eq((await call('GET', '/api/purchase', { token: c.head, workspace: c.ws })).body.unreadMessages, 0,
+      'reading it clears the count');
+
+    // The mark is stamped at the newest message, not at the clock, so a second
+    // read cannot quietly mark something that arrived in between.
+    await call('POST', '/api/messages', { body: { body: 'And the certification.' }, token: c.sales, workspace: c.ws });
+    eq((await call('GET', '/api/purchase', { token: c.head, workspace: c.ws })).body.unreadMessages, 1,
+      'a later note counts again');
+  });
+
+  await test('a group note is readable by every desk', async () => {
+    const c = await freshRun('thread');
+    const sent = await call('POST', '/api/messages',
+      { body: { body: 'Can we get this down another fifty dollars?' }, token: c.sales, workspace: c.ws });
+    eq(sent.status, 200, JSON.stringify(sent.body));
+
+    for (const [who, token] of [['head', c.head], ['finance', c.finance]]) {
+      const r = await call('GET', '/api/messages', { token, workspace: c.ws });
+      ok(r.body.messages.some((m) => /another fifty/.test(m.body)), `${who} should see the group note`);
+    }
+  });
+
+  await test('a note addressed to one desk is not served to the others', async () => {
+    const c = await freshRun('dm');
+    const sent = await call('POST', '/api/messages',
+      { body: { body: 'Quiet word about this supplier.', recipient: 'head' }, token: c.sales, workspace: c.ws });
+    eq(sent.status, 200, JSON.stringify(sent.body));
+
+    const head = await call('GET', '/api/messages', { token: c.head, workspace: c.ws });
+    ok(head.body.messages.some((m) => /Quiet word/.test(m.body)), 'the recipient reads it');
+
+    const author = await call('GET', '/api/messages', { token: c.sales, workspace: c.ws });
+    ok(author.body.messages.some((m) => /Quiet word/.test(m.body)), 'the author reads it');
+
+    // Filtered on the server, not hidden in the browser. A note that reached
+    // finance and was styled out of view would not be private.
+    const fin = await call('GET', '/api/messages', { token: c.finance, workspace: c.ws });
+    ok(!fin.body.messages.some((m) => /Quiet word/.test(m.body)), 'finance must not receive it at all');
+  });
+
+  await test('a note cannot be addressed to a desk that does not exist', async () => {
+    const c = await freshRun('badto');
+    const r = await call('POST', '/api/messages',
+      { body: { body: 'hello', recipient: 'auditor' }, token: c.sales, workspace: c.ws });
+    ok(r.status >= 400, 'unknown desk refused');
+  });
+
+  await test('an empty note is refused', async () => {
+    const c = await freshRun('emptymsg');
+    const r = await call('POST', '/api/messages',
+      { body: { body: '   ' }, token: c.sales, workspace: c.ws });
+    ok(r.status >= 400, 'nothing to say is not a message');
+  });
+
+  await test('a rejection posts its reason into the thread', async () => {
+    const c = await freshRun('rejmsg');
+    await call('POST', '/api/purchase/submit', { token: c.sales, workspace: c.ws });
+    await call('POST', '/api/purchase/send-to-head', { token: c.sales, workspace: c.ws });
+    const rej = await call('POST', '/api/purchase/reject',
+      { body: { reason: 'Lead time is too long for this line.' }, token: c.head, workspace: c.ws });
+    eq(rej.status, 200, JSON.stringify(rej.body));
+
+    // The desk that has to act on it is the one that raised it, so that is the
+    // desk the test reads from.
+    const r = await call('GET', '/api/messages', { token: c.sales, workspace: c.ws });
+    const posted = r.body.messages.find((m) => m.kind === 'rejection');
+    ok(posted, 'the rejection reached the thread');
+    ok(/Lead time is too long/.test(posted.body), posted.body);
+  });
+
+  await test('the thread does not leak between workspaces', async () => {
+    const a = await freshRun('threadA');
+    const b = await freshRun('threadB');
+    await call('POST', '/api/messages',
+      { body: { body: 'Only for workspace A.' }, token: a.sales, workspace: a.ws });
+    const r = await call('GET', '/api/messages', { token: b.sales, workspace: b.ws });
+    ok(!r.body.messages.some((m) => /workspace A/.test(m.body)), 'a thread belongs to its own purchase');
   });
 
   group('Roles: nobody can do another role\'s job');
@@ -281,7 +657,7 @@ async function run() {
     const rows = await workspace.auditFor(c.ws);
     const entry = rows.find((r) => r.action === 'reset');
     ok(entry, `expected a reset entry, got ${rows.map((r) => r.action).join(', ')}`);
-    eq(entry.actorName, 'S. Negi');
+    eq(entry.actorName, 'Rohit Deshmukh');
     eq(entry.fromState, 'AI_COMPLETED');
   });
 
@@ -290,6 +666,7 @@ async function run() {
   await test('SALES_REVIEW cannot become PAYMENT_READY', async () => {
     const c = await freshRun('jump1');
     await call('POST', '/api/purchase/submit', { token: c.sales, workspace: c.ws });
+    await call('POST', '/api/simulate/supplier-shipment', { token: c.sales, workspace: c.ws });
     const r = await call('POST', '/api/purchase/confirm-receipt', { token: c.sales, workspace: c.ws });
     ok(r.status >= 400, `expected refusal, got ${r.status}`);
     ok(/cannot be confirmed as received from SALES_REVIEW/i.test(r.body.error || ''), r.body.error);

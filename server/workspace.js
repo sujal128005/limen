@@ -110,6 +110,27 @@ async function loadSession(req) {
   return req.session;
 }
 
+/**
+ * Read a workspace without bringing one into existence.
+ *
+ * loadSession creates on miss, which is right for a route that is about to
+ * write. It is wrong for an unauthenticated read: the sign-in screen asks what
+ * is waiting at each desk, and routing that through loadSession meant anybody
+ * could create a workspace per request by inventing a header. That is not just
+ * clutter. Storage is bounded and the bound is enforced by pruning the oldest
+ * entries, so a few hundred invented ids would have evicted real purchases.
+ *
+ * Returns null when there is nothing there, and the caller says "nothing is
+ * waiting" rather than manufacturing a workspace to be able to answer.
+ */
+async function peekSession(req) {
+  const id = workspaceIdFrom(req);
+  const row = await store.load(id);
+  if (!row) return null;
+  row.state.id = id;
+  return row.state;
+}
+
 /** The state this request is working on. Synchronous: the load already happened. */
 function sessionFor(req) {
   if (!req.session) throw new Error('Workspace was not loaded for this request.');
@@ -178,7 +199,7 @@ async function recordAudit(entry) {
 }
 
 module.exports = {
-  sessionFor, loadSession, saveSession, resetSession, sessionByPayout, saveById,
+  sessionFor, loadSession, saveSession, resetSession, sessionByPayout, saveById, peekSession,
   blankSession, workspaceIdFrom, withLock, recordAudit,
   setStore, getStore, ConflictError,
   DEFAULT_WORKSPACE, MAX_WORKSPACES,
@@ -186,4 +207,6 @@ module.exports = {
   count: () => store.count(),
   claimEvent: (...a) => store.claimEvent(...a),
   auditFor: (...a) => store.audit(...a),
+  messagesFor: (...a) => store.messages(...a),
+  appendMessage: (...a) => store.appendMessage(...a),
 };

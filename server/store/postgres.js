@@ -57,12 +57,36 @@ CREATE TABLE IF NOT EXISTS audit (
   detail       jsonb,
   at           timestamptz NOT NULL DEFAULT now()
 );
+
+/*
+ * The conversation attached to a purchase.
+ *
+ * Separate from audit on purpose. Audit is what the system did and is written
+ * by the system; this is what people said and is written by people. Merging
+ * them would let a typed sentence sit in the same list as a state transition
+ * and look equally authoritative.
+ *
+ * recipient is null for the whole desk group, or a role id for a message
+ * addressed to one desk. See the route for what that does and does not hide.
+ */
+CREATE TABLE IF NOT EXISTS messages (
+  id           bigserial PRIMARY KEY,
+  workspace_id text NOT NULL,
+  reference    text,
+  author_name  text NOT NULL,
+  author_role  text NOT NULL,
+  recipient    text,
+  kind         text NOT NULL DEFAULT 'note',
+  body         text NOT NULL,
+  at           timestamptz NOT NULL DEFAULT now()
+);
 `;
 
 /* Created separately: pg-mem does not accept an index inside the same batch as
    the table it indexes, and splitting them costs nothing. */
 const INDEXES = [
   'CREATE INDEX IF NOT EXISTS audit_workspace_idx ON audit (workspace_id, id)',
+  'CREATE INDEX IF NOT EXISTS messages_workspace_idx ON messages (workspace_id, id)',
   'CREATE INDEX IF NOT EXISTS workspaces_updated_idx ON workspaces (updated_at)',
 ];
 
@@ -216,6 +240,34 @@ function create({ url, pg, ssl } = {}) {
           entry.detail ? JSON.stringify(entry.detail) : null,
         ]
       );
+    },
+
+    async appendMessage(m) {
+      const r = await q(
+        `INSERT INTO messages (workspace_id, reference, author_name, author_role, recipient, kind, body)
+         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, at`,
+        [m.workspaceId, m.reference || null, m.authorName, m.authorRole,
+         m.recipient || null, m.kind || 'note', m.body]
+      );
+      return { id: Number(r.rows[0].id), at: r.rows[0].at instanceof Date ? r.rows[0].at.toISOString() : r.rows[0].at };
+    },
+
+    async messages(workspaceId, limit = 200) {
+      const r = await q(
+        'SELECT * FROM messages WHERE workspace_id = $1 ORDER BY id ASC LIMIT $2',
+        [workspaceId, limit]
+      );
+      return r.rows.map((row) => ({
+        id: Number(row.id),
+        workspaceId: row.workspace_id,
+        reference: row.reference,
+        authorName: row.author_name,
+        authorRole: row.author_role,
+        recipient: row.recipient,
+        kind: row.kind,
+        body: row.body,
+        at: row.at instanceof Date ? row.at.toISOString() : row.at,
+      }));
     },
 
     async audit(workspaceId, limit = 200) {

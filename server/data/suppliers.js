@@ -428,4 +428,25 @@ function listingCount() {
   return SUPPLIERS.reduce((n, s) => n + s.products.length, 0);
 }
 
-module.exports = { SUPPLIERS, publicCatalogue, findSupplier, materials, listingCount, checkWallets };
+/**
+ * Swap the catalogue for one from a real directory.
+ *
+ * Mutated in place rather than reassigned, and this matters. index.js and
+ * scripts/deploy.js both hold the exported SUPPLIERS array by reference, and
+ * publicCatalogue, findSupplier, materials and listingCount all close over the
+ * same binding. Rebinding it here would leave every one of those pointing at
+ * the seeded set while the engine used the new one: two catalogues, no error,
+ * and payments to whichever list a given module happened to capture.
+ *
+ * Wallet indices are checked before the swap, not after, so a bad feed leaves
+ * the seeded catalogue intact rather than a half-replaced one.
+ */
+function replaceCatalogue(list) {
+  checkWallets(list);
+  SUPPLIERS.splice(0, SUPPLIERS.length, ...list);
+  return SUPPLIERS.length;
+}
+
+module.exports = {
+  SUPPLIERS, publicCatalogue, findSupplier, materials, listingCount, checkWallets, replaceCatalogue,
+};

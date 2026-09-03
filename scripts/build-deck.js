@@ -25,7 +25,7 @@ const BODY = 'Calibri';
 
 const p = new pptxgen();
 p.layout = 'LAYOUT_WIDE';   // 13.33 x 7.5
-p.author = 'Nexara9';
+p.author = 'Sujal Negi';
 p.title = 'Limen';
 
 const W = 13.33;
@@ -118,7 +118,7 @@ function note(s, text, dark) {
     ry += 0.44;
   });
 
-  s.addText('Nexara9   ·   RizeOS Hackathon, AI Track   ·   covenant-j1op.onrender.com', {
+  s.addText('Sujal Negi   ·   IIITDM Kurnool   ·   sujalnegi.tech', {
     x: 0.86, y: 6.6, w: 11.6, h: 0.4, margin: 0, valign: 'middle', fontFace: BODY, fontSize: 11.5, color: INK_3,
   });
   s.addNotes('Limen sources, screens, negotiates and pays. The one thing it cannot do is raise its own spending limit, because that limit is contract state.');
@@ -558,10 +558,10 @@ function note(s, text, dark) {
     x: 0.9, y: 4.9, w: 11.5, h: 0.4, margin: 0, valign: 'middle', fontFace: BODY, fontSize: 13.5, color: MINT,
   });
 
-  s.addText('M. Navya, 124CS0001   ·   Sujal Negi, 123ME0023   ·   IIITDM Kurnool', {
+  s.addText('Sujal Negi   ·   Student, IIITDM Kurnool', {
     x: 0.9, y: 5.9, w: 11.5, h: 0.36, margin: 0, valign: 'middle', fontFace: BODY, fontSize: 12.5, color: 'C3DCD5',
   });
-  s.addText('Team Nexara9   ·   github.com/sujal128005/limen   ·   covenant-j1op.onrender.com', {
+  s.addText('sujalnegi.tech   ·   github.com/sujal128005/limen', {
     x: 0.9, y: 6.3, w: 11.5, h: 0.36, margin: 0, valign: 'middle', fontFace: BODY, fontSize: 12.5, color: '8FB5AC',
   });
   s.addNotes('Close by offering to run the two attacks live rather than describing them.');

@@ -2,695 +2,581 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>Limen pitch</title>
+<title>Limen</title>
 <!--
   The source for Limen_Pitch_Deck.pdf.
 
   Kept as HTML rather than as a slide binary so a sentence can be corrected in
-  ten seconds and reprinted. Any browser will do it: open this file and print to
-  PDF with margins set to none and background graphics on. The page box below is
-  1280 by 720, so the print comes out at 16:9 with no scaling.
+  ten seconds and reprinted. `npm run build:docs` prints it, or open it in any
+  browser and print to PDF with margins set to none and background graphics on.
+  The page box is 1280 by 720, so it comes out at 16:9 with no scaling.
 
-  Light throughout, on purpose. A judge reading on a laptop in a bright room
-  should not have to fight a dark slide, and a deck that gets printed on paper
-  should not drink a cartridge.
+  Light throughout, on purpose. Someone reading on a laptop in a bright room
+  should not have to fight a dark slide, and a deck that gets printed should not
+  drink a cartridge.
+
+  Type is set large. A deck read across a table is not a document, and the
+  fastest way to lose a room is to make them squint.
 -->
 <style>
   @page { size: 1280px 720px; margin: 0; }
 
   :root {
-    --ink:      #101418;
-    --ink-2:    #43494F;
-    --ink-3:    #6A7178;
-    --ink-4:    #8B9198;
+    --ink:      #0F1317;
+    --ink-2:    #434A51;
+    --ink-3:    #667079;
+    --ink-4:    #868F97;
     --pine:     #0B5F52;
     --pine-2:   #0E7161;
     --mint:     #3FBFA3;
-    --amber:    #8A6314;
-    --crimson:  #A32639;
-    --hair:     #E2E0DA;
-    --hair-2:   #CFCCC4;
+    --amber:    #8A5A00;
+    --crimson:  #9E1F33;
+    --hair:     #E4E1D9;
+    --hair-2:   #D2CEC4;
     --cream:    #F6F5F1;
     --sunk:     #F1EFEA;
-    --pine-w:   #E9F2EF;
-    --amber-w:  #FAF3E4;
-    --crim-w:   #FCEDEF;
+    --pine-w:   #E9F1EF;
+    --amber-w:  #FAF2E2;
+    --crim-w:   #FBEDEF;
     --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono", Menlo, Consolas, monospace;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  body { font-family: var(--sans); color: var(--ink); background: #8E8E8E; }
+  body { font-family: var(--sans); color: var(--ink); background: #8A8A88; }
 
-  .slide {
-    position: relative;
-    width: 1280px; height: 720px;
-    padding: 54px 76px 78px;
-    background: #FFFFFF;
+  .s {
+    width: 1280px; height: 720px; position: relative; overflow: hidden;
+    background: var(--cream); page-break-after: always; break-after: page;
+    padding: 74px 88px 64px;
     display: flex; flex-direction: column;
-    page-break-after: always; break-after: page;
-    overflow: hidden;
   }
-  .slide.cream { background: var(--cream); }
-  .slide:last-child { page-break-after: auto; break-after: auto; }
+  .s:last-child { page-break-after: auto; break-after: auto; }
 
-  /* screen preview only; the print box has no gap */
-  @media screen { .slide { margin: 0 auto 22px; box-shadow: 0 6px 30px rgba(0,0,0,.28); } }
+  /* Screen only. In print each slide is its own page. */
+  @media screen { .s { margin: 0 auto 26px; box-shadow: 0 18px 50px -20px rgba(0,0,0,.5); } }
 
   .eyebrow {
-    font-size: 14px; font-weight: 750; letter-spacing: .13em;
-    text-transform: uppercase; color: var(--pine);
+    font-size: 15px; font-weight: 680; letter-spacing: .13em; text-transform: uppercase;
+    color: var(--pine);
   }
-  h1 { font-size: 62px; line-height: 1.06; letter-spacing: -.035em; font-weight: 760; }
-  h2 { font-size: 42px; line-height: 1.14; letter-spacing: -.03em; font-weight: 750; max-width: 22ch; }
-  h2.wide { max-width: 30ch; }
-  .lead {
-    margin-top: 15px; font-size: 20.5px; line-height: 1.5; color: var(--ink-2); max-width: 74ch;
-  }
-  /* The body takes whatever the heading leaves and centres in it, so a slide
-     with four bullets does not sit high with a field of white beneath it. */
-  .body { flex: 1; display: flex; flex-direction: column; justify-content: center; }
-  .head { margin-bottom: 26px; }
-  .head h2 { margin-top: 18px; }
+  h1 { font-size: 78px; line-height: 1.02; letter-spacing: -.036em; font-weight: 680; }
+  h2 { font-size: 50px; line-height: 1.08; letter-spacing: -.03em; font-weight: 660; margin-top: 16px; }
+  h3 { font-size: 26px; line-height: 1.2; letter-spacing: -.018em; font-weight: 640; }
+  p  { font-size: 22px; line-height: 1.5; color: var(--ink-2); }
+  .lead { font-size: 27px; line-height: 1.45; color: var(--ink-2); max-width: 30ch; }
+  .big { font-size: 60px; font-weight: 680; letter-spacing: -.032em; font-variant-numeric: tabular-nums; }
+  code { font-family: var(--mono); font-size: .92em; color: var(--pine); }
+  .mono { font-family: var(--mono); }
 
   .foot {
-    position: absolute; left: 76px; right: 76px; bottom: 34px;
-    display: flex; justify-content: space-between; align-items: baseline;
-    padding-top: 16px; border-top: 1px solid var(--hair);
-    font-size: 12.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-4);
+    position: absolute; left: 88px; right: 88px; bottom: 34px;
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 14px; color: var(--ink-4); border-top: 1px solid var(--hair); padding-top: 14px;
   }
 
-  /* ---- cover */
-  .brand { display: flex; align-items: center; gap: 14px; }
-  .brand svg { width: 44px; height: 44px; color: var(--pine); }
-  .brand span { font-size: 30px; font-weight: 700; letter-spacing: -.03em; }
-  .cover-links { margin-top: 44px; display: grid; grid-template-columns: 150px 1fr; row-gap: 12px; font-size: 18px; }
-  .cover-links dt { font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-4); padding-top: 3px; }
-  .cover-links dd { color: var(--pine-2); font-weight: 560; }
+  .mark { width: 34px; height: 34px; display: block; }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand b { font-size: 25px; font-weight: 660; letter-spacing: -.026em; }
 
-  /* ---- cards */
-  .cards { display: grid; gap: 18px; }
-  .c3 { grid-template-columns: repeat(3, 1fr); }
-  .c2 { grid-template-columns: repeat(2, 1fr); }
-  .c4 { grid-template-columns: repeat(4, 1fr); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 34px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+  .grow { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+
   .card {
-    padding: 22px 22px 24px; border-radius: 12px;
-    border: 1px solid var(--hair); background: #FFF;
+    background: #fff; border: 1px solid var(--hair); border-radius: 18px; padding: 30px 30px 28px;
   }
-  .slide.cream .card { background: #FFF; }
-  .card.ok { background: var(--pine-w); border-color: #BFDCD4; }
-  .card.no { background: var(--crim-w); border-color: #EFCBD1; }
-  .card.warn { background: var(--amber-w); border-color: #E7D6AE; }
-  .card .k {
-    font-size: 13px; font-weight: 750; letter-spacing: .1em; text-transform: uppercase;
-    color: var(--ink-3); display: block; margin-bottom: 12px;
-  }
-  .card.ok .k { color: var(--pine); }
-  .card.no .k { color: var(--crimson); }
-  .card.warn .k { color: var(--amber); }
-  .card p { font-size: 18px; line-height: 1.5; }
-  .card p + p { margin-top: 10px; font-size: 15.5px; color: var(--ink-3); }
-  .card .big { font-size: 44px; font-weight: 760; letter-spacing: -.03em; line-height: 1; display: block; margin-bottom: 10px; }
-  .card.no .big { color: var(--crimson); }
-  .card.ok .big { color: var(--pine); }
-  .card .mono { font-family: var(--mono); font-size: 20px; font-weight: 650; }
+  .card.dark { background: #12161A; border-color: #12161A; color: #F4F3F0; }
+  .card.dark p, .card.dark li { color: #A9B2B9; }
+  .card h3 { margin-bottom: 12px; }
+  .card p { font-size: 19px; line-height: 1.5; }
 
-  /* ---- lists */
-  ul.plain { list-style: none; display: grid; gap: 9px; }
-  ul.plain li { position: relative; padding-left: 26px; font-size: 18px; line-height: 1.45; }
-  ul.plain li::before {
-    content: ""; position: absolute; left: 4px; top: 10px;
-    width: 7px; height: 7px; border-radius: 50%; background: var(--ink-4);
+  ul { list-style: none; display: grid; gap: 14px; }
+  li { font-size: 21px; line-height: 1.45; color: var(--ink-2); padding-left: 26px; position: relative; }
+  li::before {
+    content: ""; position: absolute; left: 0; top: .62em;
+    width: 8px; height: 8px; border-radius: 50%; background: var(--pine);
   }
-  ul.plain.yes li::before { content: "\2713"; background: none; color: var(--pine); font-weight: 800; font-size: 15px; top: 0; left: 0; width: auto; height: auto; }
-  ul.plain.nope li::before { content: "\2715"; background: none; color: var(--crimson); font-weight: 800; font-size: 14px; top: 1px; left: 0; width: auto; height: auto; }
-  .colhead { font-size: 19px; font-weight: 700; letter-spacing: -.018em; margin-bottom: 14px; }
+  li.no::before { background: var(--crimson); }
+  .card.dark li::before { background: var(--mint); }
 
-  /* ---- table */
+  .tag {
+    display: inline-block; font-size: 15px; font-weight: 640; letter-spacing: .04em;
+    text-transform: uppercase; padding: 7px 14px; border-radius: 100px;
+  }
+  .tag.ok  { background: var(--pine-w);  color: var(--pine);    border: 1px solid #B2CCC5; }
+  .tag.no  { background: var(--crim-w);  color: var(--crimson); border: 1px solid #E9C2C8; }
+  .tag.hold{ background: var(--amber-w); color: var(--amber);   border: 1px solid #E4CFA4; }
+
+  .rule { height: 1px; background: var(--hair); margin: 26px 0; }
+
+  .stat { display: grid; gap: 6px; }
+  .stat b { font-size: 54px; font-weight: 680; letter-spacing: -.032em; line-height: 1; }
+  .stat span { font-size: 17px; color: var(--ink-3); }
+
   table { width: 100%; border-collapse: collapse; }
   th {
-    text-align: left; font-size: 13px; font-weight: 750; letter-spacing: .1em;
-    text-transform: uppercase; color: var(--ink-4);
-    padding: 0 16px 11px 0; border-bottom: 1.5px solid var(--ink);
+    text-align: left; font-size: 14px; font-weight: 680; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--ink-4); padding: 0 16px 12px 0;
+    border-bottom: 1px solid var(--hair-2);
   }
-  td { padding: 12px 16px 12px 0; border-bottom: 1px solid var(--hair); font-size: 17.5px; line-height: 1.42; vertical-align: top; }
-  td.strong { font-weight: 650; }
-  td.mono { font-family: var(--mono); font-size: 16px; }
-
-  /* ---- flow strip */
-  .flow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; margin-top: 8px; }
-  .step { position: relative; padding: 0 20px 0 0; }
-  .step .n {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 34px; height: 34px; border-radius: 50%;
-    border: 2px solid var(--pine); color: var(--pine);
-    font-size: 15px; font-weight: 750; margin-bottom: 14px;
-  }
-  .step.you .n { border-color: var(--amber); color: var(--amber); }
-  .step .who { font-size: 12.5px; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-4); }
-  .step .t { font-size: 19px; font-weight: 680; letter-spacing: -.016em; margin: 5px 0 7px; }
-  .step .d { font-size: 15.5px; line-height: 1.45; color: var(--ink-3); }
-
-  .note {
-    margin-top: 18px; padding: 16px 22px; border-radius: 12px;
-    background: var(--sunk); border: 1px solid var(--hair);
-    font-size: 17.5px; line-height: 1.5; color: var(--ink-2);
-  }
-  .note.dark { background: #12161A; border-color: #12161A; color: #E9E7E2; }
-  .note strong { color: var(--ink); font-weight: 680; }
-  .note.dark strong { color: #FFF; }
-  code { font-family: var(--mono); font-size: .92em; background: var(--sunk); padding: 2px 6px; border-radius: 5px; }
-  .note.dark code { background: rgba(255,255,255,.1); color: #7FE3CC; }
+  td { font-size: 20px; padding: 15px 16px 15px 0; border-bottom: 1px solid var(--hair); color: var(--ink-2); }
+  td.k { color: var(--ink); font-weight: 600; }
+  td:last-child, th:last-child { padding-right: 0; }
 </style>
 </head>
 <body>
 
-<!-- ============================================================ 01 cover -->
-<section class="slide cream">
-  <div class="brand">
-    <svg viewBox="0 0 48 48" fill="none">
-      <path d="M6 33V13a4 4 0 0 1 4-4h28a4 4 0 0 1 4 4v20H33V20a3 3 0 0 0-3-3H18a3 3 0 0 0-3 3v13z" fill="currentColor"/>
-      <rect x="4" y="36" width="40" height="7" rx="3.5" fill="currentColor"/>
-    </svg>
-    <span>Limen</span>
-  </div>
-
-  <div class="body">
-    <h1>Hand an agent the chequebook.<br />Keep the signature.</h1>
-    <p class="lead" style="max-width:62ch">
-      An AI agent sources suppliers and negotiates. The company's spending
-      authority lives in a smart contract the agent has no way to rewrite, and
-      three different people have to touch a purchase before money moves.
+<!-- ============================================================ 01 title -->
+<section class="s" style="background:#0F1317; color:#F4F3F0; padding-top:0; justify-content:center">
+  <div style="position:absolute; inset:0;
+    background:
+      radial-gradient(70% 80% at 82% -8%, rgba(63,191,163,.22), transparent 58%),
+      radial-gradient(56% 66% at 4% 104%, rgba(90,140,255,.10), transparent 66%);"></div>
+  <div style="position:relative">
+    <div class="brand" style="margin-bottom:52px">
+      <svg class="mark" viewBox="0 0 48 48" fill="none">
+        <path d="M6 33V13a4 4 0 0 1 4-4h28a4 4 0 0 1 4 4v20H33V20a3 3 0 0 0-3-3H18a3 3 0 0 0-3 3v13z" fill="#F4F3F0"/>
+        <rect x="4" y="36" width="40" height="7" rx="3.5" fill="#F4F3F0"/>
+      </svg>
+      <b style="color:#F4F3F0">Limen</b>
+    </div>
+    <div class="eyebrow" style="color:var(--mint)">Procurement under enforced authority</div>
+    <h1 style="margin-top:22px; max-width:20ch">Hand an agent the chequebook. Keep the signature.</h1>
+    <p style="color:#A9B2B9; font-size:25px; margin-top:30px; max-width:40ch">
+      An AI agent that sources and negotiates real purchases, and a smart contract that will not let
+      it spend a rupee more than a person authorised.
     </p>
-    <dl class="cover-links">
-      <dt>Live demo</dt><dd>limen-peqe.onrender.com</dd>
-      <dt>Repository</dt><dd>github.com/sujal128005/limen</dd>
-      <dt>Built by</dt><dd>Team Nexara9</dd>
-    </dl>
   </div>
-
-  <div class="foot">
-    <span>M. Navya &middot; Sujal Negi &middot; IIITDM Kurnool</span>
-    <span>01</span>
+  <div class="foot" style="border-color:rgba(255,255,255,.14); color:#8B949B">
+    <span>Sujal Negi, IIITDM Kurnool</span><span>01</span>
   </div>
 </section>
 
 <!-- ========================================================== 02 problem -->
-<section class="slide">
-  <div class="head">
-    <span class="eyebrow">The problem</span>
-    <h2 class="wide">A budget in a prompt is not a budget.</h2>
-    <p class="lead">
-      Every agent that can spend money needs a limit. Almost every implementation
-      puts that limit inside the trust boundary of the thing it is meant to constrain.
-    </p>
-  </div>
-
-  <div class="body">
-    <div class="cards c3">
-      <div class="card no">
-        <span class="k">Where the limit usually lives</span>
-        <p>A config value, a database column, or a sentence in a system prompt.</p>
-        <p>All three sit in the same process the model influences.</p>
-      </div>
-      <div class="card no">
-        <span class="k">Why that fails quietly</span>
-        <p>Nothing rejects the transaction. The money moves and the log looks ordinary.</p>
-        <p>Nobody finds out until reconciliation, which is days or weeks later.</p>
-      </div>
-      <div class="card ok">
-        <span class="k">What is actually needed</span>
-        <p>A limit the agent can read, obey, and be refused by, but cannot edit.</p>
-        <p>That means it has to live outside the agent's process entirely.</p>
-      </div>
-    </div>
-  </div>
-
-  <div class="foot"><span>Limen &middot; Pitch</span><span>02</span></div>
-</section>
-
-<!-- ======================================================= 03 other half -->
-<section class="slide cream">
-  <div class="head">
-    <span class="eyebrow">The other half of the problem</span>
-    <h2 class="wide">The oldest control in procurement is a policy, not a mechanism.</h2>
-  </div>
-
-  <div class="body">
-    <div class="cards c3">
-      <div class="card">
-        <span class="big">5%</span>
-        <span class="k">Of revenue, lost to fraud</span>
-        <p>What organisations lose to occupational fraud every year. Billing and procurement schemes sit in the middle of it.</p>
-      </div>
-      <div class="card no">
-        <span class="big">43%</span>
-        <span class="k">Found because someone spoke up</span>
-        <p>The most common way fraud is detected is still a tip. The dominant control in most companies is a junior employee's courage.</p>
-      </div>
-      <div class="card warn">
-        <span class="big">&#8377;8.1L cr</span>
-        <span class="k">Locked in delayed MSME payments</span>
-        <p>India's Economic Survey estimate. The small supplier who did the work finances the buyer's slow approval chain.</p>
-      </div>
-    </div>
-
-    <div class="note">
-      <strong>Two failures, one pipe.</strong> Nothing structural stops money moving
-      when it should not, and nothing moves money quickly when it should. In most
-      companies the separation between who picks the supplier, who approves the
-      budget and who releases the payment is held together by habit.
-    </div>
-  </div>
-
-  <div class="foot"><span>Limen &middot; Pitch</span><span>03</span></div>
-</section>
-
-<!-- ========================================================= 04 solution -->
-<section class="slide">
-  <div class="head">
-    <span class="eyebrow">What Limen is</span>
-    <h2 class="wide">Four hands on one purchase. Only one of them is the agent.</h2>
-  </div>
-
-  <div class="body">
-    <table>
-      <thead><tr><th style="width:20%">Who</th><th style="width:44%">Does</th><th>Cannot</th></tr></thead>
-      <tbody>
-        <tr>
-          <td class="strong">The agent</td>
-          <td>Screens the catalogue, negotiates against floor prices it cannot see, recommends one deal with its reasons</td>
-          <td>Approve anything, move funds, or change the spending limit</td>
-        </tr>
-        <tr>
-          <td class="strong">Sales</td>
-          <td>Reviews what the agent found, raises it as a purchase, confirms the goods arrived</td>
-          <td>Approve its own request, or pay</td>
-        </tr>
-        <tr>
-          <td class="strong">The head</td>
-          <td>Owns the spending policy, reviews the packet and the alternatives, sanctions the amount</td>
-          <td>Release the payment</td>
-        </tr>
-        <tr>
-          <td class="strong">Finance</td>
-          <td>Sees an authorised payment with its full chain, and releases it</td>
-          <td>Raise a purchase or approve one</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <div class="note dark">
-      <strong>Enforced, not drawn.</strong> Every restricted action is checked
-      server-side against a signed token. Hiding a button is not the same thing as
-      withholding a permission, and the test suite sends each role at every other
-      role's routes to prove it.
-    </div>
-  </div>
-
-  <div class="foot"><span>Limen &middot; Pitch</span><span>04</span></div>
-</section>
-
-<!-- ============================================================= 05 flow -->
-<section class="slide cream">
-  <div class="head">
-    <span class="eyebrow">How a purchase runs</span>
-    <h2 class="wide">Plain language in. An authorised, audited payment out.</h2>
-  </div>
-
-  <div class="body">
-    <div class="flow">
-      <div class="step">
-        <span class="n">01</span>
-        <div class="who">Agent</div>
-        <div class="t">Source and negotiate</div>
-        <div class="d">Screens 39 listings, bargains in parallel, walks away rather than overspend</div>
-      </div>
-      <div class="step you">
-        <span class="n">02</span>
-        <div class="who">Sales</div>
-        <div class="t">Review and send up</div>
-        <div class="d">Checks the recommendation and the rejected alternatives, then hands it on</div>
-      </div>
-      <div class="step you">
-        <span class="n">03</span>
-        <div class="who">Head</div>
-        <div class="t">Sanction the amount</div>
-        <div class="d">Approves against the published ceiling. Funds commit to escrow. Nobody is paid</div>
-      </div>
-      <div class="step you">
-        <span class="n">04</span>
-        <div class="who">Finance</div>
-        <div class="t">Release the payment</div>
-        <div class="d">Contract is asked first. Payout is instructed. The rail reports settlement</div>
-      </div>
-    </div>
-
-    <div class="note" style="margin-top:38px">
-      <strong>The agent stops at step 1.</strong> Nothing from step 2 onward can
-      happen without a named person, and no person can take another's step. A
-      purchase that changes after approval loses its approval automatically.
-    </div>
-  </div>
-
-  <div class="foot"><span>Limen &middot; Pitch</span><span>05</span></div>
-</section>
-
-<!-- ========================================================= 06 attack 1 -->
-<section class="slide">
-  <div class="head">
-    <span class="eyebrow">Proof, not a promise &middot; Attack 1</span>
-    <h2 class="wide">We give the agent a real key and tell it to overspend.</h2>
-    <p class="lead">
-      A button in the demo sends a genuine transaction above the buyer's ceiling.
-      The backend forwards it without checking the amount, on purpose.
-    </p>
-  </div>
-
-  <div class="body">
-    <div class="cards c3">
-      <div class="card">
-        <span class="k">Authorised ceiling</span>
-        <span class="big">$1,200</span>
-        <p>Per deal, stored in contract state</p>
-      </div>
-      <div class="card no">
-        <span class="k">Agent attempted</span>
-        <span class="big">$1,250</span>
-        <p>Real transaction, gas estimation bypassed so it reaches the chain</p>
-      </div>
-      <div class="card no">
-        <span class="k">Result</span>
-        <span class="mono" style="display:block;margin-bottom:10px">ExceedsPerDealCap</span>
-        <p>State after: unchanged. Zero deals, nothing committed.</p>
-      </div>
-    </div>
-
-    <div class="note dark">
-      The rejection did not come from our code. It came from the EVM, and there is
-      a mined failed transaction on the chain to prove it.
-    </div>
-  </div>
-
-  <div class="foot"><span>Limen &middot; Pitch</span><span>06</span></div>
-</section>
-
-<!-- ========================================================= 07 attack 2 -->
-<section class="slide cream">
-  <div class="head">
-    <span class="eyebrow">Proof, not a promise &middot; Attack 2</span>
-    <h2 class="wide">Then we let the agent rewrite its own limit. It succeeds, and buys nothing.</h2>
-  </div>
-
-  <div class="body">
-    <div class="cards c3">
-      <div class="card no">
-        <span class="k">Agent wrote its own policy</span>
-        <span class="big">$1,000,000</span>
-        <p>The transaction succeeded. It changed the agent's own record.</p>
-      </div>
-      <div class="card ok">
-        <span class="k">The buyer's authority</span>
-        <span class="big">$1,200</span>
-        <p>Unchanged. This is the limit the contract actually reads.</p>
+<section class="s">
+  <div class="eyebrow">The problem</div>
+  <h2 style="max-width:24ch">Agents are trusted with judgement long before anyone trusts them with money.</h2>
+  <div class="grow">
+    <div class="grid2" style="margin-top:8px">
+      <div>
+        <p style="margin-bottom:20px">
+          Procurement is a good job for an agent. It is repetitive, it is quantitative, and the
+          expertise is mostly in knowing what to compare.
+        </p>
+        <p>
+          It is also the job where a mistake costs money immediately, and nobody hands a spending
+          limit to software they cannot constrain. So the agent drafts, and a person retypes the
+          order into the system that actually pays.
+        </p>
       </div>
       <div class="card">
-        <span class="k">Next spend attempt</span>
-        <span class="mono" style="display:block;margin-bottom:10px;color:var(--crimson)">ExceedsPerDealCap</span>
-        <p>Escalation failed. The mandate is untouched.</p>
-      </div>
-    </div>
-
-    <div class="note">
-      <code>setAgentPolicy</code> is keyed on <code>msg.sender</code>. An agent
-      writing itself a bigger mandate writes it at its own storage key, and it
-      spends against the buyer's. <strong>Privilege escalation here is not blocked
-      by a check. It is unrepresentable.</strong>
-    </div>
-  </div>
-
-  <div class="foot"><span>Limen &middot; Pitch</span><span>07</span></div>
-</section>
-
-<!-- ========================================================= 08 attack 3 -->
-<section class="slide">
-  <div class="head">
-    <span class="eyebrow">Proof, not a promise &middot; Attack 3</span>
-    <h2 class="wide">Then we let each person try to do somebody else's job.</h2>
-    <p class="lead">
-      Every check runs over HTTP with a real signed token, because testing a guard
-      function proves the function works, not that the route calls it.
-    </p>
-  </div>
-
-  <div class="body">
-    <div class="cards c2">
-      <div class="card no">
-        <span class="k">Refused by the server</span>
-        <ul class="plain nope">
-          <li>Sales tries to release the payment</li>
-          <li>Sales tries to approve its own request</li>
-          <li>The head tries to release the payment</li>
-          <li>Finance tries to pay an unapproved purchase</li>
-          <li>A token edited to claim another role</li>
-        </ul>
-      </div>
-      <div class="card ok">
-        <span class="k">And the approval does not travel</span>
-        <ul class="plain yes">
-          <li>Change the amount after approval, payment refused</li>
-          <li>Change the supplier after approval, payment refused</li>
-          <li>Contract refuses, and the payment provider is called zero times</li>
+        <h3>Where the confidence breaks</h3>
+        <ul style="margin-top:18px">
+          <li>The limit lives in application code the agent runs inside</li>
+          <li>A prompt can be talked around, and often is</li>
+            <li>One compromised process can approve and pay</li>
+          <li>The audit trail is written by the thing being audited</li>
         </ul>
       </div>
     </div>
-
-    <div class="note dark">
-      <strong>The last one matters most.</strong> An approval is bound to a fingerprint
-      of the supplier, the line, the price and the delivery. Move any of them and the
-      signature stops authorising anything. Tokens are workspace-scoped too.
-    </div>
   </div>
-
-  <div class="foot"><span>Limen &middot; Pitch</span><span>08</span></div>
+  <div class="foot"><span>Limen</span><span>02</span></div>
 </section>
 
-<!-- ======================================================== 09 ai bounds -->
-<section class="slide cream">
-  <div class="head">
-    <span class="eyebrow">Where the AI sits</span>
-    <h2 class="wide">The model phrases. It never computes, and it never signs.</h2>
-  </div>
-
-  <div class="body">
-    <div class="cards c3">
-      <div class="card ok">
-        <span class="k">Stage 1 &middot; Grounded</span>
-        <p>Every figure is computed deterministically from a frozen projection of the run, and cites its source.</p>
-        <p>The same request produces the same transcript every time.</p>
-      </div>
-      <div class="card">
-        <span class="k">Stage 2 &middot; Phrasing only</span>
-        <p>The model may not introduce a number, name, date or claim. It may not remove a figure that is present.</p>
-        <p>Validated on shape, length and characters before use.</p>
-      </div>
-      <div class="card no">
-        <span class="k">Capability boundary</span>
-        <p>The reasoning module has zero imports. No chain, no signer, no network.</p>
-        <p>Enforced by what the code can reach, not by instructions in a prompt.</p>
-      </div>
-    </div>
-
-    <div class="note">
-      The product runs with no model key at all. Without one it falls back to a
-      deterministic responder and behaves identically, because the model was never
-      holding anything up.
-    </div>
-  </div>
-
-  <div class="foot"><span>Limen &middot; Pitch</span><span>09</span></div>
-</section>
-
-<!-- =========================================================== 10 engine -->
-<section class="slide">
-  <div class="head">
-    <span class="eyebrow">The engine</span>
-    <h2 class="wide">The cheapest supplier is often the wrong one. The agent knows why.</h2>
-  </div>
-
-  <div class="body">
-    <div class="cards c2">
-      <div>
-        <div class="colhead">Structural versus negotiable</div>
-        <p style="font-size:18px;line-height:1.55;color:var(--ink-2)">
-          Every constraint failure is classified before anything is ranked. Price is
-          negotiable. Schedule sometimes is, and only the supplier knows by how much.
-          Grade, minimum order, capacity and certification never are.
+<!-- ======================================================== 03 the answer -->
+<section class="s">
+  <div class="eyebrow">The idea</div>
+  <h2 style="max-width:26ch">Put the spending limit somewhere the agent cannot reach.</h2>
+  <div class="grow">
+    <div class="grid2">
+      <div class="card dark">
+        <h3 style="color:#F4F3F0">Not a guardrail</h3>
+        <p style="margin-top:14px">
+          A guardrail is a check inside the program. It holds while the program behaves and it is
+          the first thing to go when the program does not.
         </p>
-        <div class="card no" style="margin-top:20px">
-          <span class="k">Rejected before negotiation</span>
-          <p>The cheapest listing in the catalogue never receives an offer: wrong grade, minimum order too large, missing certification.</p>
-          <p>An agent optimising on price alone buys this one.</p>
-        </div>
       </div>
-      <div>
-        <div class="colhead">Bargaining it cannot cheat at</div>
-        <p style="font-size:18px;line-height:1.55;color:var(--ink-2)">
-          Counterparties hold a private floor price the agent cannot read. An
-          assertion inside the negotiation loop throws if an offer ever exceeds the
-          authorised ceiling, so a pricing bug becomes a crash rather than a quiet
-          overspend.
+      <div class="card">
+        <h3>A boundary</h3>
+        <p style="margin-top:14px">
+          The ceiling is contract state on a blockchain. The agent can ask to spend past it. The
+          network refuses, and the refusal does not depend on our code being correct.
         </p>
-        <div class="card ok" style="margin-top:20px">
-          <span class="k">Default run, three suppliers</span>
-          <p>One fails on schedule. One is priced out and the agent walks away. One settles at $1,175, which is $75 off list and $25 under budget.</p>
-          <p>No deal is a valid outcome, and some runs end in one.</p>
-        </div>
       </div>
     </div>
+    <p style="margin-top:32px; font-size:24px; max-width:62ch">
+      The interesting property is not that the agent behaves. It is that the system still holds when
+      it does not.
+    </p>
   </div>
-
-  <div class="foot"><span>Limen &middot; Pitch</span><span>10</span></div>
+  <div class="foot"><span>Limen</span><span>03</span></div>
 </section>
 
-<!-- ========================================================= 11 payments -->
-<section class="slide cream">
-  <div class="head">
-    <span class="eyebrow">Payments</span>
-    <h2 class="wide">The contract is asked before the money rail is touched.</h2>
-  </div>
-
-  <div class="body">
-    <div class="cards c4">
+<!-- ======================================================= 04 the product -->
+<section class="s">
+  <div class="eyebrow">What it does</div>
+  <h2>One sentence in. One purchase out.</h2>
+  <div class="grow">
+    <div class="grid3" style="margin-top:10px">
       <div class="card">
-        <span class="k">1 &middot; Workflow gate</span>
-        <p>Right state, right role, and the approval still matching the purchase in front of us.</p>
-      </div>
-      <div class="card ok">
-        <span class="k">2 &middot; The contract</span>
-        <p>Run against the real EVM without sending a transaction. If it reverts, we stop here and the rail is never contacted.</p>
+        <span class="tag ok">Agent</span>
+        <h3 style="margin-top:18px">Sources</h3>
+        <p style="margin-top:10px">
+          Reads a request in plain language, pulls out quantity, budget, delivery window and
+          certifications, and screens every listing against them.
+        </p>
       </div>
       <div class="card">
-        <span class="k">3 &middot; The payout</span>
-        <p>Created under a key derived from the purchase and its approval, so a timeout cannot pay a supplier twice.</p>
+        <span class="tag ok">Agent</span>
+        <h3 style="margin-top:18px">Negotiates</h3>
+        <p style="margin-top:10px">
+          Bargains with shortlisted suppliers against reservation prices it cannot see, and walks
+          away rather than break a hard requirement.
+        </p>
       </div>
-      <div class="card warn">
-        <span class="k">4 &middot; The lifecycle</span>
-        <p>Processing until a signed webhook says otherwise. Settled, failed or reversed comes from the rail, not from us.</p>
+      <div class="card">
+        <span class="tag hold">People</span>
+        <h3 style="margin-top:18px">Stops</h3>
+        <p style="margin-top:10px">
+          Brings back one deal with its reasoning. Everything past this point needs a person, and
+          the money needs three of them.
+        </p>
       </div>
-    </div>
-
-    <div class="note">
-      <strong>A created payout is an accepted instruction, not money in an account.</strong>
-      Webhook events are verified over the raw bytes, deduplicated by event id, and
-      never allowed to move a payment backwards out of a terminal state.
     </div>
   </div>
-
-  <div class="foot"><span>Limen &middot; Pitch</span><span>11</span></div>
+  <div class="foot"><span>Limen</span><span>04</span></div>
 </section>
 
-<!-- ============================================================ 12 built -->
-<section class="slide">
-  <div class="head">
-    <span class="eyebrow">What is actually built</span>
-    <h2 class="wide">Not a mockup. Two commands and it runs.</h2>
-  </div>
-
-  <div class="body">
-    <div class="cards c4">
-      <div class="card">
-        <span class="big" style="color:var(--pine)">205</span>
-        <p style="font-size:16px;color:var(--ink-3)">unit tests, most of them attacking the system rather than confirming it works</p>
-      </div>
-      <div class="card">
-        <span class="big">139</span>
-        <p style="font-size:16px;color:var(--ink-3)">end to end checks walking the HTTP surface in the order a person uses it</p>
-      </div>
-      <div class="card">
-        <span class="big">3</span>
-        <p style="font-size:16px;color:var(--ink-3)">Solidity contracts, compiled in-process at boot with solc-js</p>
-      </div>
-      <div class="card">
-        <span class="big">3.6s</span>
-        <p style="font-size:16px;color:var(--ink-3)">cold boot: compile, deploy, register 15 suppliers, fund the buyer</p>
-      </div>
-    </div>
-
-    <table style="margin-top:24px">
-      <thead><tr><th style="width:32%">Layer</th><th>What it holds</th></tr></thead>
-      <tbody>
-        <tr><td class="strong">Contracts</td><td>Escrow lifecycle, spending caps, expiry, revocation, deployed once and attached to</td></tr>
-        <tr><td class="strong">Authorisation</td><td>Twelve workflow states, role permissions, and the approval fingerprint</td></tr>
-        <tr><td class="strong">Engine</td><td>Parsing, structural screening, bounded bargaining, walk-away, determinism</td></tr>
-        <tr><td class="strong">Payments</td><td>Contract-gated payouts, derived idempotency, bounded retry, reconciliation</td></tr>
-      </tbody>
+<!-- ==================================================== 05 the refusal -->
+<section class="s">
+  <div class="eyebrow">The part worth watching</div>
+  <h2>It is allowed to try. The contract is what stops it.</h2>
+  <div class="grow">
+    <table style="margin-top:6px">
+      <tr>
+        <th style="width:34%">What the agent attempted</th>
+        <th style="width:22%">Amount</th>
+        <th>Outcome</th>
+      </tr>
+      <tr>
+        <td class="k">Negotiated deal, inside the ceiling</td>
+        <td class="mono">$1,175.00</td>
+        <td><span class="tag ok">Settled</span></td>
+      </tr>
+      <tr>
+        <td class="k">Instructed to overspend by $50</td>
+        <td class="mono">$1,250.00</td>
+        <td><span class="tag no">Reverted</span> <span style="font-size:17px; color:var(--ink-3); margin-left:10px">ExceedsPerDealCap</span></td>
+      </tr>
+      <tr>
+        <td class="k">Raised its own cap first, then tried</td>
+        <td class="mono">$1,000,000.00</td>
+        <td><span class="tag no">Reverted</span> <span style="font-size:17px; color:var(--ink-3); margin-left:10px">buyer ceiling unchanged</span></td>
+      </tr>
     </table>
+    <p style="margin-top:30px; max-width:66ch">
+      The third row is the one that matters. The policy record is keyed to the address that wrote
+      it, so an agent writing a policy can only ever write its own. Escalation is not a check that
+      might be missed. It cannot be expressed.
+    </p>
   </div>
-
-  <div class="foot"><span>Limen &middot; Pitch</span><span>12</span></div>
+  <div class="foot"><span>Limen</span><span>05</span></div>
 </section>
 
-<!-- =========================================================== 13 limits -->
-<section class="slide cream">
-  <div class="head">
-    <span class="eyebrow">What is demo-grade</span>
-    <h2 class="wide">The limits, stated before you ask.</h2>
-
+<!-- ======================================================= 06 three desks -->
+<section class="s">
+  <div class="eyebrow">Separation of duties</div>
+  <h2>No desk can do another desk's job.</h2>
+  <div class="grow">
+    <div class="grid3">
+      <div class="card">
+        <h3>Sales</h3>
+        <p style="margin-top:12px">Runs the sourcing, submits the purchase, confirms the goods arrived.</p>
+        <div class="rule"></div>
+        <p style="font-size:17px; color:var(--ink-3)">Cannot approve. Cannot pay.</p>
+      </div>
+      <div class="card">
+        <h3>Head</h3>
+        <p style="margin-top:12px">Publishes the spending ceiling on chain, approves or rejects, funds the escrow.</p>
+        <div class="rule"></div>
+        <p style="font-size:17px; color:var(--ink-3)">Cannot raise the request. Cannot pay.</p>
+      </div>
+      <div class="card">
+        <h3>Finance</h3>
+        <p style="margin-top:12px">Executes an authorised payment and nothing else.</p>
+        <div class="rule"></div>
+        <p style="font-size:17px; color:var(--ink-3)">Cannot raise. Cannot approve.</p>
+      </div>
+    </div>
+    <p style="margin-top:30px; max-width:70ch">
+      The role travels inside a signed token and is read back out of the signature, never out of
+      anything a browser sends. Every restricted route checks it again on every request.
+    </p>
   </div>
+  <div class="foot"><span>Limen</span><span>06</span></div>
+</section>
 
-  <div class="body">
+<!-- ==================================================== 07 two signatures -->
+<section class="s">
+  <div class="eyebrow">Settlement</div>
+  <h2>A delivery takes two signatures.</h2>
+  <div class="grow">
+    <div class="grid2">
+      <div>
+        <ul style="margin-top:8px">
+          <li>The supplier's key attests that the goods shipped</li>
+          <li>The buyer's key confirms that they arrived</li>
+          <li>The contract refuses the second without the first</li>
+        </ul>
+        <p style="margin-top:26px">
+          Before this, one key could walk a deal from funded to paid with nothing having moved.
+        </p>
+      </div>
+      <div class="card" style="border-color:var(--hair-2)">
+        <h3>What this does not do</h3>
+        <p style="margin-top:14px">
+          It does not make a fictitious delivery impossible. It makes it take two parties instead of
+          one. A buyer and a supplier working together can still settle a deal that never moved.
+        </p>
+        <div class="rule"></div>
+        <p style="font-size:18px">
+          Closing that needs an attestation from somebody with no stake in the trade, which means a
+          carrier or an inspector. That is a partnership, not a function, and we would rather say so
+          than imply we have solved it.
+        </p>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span>Limen</span><span>07</span></div>
+</section>
+
+<!-- ========================================================= 08 the money -->
+<section class="s">
+  <div class="eyebrow">How money actually moves</div>
+  <h2>Two rails, kept apart on purpose.</h2>
+  <div class="grow">
+    <div class="grid2">
+      <div class="card dark">
+        <h3 style="color:#F4F3F0">The authority rail</h3>
+        <p style="margin-top:14px">
+          An escrow contract holding USDC. It decides whether a payment is permitted, and it is what
+          refuses a spend above the published ceiling.
+        </p>
+        <div class="rule" style="background:rgba(255,255,255,.14)"></div>
+        <p style="font-size:18px">It is not a bank account.</p>
+      </div>
+      <div class="card">
+        <h3>The money rail</h3>
+        <p style="margin-top:14px">
+          Razorpay. A float is topped up through the payment gateway, and payouts to suppliers draw
+          on it. It decides whether a permitted payment can actually be made.
+        </p>
+        <div class="rule"></div>
+        <p style="font-size:18px">Both have to say yes.</p>
+      </div>
+    </div>
+    <p style="margin-top:30px; max-width:72ch">
+      A payment is credited only after the server verifies the gateway's signature. The browser
+      reporting success proves nothing, because a browser can be edited.
+    </p>
+  </div>
+  <div class="foot"><span>Limen</span><span>08</span></div>
+</section>
+
+<!-- ======================================================== 09 lim ai -->
+<section class="s">
+  <div class="eyebrow">LIM AI</div>
+  <h2>The model explains. It never computes.</h2>
+  <div class="grow">
+    <div class="grid2">
+      <div>
+        <p>
+          Every figure in the product is produced by deterministic code: the screening, the
+          bargaining, each amount, each ceiling.
+        </p>
+        <p style="margin-top:20px">
+          A language model rewrites explanations so they read well. It is handed finished sentences
+          and asked to phrase them better, and the result is checked digit by digit before it is
+          shown.
+        </p>
+      </div>
+      <div class="card">
+        <h3>The check</h3>
+        <ul style="margin-top:18px">
+          <li>Every number in the source must survive the rewrite</li>
+          <li class="no">Any number not in the source is refused</li>
+          <li>If the rewrite fails either test, the deterministic text ships</li>
+          <li>The interface says which one you are reading</li>
+        </ul>
+      </div>
+    </div>
+    <p style="margin-top:28px; max-width:70ch">
+      LIM AI can read the run and explain it. It cannot approve a purchase, change a limit or move
+      funds, and that boundary is the absence of an import rather than an instruction in a prompt.
+    </p>
+  </div>
+  <div class="foot"><span>Limen</span><span>09</span></div>
+</section>
+
+<!-- ===================================================== 10 what is real -->
+<section class="s">
+  <div class="eyebrow">Honesty</div>
+  <h2>What is real, and what is standing in.</h2>
+  <div class="grow">
     <table>
-      <thead><tr><th style="width:26%">Limitation</th><th style="width:44%">What it means</th><th>Fixed by</th></tr></thead>
-      <tbody>
-        <tr><td class="strong">Not yet on a public chain</td><td>Deployment is now a deliberate step that records addresses, so a testnet run is configuration rather than code</td><td>Fund a key, run the deploy script once, commit the manifest</td></tr>
-        <tr><td class="strong">Delivery is buyer-attested</td><td>A buyer and supplier together could settle a deal that never shipped</td><td>Oracle-backed or carrier-backed attestation</td></tr>
-        <tr><td class="strong">Suppliers are seeded</td><td>Fifteen suppliers shaped like a directory response</td><td>Live directory adapter and supplier-side agents</td></tr>
-        <tr><td class="strong">Payouts are test mode</td><td>Test credentials, or a local rail running the same code path</td><td>Production credentials and a funded account</td></tr>
-        <tr><td class="strong">Suppliers have no bank details</td><td>A live payout needs a verified fund account per supplier, which cannot be invented</td><td>Supplier onboarding, one record each</td></tr>
-        <tr><td class="strong">Signing keys are not identities</td><td>An approval can carry a verified EIP-712 signature; the key behind it is not a verified legal identity</td><td>Identity verification at onboarding</td></tr>
-      </tbody>
+      <tr><th style="width:46%">Real</th><th>Standing in for now</th></tr>
+      <tr>
+        <td class="k">Contracts, transactions, escrow, gas and reputation writes are genuine EVM execution</td>
+        <td>The chain runs in process by default. The same bytecode deploys to Base or any EVM network unchanged</td>
+      </tr>
+      <tr>
+        <td class="k">Role separation, the state machine and every refusal</td>
+        <td>Desk codes stand in for an identity provider. They stop the wrong tab becoming the approver, nothing more</td>
+      </tr>
+      <tr>
+        <td class="k">Payment gateway, signature verification and payout idempotency</td>
+        <td>Razorpay test mode. No real money moves</td>
+      </tr>
+      <tr>
+        <td class="k">The screening and negotiation engine</td>
+        <td>The supplier catalogue is seeded, and counterparties are simulated agents holding private floor prices</td>
+      </tr>
     </table>
+    <p style="margin-top:26px; font-size:20px; color:var(--ink-3)">
+      Every one of these is stated in the product itself, on the screen where it matters.
+    </p>
   </div>
-
-  <div class="foot"><span>Limen &middot; Pitch</span><span>13</span></div>
+  <div class="foot"><span>Limen</span><span>10</span></div>
 </section>
 
-<!-- ============================================================= 14 next -->
-<section class="slide">
-  <div class="head">
-    <span class="eyebrow">Where this goes</span>
-    <h2 class="wide">From a proof to a business.</h2>
-  </div>
-
-  <div class="body">
-    <div class="cards c3">
-      <div class="card">
-        <span class="k">Who buys it</span>
-        <p>Mid-sized manufacturers, distributors and industrial buyers with repeat purchasing and a real approval chain.</p>
-        <p>And any company about to give an agent a budget.</p>
+<!-- ========================================================= 11 built -->
+<section class="s">
+  <div class="eyebrow">What is built</div>
+  <h2>Not a prototype of a demo.</h2>
+  <div class="grow">
+    <div class="grid3" style="margin-bottom:34px">
+      <div class="stat"><b>280</b><span>unit and contract tests</span></div>
+      <div class="stat"><b>154</b><span>live API checks</span></div>
+      <div class="stat"><b>81</b><span>checks in a real browser</span></div>
+    </div>
+    <div class="grid2">
+      <div>
+        <ul>
+          <li>Postgres persistence with optimistic concurrency</li>
+          <li>A buyer wallet per workspace, derived and isolated</li>
+          <li>Deployment separated from boot, with bytecode drift detection</li>
+        </ul>
       </div>
-      <div class="card">
-        <span class="k">Next 90 days</span>
-        <p>Public testnet, durable persistence, a live supplier directory adapter, and production payouts.</p>
-        <p>Then three paid pilots with buyers who already have the approval chain.</p>
-      </div>
-      <div class="card ok">
-        <span class="k">The constraint we hold</span>
-        <p>No upgrade may weaken the property this exists to demonstrate.</p>
-        <p>The deterministic core and the contract layer are not negotiable.</p>
+      <div>
+        <ul>
+          <li>Audit trail with CSV and PDF export</li>
+          <li>Supplier directory adapter for a real vendor list</li>
+          <li>Notifications when work lands on a desk</li>
+        </ul>
       </div>
     </div>
+  </div>
+  <div class="foot"><span>Limen</span><span>11</span></div>
+</section>
 
-    <div class="note dark" style="margin-top:32px">
-      <strong>What we want from you.</strong> Introductions to procurement or
-      finance leads who will let us run one real category against their catalogue,
-      and the room to be told what breaks when the suppliers are theirs.
+<!-- ========================================================= 12 model -->
+<section class="s">
+  <div class="eyebrow">The business</div>
+  <h2>Paid for the thing that is hard to build.</h2>
+  <div class="grow">
+    <div class="grid3">
+      <div class="card">
+        <h3>Who buys</h3>
+        <p style="margin-top:12px">
+          Mid sized manufacturers and distributors with recurring input purchases, a small
+          procurement team, and no appetite for an autonomous spender.
+        </p>
+      </div>
+      <div class="card">
+        <h3>What they pay for</h3>
+        <p style="margin-top:12px">
+          A platform fee on settled value. Nothing is charged when a deal does not complete, so the
+          incentive is on purchases that actually close.
+        </p>
+      </div>
+      <div class="card">
+        <h3>Why it holds</h3>
+        <p style="margin-top:12px">
+          The supplier reputation record is written only by the escrow, only when funds move. It
+          cannot be edited by us, by the buyer, or by the supplier, and any platform can read it.
+        </p>
+      </div>
+    </div>
+    <p style="margin-top:30px; max-width:72ch">
+      The moat is not the model. It is an auditable record of who actually delivered, accumulated
+      one settled purchase at a time.
+    </p>
+  </div>
+  <div class="foot"><span>Limen</span><span>12</span></div>
+</section>
+
+<!-- ======================================================== 13 roadmap -->
+<section class="s">
+  <div class="eyebrow">Next</div>
+  <h2>The three things that would change the answer.</h2>
+  <div class="grow">
+    <div class="grid3">
+      <div class="card">
+        <span class="tag hold">One</span>
+        <h3 style="margin-top:18px">Third party delivery attestation</h3>
+        <p style="margin-top:10px">
+          A carrier or inspector with no stake in the trade. It is the last place where two willing
+          parties can still agree on a fiction.
+        </p>
+      </div>
+      <div class="card">
+        <span class="tag hold">Two</span>
+        <h3 style="margin-top:18px">A real identity provider</h3>
+        <p style="margin-top:10px">
+          Desk codes are a demonstration. Enterprise sign in is what makes the separation of duties
+          an organisational fact rather than a product feature.
+        </p>
+      </div>
+      <div class="card">
+        <span class="tag hold">Three</span>
+        <h3 style="margin-top:18px">Live supplier directories</h3>
+        <p style="margin-top:10px">
+          The adapter exists and the engine never cared about the catalogue's contents. Connecting a
+          real vendor list is an integration, not a rewrite.
+        </p>
+      </div>
     </div>
   </div>
+  <div class="foot"><span>Limen</span><span>13</span></div>
+</section>
 
-  <div class="foot"><span>Limen &middot; M. Navya &middot; Sujal Negi &middot; Team Nexara9</span><span>14</span></div>
+<!-- ========================================================== 14 close -->
+<section class="s" style="background:#0F1317; color:#F4F3F0; justify-content:center">
+  <div style="position:absolute; inset:0;
+    background: radial-gradient(66% 76% at 78% -6%, rgba(63,191,163,.20), transparent 60%);"></div>
+  <div style="position:relative">
+    <h2 style="font-size:62px; margin:0; max-width:22ch">Watch it try to overspend, and watch it fail.</h2>
+    <p style="color:#A9B2B9; font-size:24px; margin-top:28px; max-width:52ch">
+      The demo runs a real chain in the page. Publish a ceiling, push the agent past it, and read the
+      revert.
+    </p>
+    <div style="margin-top:46px; display:flex; gap:52px; align-items:flex-end">
+      <div>
+        <div style="font-size:15px; letter-spacing:.12em; text-transform:uppercase; color:var(--mint); font-weight:680">Built by</div>
+        <div style="font-size:30px; font-weight:660; letter-spacing:-.024em; margin-top:8px">Sujal Negi</div>
+        <div style="font-size:19px; color:#A9B2B9; margin-top:4px">Student, IIITDM Kurnool</div>
+      </div>
+      <div style="font-size:19px; color:#A9B2B9; line-height:1.7">
+        sujalnegi.tech<br />
+        github.com/sujal128005/limen
+      </div>
+    </div>
+  </div>
+  <div class="foot" style="border-color:rgba(255,255,255,.14); color:#8B949B">
+    <span>Limen</span><span>14</span>
+  </div>
 </section>
 
 </body>

@@ -259,13 +259,110 @@ function assertMayProceed(session, step, opts) {
   return state;
 }
 
+/*
+ * Whose move it is, and what the move is.
+ *
+ * This was the missing piece rather than a nicety. Every screen knew the state
+ * name and none of them said what a person was supposed to do about it, so the
+ * only way to find out was to click something and read the refusal. Worse, the
+ * refusal is the one place the answer was written down, which meant the
+ * interface taught the workflow through failure.
+ *
+ * One table, derived from the same state the guards use, so the sentence on
+ * screen and the rule that would refuse you cannot drift apart.
+ *
+ * `role` is null where nobody is holding it: the payment rail is working, or
+ * the purchase is finished. A screen that says "waiting on Finance" while the
+ * bank is mid-transfer is telling somebody to do a thing they cannot do.
+ */
+const NEXT = {
+  [STATE.DRAFT]: {
+    role: 'sales', action: 'Describe what you need and run the agent',
+    detail: 'Nothing has been sourced yet.',
+  },
+  [STATE.AI_COMPLETED]: {
+    role: 'sales', action: 'Review the recommendation and submit it',
+    detail: 'The agent has finished. It cannot send its own work for approval.',
+  },
+  [STATE.SALES_REVIEW]: {
+    role: 'sales', action: 'Send the purchase to the head',
+    detail: 'You have accepted the recommendation. It still needs sanctioning.',
+  },
+  [STATE.HEAD_APPROVAL]: {
+    role: 'head', action: 'Approve or reject the amount',
+    detail: 'No money can move until the head sanctions this purchase.',
+  },
+  [STATE.APPROVED]: {
+    role: 'head', action: 'Fund the escrow',
+    detail: 'Approved but unfunded. The contract holds the money until receipt is confirmed.',
+  },
+  [STATE.FUNDED]: {
+    role: 'sales', action: 'Confirm the goods arrived',
+    detail: 'The escrow is holding the money. Payment cannot be prepared until receipt is confirmed.',
+  },
+  [STATE.PAYMENT_READY]: {
+    role: 'finance', action: 'Release the payment',
+    detail: 'Authorised and ready. Finance executes it; nobody else can.',
+  },
+  [STATE.PAYMENT_PROCESSING]: {
+    role: null, action: 'Waiting on the payment rail',
+    detail: 'The payout is in flight. It settles when the provider confirms it, not before.',
+  },
+  [STATE.SETTLED]: {
+    role: null, action: 'Complete',
+    detail: 'Funds released and the supplier record updated.',
+  },
+  [STATE.REJECTED]: {
+    role: 'sales', action: 'Start a new run',
+    detail: 'This purchase was rejected. It cannot be revived, only replaced.',
+  },
+  [STATE.FAILED]: {
+    role: 'finance', action: 'Review the failed payout',
+    detail: 'The payment did not go through. The approval is still valid.',
+  },
+  [STATE.REVERSED]: {
+    role: 'finance', action: 'Review the reversed payout',
+    detail: 'The payment was reversed after it was sent.',
+  },
+};
+
+const ROLE_LABELS = {
+  sales: 'Sales / Procurement',
+  head: 'Head / Manager',
+  finance: 'Finance / Payments',
+};
+
+/**
+ * The next move, optionally answered from a particular desk's point of view.
+ *
+ * `viewerRole` only decides the pronoun. It never changes who is actually
+ * holding the purchase, so a screen cannot flatter its own user into thinking a
+ * step is theirs.
+ */
+function nextStep(session, viewerRole) {
+  const state = purchaseState(session);
+  const n = NEXT[state] || NEXT[STATE.DRAFT];
+  return {
+    state,
+    role: n.role,
+    roleLabel: n.role ? ROLE_LABELS[n.role] : null,
+    action: n.action,
+    detail: n.detail,
+    mine: !!(n.role && viewerRole && n.role === viewerRole),
+    // True when the purchase is resting with somebody who is not the viewer.
+    // The one fact the sales desk needed and did not have.
+    waitingOnOther: !!(n.role && viewerRole && n.role !== viewerRole),
+    done: n.role === null && state === STATE.SETTLED,
+  };
+}
+
 /**
  * A read-only description of where the purchase stands and what may happen next,
  * for the workflow indicator. The interface renders this; it does not compute
  * its own version, because two answers to "what state is this in" is one answer
  * too many.
  */
-function progress(session) {
+function progress(session, viewerRole) {
   const ORDER = [
     STATE.DRAFT, STATE.AI_COMPLETED, STATE.SALES_REVIEW, STATE.HEAD_APPROVAL,
     STATE.APPROVED, STATE.FUNDED, STATE.PAYMENT_READY, STATE.PAYMENT_PROCESSING, STATE.SETTLED,
@@ -284,10 +381,11 @@ function progress(session) {
       { id: 'head', label: 'Head approval', owner: 'Head', done: !rejected && done(STATE.APPROVED), rejected },
       { id: 'finance', label: 'Finance payment', owner: 'Finance', done: state === STATE.SETTLED, failed },
     ],
+    next: nextStep(session, viewerRole),
   };
 }
 
 module.exports = {
   STATE, REQUIRES, FROM,
-  purchaseState, approvalMatchesTerms, approvalIsCurrent, assertMayProceed, progress,
+  purchaseState, approvalMatchesTerms, approvalIsCurrent, assertMayProceed, progress, nextStep,
 };

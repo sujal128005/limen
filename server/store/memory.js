@@ -27,6 +27,8 @@ function create() {
   /** eventId -> { payoutId, type, at } */
   const events = new Map();
   const audit = [];
+  const messages = [];
+  let messageId = 0;
 
   return {
     kind: 'memory',
@@ -98,6 +100,22 @@ function create() {
 
     async appendAudit(entry) {
       audit.push({ ...clone(entry), at: entry.at || new Date().toISOString() });
+    },
+
+    async appendMessage(m) {
+      const row = {
+        ...clone(m),
+        id: ++messageId,
+        kind: m.kind || 'note',
+        recipient: m.recipient || null,
+        at: m.at || new Date().toISOString(),
+      };
+      messages.push(row);
+      return { id: row.id, at: row.at };
+    },
+
+    async messages(workspaceId, limit = 200) {
+      return messages.filter((m) => m.workspaceId === workspaceId).slice(-limit).map(clone);
     },
 
     async audit(workspaceId, limit = 200) {

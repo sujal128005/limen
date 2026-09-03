@@ -70,22 +70,48 @@ http://localhost:4000
 
 There is no separate database, wallet, faucet, or second terminal required for the local demo.
 
+### The three desks
+
+A purchase passes through three pairs of hands, and each has its own sign-in
+code. Nobody holds two of raising, approving and paying.
+
+| Desk                   | Code         | Does                                              |
+| ---------------------- | ------------ | ------------------------------------------------- |
+| Sales / Procurement    | `2481` | Runs the sourcing, submits, confirms receipt     |
+| Head / Manager         | `7390` | Publishes the policy, approves or rejects, funds |
+| Finance / Payments     | `5162` | Releases the payment, and nothing else           |
+
+Four digits, with the login route throttled: five free attempts, then a delay
+that doubles to a five minute cap. Short codes without that throttle would be
+no codes at all, so the two shipped together.
+
+These are published codes for a demo anyone can open. Set `LIMEN_ROLE_CODES` to
+replace them, and the sign-in screen stops displaying them. See
+[Security model](#security-model) for what this does and does not claim.
+
+To walk the whole flow on one machine, sign in as one desk, do its part, then
+use **Switch desk** in the top bar. The workspace is the same; the permissions
+are not.
+
 ### Quick demo
 
-1. Select **Try the demo workspace**.
-2. Keep the pre-filled sourcing request.
-3. Click **Run sourcing**.
-4. Follow the supplier screening and negotiation.
-5. Review the recommended deal and purchase agreement.
-6. Approve and sign the agreement.
-7. Publish the spending policy.
-8. Try to make the agent spend **$1,250** against a **$1,200** ceiling.
-9. The transaction reverts with `ExceedsPerDealCap`.
-10. Let the agent increase its own policy and try again.
-11. The buyer's $1,200 ceiling still applies.
-12. Approve and fund the valid deal, confirm delivery, and release payment.
+1. Select **Try the demo workspace**, then sign in as **Sales** with `2481`.
+2. Keep the pre-filled sourcing request and click **Run sourcing**.
+3. Follow the supplier screening and negotiation.
+4. Review the recommended deal, then submit it and send it to the head.
+5. Switch desk. Sign in as **Head** with `7390`.
+6. Approve and sign the agreement, then publish the spending policy.
+7. Try to make the agent spend **$1,250** against a **$1,200** ceiling.
+8. The transaction reverts with `ExceedsPerDealCap`.
+9. Let the agent increase its own policy and try again.
+10. The buyer's $1,200 ceiling still applies.
+11. Fund the valid deal. Switch back to **Sales** and confirm delivery.
+12. Switch to **Finance** with `5162` and release the payment.
 
-The important part of the demo is that **changing the agent's own policy does not change the buyer's spending ceiling**.
+Two things are worth watching. **Changing the agent's own policy does not change
+the buyer's spending ceiling**, which is the security claim. And at every step
+the screen names the desk that must act next, so a desk that cannot do something
+is never shown the control for it.
 
 ---
 
@@ -360,26 +386,55 @@ Limen is designed around the assumption that the agent may eventually behave inc
 | Document values                     | Derived from server-side canonical state     |
 | Workspace isolation                 | `server/workspace.js`                        |
 | Rationale cannot execute actions    | No capability imports in `server/counsel.js` |
+| Role cannot be chosen by the caller | HMAC-signed token, read back out of the signature |
+| A desk cannot be entered by picking it | Per-desk code checked in `server/identity.js`, throttled in `server/doorlock.js` |
+| A delivery needs two signatures     | `attestShipment` by the supplier, `confirmDelivery` by the buyer |
+| A payment is real, not claimed      | HMAC verified server-side in `server/checkout.js` |
 
 The API does not act as the final authority for the spending limit. The contract does.
+
+The desk codes are worth being precise about. They stop the wrong browser tab
+from becoming the approver, which is the mistake that actually happens when one
+person is walking through all three desks. They are not an identity system and
+do not claim to be: with the demo codes they are published in this file, and
+even when replaced they are shared secrets with no accounts behind them. What
+does not depend on them is the separation itself. The role travels in a signed
+token, every restricted route re-checks it, and the spending ceiling is enforced
+by the contract regardless of who is holding what.
 
 ---
 
 ## Testing
 
 ```bash
-npm test                 # 106 unit and contract tests, no server needed
+npm test                 # 280 unit and contract tests, no server needed
 npm start                # in one terminal
-npm run sweep            # in another: 101 checks against the live HTTP API
+npm run sweep            # in another: 154 checks against the live HTTP API
+npm run verify:ui        # and: 70 checks in a real browser
+npm run verify:tier4     # and: 20 more, including contrast in both themes
 node scripts/e2e.js
 node scripts/llm-check.js
 ```
+
+`npm run verify:ui` needs a browser, so it is not part of `npm test`:
+
+```bash
+npm install --no-save playwright-core @sparticuz/chromium
+```
+
+It exists because the previous round of defects passed every other check. Three
+nav items had no screen behind them, the approver was shown nothing to decide
+on, and the run stepper read a browser variable instead of the purchase. All
+three are questions about what is drawn, and nothing that talks to the API can
+see them.
 
 `npm test` covers the engine, the contracts and the documents in isolation.
 `npm run sweep` walks the HTTP surface in the order a person actually uses it,
 which is what catches state leaking between two runs in the same workspace.
 
-Current test coverage includes:
+`npm test` reports **280 passing** in total. The groups below are the larger
+ones rather than an exhaustive list, so run the command rather than adding them
+up:
 
 * **23 contract tests**: escrow lifecycle, policy limits, expiry, revocation, reputation and access control
 * **13 red-team tests**: cross-buyer spending, agent replacement, stale policies and invalid deals
@@ -388,8 +443,18 @@ Current test coverage includes:
 * **28 rationale tests**: capability boundaries, compound instructions, imperfect input and fallback behaviour
 * **7 LLM pipeline tests**: timeouts, HTTP failures, malformed responses and latency reporting
 * **15 document tests**: binary output, metadata, signing, hashing and page structure
+* **separation-of-duties tests**: that no desk can do another's job, that a token cannot be re-signed or reused across workspaces, and that a desk cannot be entered without its code
+* **durability tests**: that a purchase, an approval and the audit trail all survive a restart, against both the in-memory and Postgres adapters
+* **door tests**: that the cost of guessing a code climbs fast enough for four digits to be worth having, and that a correct code clears the record
+* **directory tests**: that a supplier feed with two suppliers on one wallet index is refused before it can pay the wrong company
+* **thread tests**: that a note addressed to one desk is filtered on the server rather than hidden in the browser
+* **delivery tests**: that the buyer cannot confirm receipt of something no supplier says was sent, and that a refused transaction does not leave the workspace unable to transact
+* **checkout tests**: that a forged payment signature, a replayed one, and one borrowed from a different order are all refused
+* **float tests**: that a payout debits the balance, that a replayed release does not debit it twice, and that the USD purchase is converted rather than relabelled before it reaches an INR rail
+* **rewrite tests**: that a model rewrite which invents a figure is refused, not only one that drops it
+* **session tests**: that an identity failure is 401 and a refusal by role is not, and that the purchase poll reports whether the caller is still recognised
 
-The route sweep adds 101 checks on top of those, covering all 23 endpoints: the
+The route sweep adds 154 checks on top of those, covering every endpoint: the
 full sourcing run, the spending-ceiling refusals, settlement, the four decision
 briefs at the step each one belongs to, a run where no supplier can meet the
 budget, and a second run in the same workspace.
@@ -409,6 +474,15 @@ Limen works without any environment variables.
 | `RPC_URL`      | No       | not set               | External EVM JSON-RPC endpoint     |
 | `DEPLOYER_KEY` | No       | not set               | Required when using `RPC_URL`      |
 | `AGENT_KEY`    | No       | not set               | Agent account for a public network |
+| `LIMEN_SESSION_SECRET` | No | random per boot   | Signs role tokens, survives restarts |
+| `LIMEN_ROLE_CODES` | No   | published demo codes  | Per-desk sign-in codes, as JSON    |
+| `DATABASE_URL` | No       | in-memory             | Postgres, for state that survives a restart |
+| `LIMEN_NOTIFY_WEBHOOK` | No | not set          | https webhook posted when a purchase lands on a desk |
+| `LIMEN_PUBLIC_URL` | No   | not set               | Used to link back from a notification |
+| `LIMEN_SUPPLIER_FILE` | No | seeded catalogue     | A JSON file of suppliers, for an approved-vendor list |
+| `LIMEN_SUPPLIER_URL` | No  | seeded catalogue     | An https endpoint returning the same JSON |
+| `LIMEN_SUPPLIER_TOKEN` | No | not set             | Bearer token for that endpoint |
+| `LIMEN_USD_INR` | No       | `85`                  | Stated USD to INR rate. Not a live feed |
 
 To configure them:
 
@@ -426,11 +500,12 @@ This build is intentionally transparent about what is and isn't production-ready
 
 * The e-signature records a name, timestamp and document hash. It is **not a legally binding electronic signature**.
 * The default blockchain is an in-process EVM rather than a public network.
-* Supplier information is seeded rather than retrieved from a live supplier marketplace.
-* Supplier negotiation behaviour is simulated.
-* Delivery is confirmed by the buyer. There is currently no external proof-of-delivery oracle.
-* `MockUSDC` is used for the local environment.
-* A deployment currently has one on-chain buyer identity, although workspaces isolate the off-chain session data.
+* Supplier information is seeded unless `LIMEN_SUPPLIER_URL` or `LIMEN_SUPPLIER_FILE` points at a real directory.
+* Supplier negotiation behaviour is simulated, and so is the supplier's shipment attestation: the contract requires the supplier's own key, and in this build that key lives on the server alongside the negotiation simulator.
+* **Delivery.** Settlement needs two signatures, the supplier's that it shipped and the buyer's that it arrived, and the contract refuses the second without the first. Be precise about what that buys: it moves a fictitious delivery from something one party can do alone to something two parties have to agree on. It does not remove it. A buyer and a supplier working together can still settle a deal that never moved, and closing that needs an attestation from somebody with no stake in the trade, which is a carrier or inspector integration and therefore a partnership rather than a sprint.
+* `MockUSDC` is used for the local environment. The on-chain escrow is the authority mechanism, not a bank account; the INR payment float is the real money a supplier receives.
+* **Currency.** Purchases and the escrow are in USD, the payment rail is in INR, and the conversion uses a **stated constant, not a live rate** (`LIMEN_USD_INR`, default 85). Every screen that shows a converted figure names the rate, and the rate is stored on the payment record so a conversion can be checked later against the number that was actually used. Making this real means a rate fetched, timestamped and stored per payment; `server/fx.js` is shaped for that substitution.
+* The desk codes are not an identity system. They stop the wrong browser tab from becoming the approver, which is the mistake that actually happens, and a real deployment replaces `server/identity.js` with its own sign-in.
 
 For a public-network deployment, `RPC_URL` can be used to connect to an EVM network such as Base Sepolia.
 
@@ -438,13 +513,21 @@ For a public-network deployment, `RPC_URL` can be used to connect to an EVM netw
 
 ## Roadmap
 
+Done since the first version: per-workspace buyer wallets, durable Postgres
+state, a public-testnet deployment path, role separation across three desks, a
+supplier directory adapter, audit export, and notifications.
+
 The next priorities are:
 
-1. Oracle-backed delivery verification
-2. Per-workspace buyer wallets
-3. Additional procurement verticals
-4. Supplier-side agents
-5. Public-network deployment
+1. Third-party delivery attestation. Two signatures narrowed the problem; they
+   did not close it. A carrier or inspector with no stake in the trade is what
+   closes it, and that is a partnership.
+2. A real identity provider in place of the desk codes. The codes stop the wrong
+   tab from becoming the approver; they are not an identity system and the
+   [Security model](#security-model) says so.
+3. Supplier-side agents, so both sides of the negotiation are autonomous.
+4. Additional procurement verticals.
+5. Email notifications alongside the webhook.
 
 ---
 
@@ -458,14 +541,11 @@ More detailed architecture, security and implementation notes are available in:
 
 ## Team
 
-### Nexara9
+Built by **Sujal Negi**, a student at IIITDM Kurnool.
 
 | | | |
 | --- | --- | --- |
-| **M. Navya** | 124CS0001, IIITDM Kurnool | [@crimson17-debug](https://github.com/crimson17-debug) |
-| **Sujal Negi** | 123ME0023, IIITDM Kurnool | [@sujal128005](https://github.com/sujal128005) |
-
-Built for the RizeOS Hackathon, Round 2, AI Track by **Nexara9**
+| **Sujal Negi** | IIITDM Kurnool | [sujalnegi.tech](https://sujalnegi.tech) |
 
 ---
 

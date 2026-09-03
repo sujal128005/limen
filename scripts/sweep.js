@@ -36,6 +36,10 @@ const TOKENS = {};
 function roleFor(path) {
   if (/^\/api\/(brief|candidates|negotiate|recommend)$/.test(path)) return 'sales';
   if (/^\/api\/purchase\/(submit|send-to-head|confirm-receipt)$/.test(path)) return 'sales';
+  /* A demonstration control rather than a desk's step, so any signed-in token
+     serves. The contract still requires the supplier's own signature. */
+  if (path === '/api/simulate/supplier-shipment') return 'sales';
+  if (/^\/api\/payments\/(order|confirm)$/.test(path)) return 'finance';
   if (path === '/api/deal/deliver') return 'sales';
   if (path === '/api/policy' || path === '/api/document/sign') return 'head';
   if (path === '/api/deal' || /^\/api\/purchase\/(approve|reject)$/.test(path)) return 'head';
@@ -61,9 +65,14 @@ async function call(method, path, body, opts) {
   return { status: res.status, body: payload, type };
 }
 
+/* The codes this repository ships with. A deployment that sets LIMEN_ROLE_CODES
+   has its own, and the sweep is a local check, so these are the right ones to
+   hold here rather than reading the environment. */
+const CODES = { sales: '2481', head: '7390', finance: '5162' };
+
 async function signIn(workspace, into) {
-  for (const [role, name] of [['sales', 'S. Negi'], ['head', 'A Buyer'], ['finance', 'F. Operator']]) {
-    const r = await call('POST', '/api/session/login', { role, name }, { workspace, token: null });
+  for (const role of ['sales', 'head', 'finance']) {
+    const r = await call('POST', '/api/session/login', { role, code: CODES[role] }, { workspace, token: null });
     if (!r.body.token) throw new Error(`login failed for ${role}: ${JSON.stringify(r.body)}`);
     into[role] = r.body.token;
   }
@@ -238,10 +247,60 @@ async function waitForChain() {
   const earlyPay = await call('POST', '/api/purchase/release', {});
   check('finance cannot pay before receipt is confirmed', earlyPay.status >= 400, earlyPay.body.error);
 
+  /*
+   * Two signatures, in order. The buyer confirming receipt of something no
+   * supplier says was sent is the failure this refuses.
+   */
+  const earlyReceipt = await call('POST', '/api/purchase/confirm-receipt', {});
+  check('receipt cannot be confirmed before the supplier attests', earlyReceipt.status >= 400, earlyReceipt.body.error);
+  check('and the refusal explains why', /both signatures|attested/i.test(earlyReceipt.body.error || ''), earlyReceipt.body.error);
+
+  const shipped = await call('POST', '/api/simulate/supplier-shipment', {});
+  check('the supplier attests the shipment', shipped.status === 200, shipped.body.error);
+  check('the attestation is on chain', !!(shipped.body && shipped.body.txHash), JSON.stringify(shipped.body).slice(0, 90));
+  check('and is labelled as a simulated counterparty', shipped.body.simulated === true);
+
   const delivered = await call('POST', '/api/purchase/confirm-receipt', {});
   check('sales confirms receipt', delivered.status === 200, delivered.body.error);
   check('confirming receipt makes it payable', delivered.body.state === 'PAYMENT_READY', delivered.body.state);
   check('the receipt records who confirmed it', !!(delivered.body.receipt && delivered.body.receipt.confirmedBy));
+
+  /*
+   * Money in before money out. A payout draws on a real balance, so the float
+   * has to be funded, and it is funded through the same order and signature
+   * check the browser uses.
+   */
+  const dry = await call('POST', '/api/purchase/release', {}, { token: TOKENS.finance });
+  check('a payout is refused when the float cannot cover it', dry.status >= 400, dry.body.error);
+  check('and says so in money terms', /float/i.test(dry.body.error || ''), dry.body.error);
+
+  const salesOrder = await call('POST', '/api/payments/order', { amount: 150000 }, { token: TOKENS.sales });
+  check('sales cannot open the till', salesOrder.status >= 400, salesOrder.body.error);
+
+  const order = await call('POST', '/api/payments/order', { amount: 150000 }, { token: TOKENS.finance });
+  check('finance can start a top-up', order.status === 200, order.body.error);
+  check('the order is priced by the server', Number(order.body.amount) === 150000, String(order.body.amount));
+
+  const forged = await call('POST', '/api/payments/confirm', {
+    orderId: order.body.orderId, paymentId: 'pay_forged', signature: 'f'.repeat(64),
+  }, { token: TOKENS.finance });
+  check('a forged payment signature is refused', forged.status >= 400, forged.body.error);
+
+  const sim = order.body.simulatedPayment;
+  const credited = await call('POST', '/api/payments/confirm', {
+    orderId: order.body.orderId,
+    paymentId: sim && sim.razorpay_payment_id,
+    signature: sim && sim.razorpay_signature,
+  }, { token: TOKENS.finance });
+  check('a verified payment credits the float', credited.status === 200, credited.body.error);
+  check('by the amount the server priced', Number(credited.body.credited) === 150000, String(credited.body.credited));
+
+  const replay = await call('POST', '/api/payments/confirm', {
+    orderId: order.body.orderId,
+    paymentId: sim && sim.razorpay_payment_id,
+    signature: sim && sim.razorpay_signature,
+  }, { token: TOKENS.finance });
+  check('the same payment cannot be credited twice', replay.status >= 400, replay.body.error);
 
   const salesPay = await call('POST', '/api/purchase/release', {}, { token: TOKENS.sales });
   check('sales cannot release the payment', salesPay.status >= 400, salesPay.body.error);
@@ -373,9 +432,22 @@ async function waitForChain() {
     JSON.stringify(approveOk.body).slice(0, 120));
   check('funding succeeds once approved', !!(approveOk.body.funded && approveOk.body.funded.dealId),
     approveOk.body.contractError || 'no funding');
+  // Both signatures, and money in the float, because a release now needs both.
+  const gShip = await gcall('POST', '/api/simulate/supplier-shipment', {});
+  check('the supplier attests on the guarded run', gShip.status === 200, gShip.body.error);
   check('delivery succeeds on a funded deal', (await gcall('POST', '/api/deal/deliver', {})).status === 200);
+
+  const gOrder = await gcall('POST', '/api/payments/order', { amount: 150000 });
+  const gSim = gOrder.body.simulatedPayment;
+  await gcall('POST', '/api/payments/confirm', {
+    orderId: gOrder.body.orderId,
+    paymentId: gSim && gSim.razorpay_payment_id,
+    signature: gSim && gSim.razorpay_signature,
+  });
+
   const relOk = await gcall('POST', '/api/deal/release', {});
-  check('release succeeds after delivery', relOk.status === 200 && !!relOk.body.txHash);
+  check('release succeeds after delivery', relOk.status === 200 && !!relOk.body.txHash,
+    JSON.stringify(relOk.body).slice(0, 140));
   check('the buyer is debited only on the approved path',
     (await gcall('GET', '/api/status')).body.buyerBalanceUsdc < balBefore);
 
@@ -422,7 +494,10 @@ async function waitForChain() {
       await bcall('POST', '/api/purchase/send-to-head', {});
       return bcall('POST', '/api/purchase/approve', {});
     }],
-    ['deliver', () => bcall('POST', '/api/purchase/confirm-receipt', {})],
+    ['deliver', async () => {
+      await bcall('POST', '/api/simulate/supplier-shipment', {});
+      return bcall('POST', '/api/purchase/confirm-receipt', {});
+    }],
     ['release', () => bcall('POST', '/api/purchase/release', {})],
   ];
   for (const [point, advance] of steps) {
