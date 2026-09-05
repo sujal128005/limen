@@ -9,9 +9,13 @@ Limen sources physical goods, screens suppliers, negotiates against floor prices
 That sentence is the whole product. Everything below is either a demonstration of it or an honest note about where it stops.
 
 **Limen Live demo:** https://limen-peqe.onrender.com
+
 **Limen Video Explanation:** https://drive.google.com/file/d/1yiL4wo0b1ky9K-Lq63orqx9Y8j86Mu6t/view?usp=sharing
+
 **Limen Technical Document:** https://drive.google.com/file/d/1H9PaUsXk27513PG4hHXv6unZhksCMLL6/view?usp=sharing (also available in /Docs)
+
 **Limen Pitch Deck:** https://drive.google.com/file/d/1IPKUzLFwctSXWlkNx4Hnlh1PlJFWyHJ1/view?usp=sharing (also available in /Docs)
+
 > The hosted demo runs on a free instance and can take up to a minute to wake from sleep. Local startup takes around fifteen seconds.
 
 ---
