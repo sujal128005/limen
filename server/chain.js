@@ -502,6 +502,29 @@ class Chain {
     }
   }
 
+  /*
+   * Returns the raw Solidity custom-error name (e.g. 'ExceedsPerDealCap') without
+   * the human-readable translation. Used by the adversary harness to match on the
+   * canonical error name in attack proofs.
+   */
+  revertErrorName(e, contractName = 'ProcurementEscrow') {
+    if (!e) return null;
+    const candidates = [
+      e.data,
+      e.info && e.info.error && e.info.error.data && e.info.error.data.result,
+      e.error && e.error.data && e.error.data.result,
+      e.receipt && e.receipt.revertData,
+    ];
+    const data = candidates.find((d) => typeof d === 'string' && d.startsWith('0x') && d.length >= 10);
+    if (!data) return null;
+    const art = this.artifacts && this.artifacts[contractName];
+    if (!art) return null;
+    try {
+      const parsed = new ethers.Interface(art.abi).parseError(data);
+      return parsed ? parsed.name : null;
+    } catch (_) { return null; }
+  }
+
   async buyerBalance(address) {
     return this.usdc.balanceOf(address);
   }

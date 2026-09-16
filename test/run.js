@@ -31,6 +31,9 @@ const { summary } = require('./harness');
   if (require('fs').existsSync(require('path').join(__dirname, 'durability.test.js'))) {
     await require('./durability.test').run();
   }
+  if (require('fs').existsSync(require('path').join(__dirname, 'adversary.test.js'))) {
+    await require('./adversary.test').run();
+  }
   // Runs last: it boots the real server and drives it over HTTP, so it is the
   // slowest and the one whose failures are least ambiguous once the units pass.
   if (require('fs').existsSync(require('path').join(__dirname, 'roles.test.js'))) {

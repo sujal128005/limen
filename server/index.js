@@ -34,6 +34,7 @@ const approval = require('./approval');
 const grok = require('./grok');
 const documents = require('./documents');
 const pdf = require('./pdf');
+const adversaryRouter = require('./routes/adversary');
 
 /*
  * One rail client for the process. Held in a variable rather than required
@@ -2284,6 +2285,9 @@ app.post('/api/reset', wrap(async (req, res) => {
   await workspace.resetSession(req);
   res.json({ ok: true, from });
 }));
+
+// Adversary console routes
+adversaryRouter.makeRouter(app, chain, workspace);
 
 // serve the built frontend if present
 const dist = path.join(__dirname, '..', 'web', 'dist');

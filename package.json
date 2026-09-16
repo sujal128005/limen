@@ -16,7 +16,8 @@
     "verify:ui": "node scripts/verify-ui.js",
     "verify:tier4": "node scripts/verify-tier4.js",
     "check:razorpay": "node scripts/check-razorpay.js",
-    "build:docs": "node scripts/build-docs.js"
+    "build:docs": "node scripts/build-docs.js",
+    "adversary": "node scripts/adversary.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
