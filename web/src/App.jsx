@@ -663,21 +663,21 @@ const ROLE_DESKS = {
     short: 'Sales',
     blurb: 'Runs the sourcing, reviews what the agent found, and sends it up for approval.',
     home: 'run',
-    nav: ['run', 'review', 'thread', 'suppliers', 'documents', 'audit'],
+    nav: ['run', 'review', 'thread', 'suppliers', 'documents', 'audit', 'adversary'],
   },
   head: {
     label: 'Head / Manager',
     short: 'Head',
     blurb: 'Owns the spending policy and sanctions the amount. Does not pay.',
     home: 'approvals',
-    nav: ['approvals', 'thread', 'suppliers', 'documents', 'audit'],
+    nav: ['approvals', 'thread', 'suppliers', 'documents', 'audit', 'adversary'],
   },
   finance: {
     label: 'Finance / Payments',
     short: 'Finance',
     blurb: 'Executes an authorised payment. Cannot raise one or approve one.',
     home: 'payments',
-    nav: ['payments', 'thread', 'suppliers', 'documents', 'audit'],
+    nav: ['payments', 'thread', 'suppliers', 'documents', 'audit', 'adversary'],
   },
 };
 
@@ -2395,6 +2395,9 @@ function Desk() {
   const [settlementDoc, setSettlementDoc] = useState(null);
   const [signature, setSignature] = useState(null);
   const [preview, setPreview] = useState(null);
+  const [adversaryRun, setAdversaryRun] = useState(null);  // { runId, status, stats, evidences }
+  const [adversaryBusy, setAdversaryBusy] = useState(false);
+  const [adversaryErr, setAdversaryErr] = useState(null);
 
   // Connection state, so a stopped server is stated rather than left to be
   // inferred from a button that never resolves.
@@ -2867,6 +2870,32 @@ function Desk() {
       downloadPdf('/api/audit.pdf', `limen-audit-${ws || 'workspace'}.pdf`);
     }
   }, [purchase && purchase.workspace]);
+
+  const startAdversaryRun = useCallback(async (attackIds) => {
+    setAdversaryBusy(true);
+    setAdversaryErr(null);
+    try {
+      const r = await api.post('/api/adversary/run', attackIds ? { attackIds } : {});
+      const runId = r.runId;
+      setAdversaryRun({ runId, status: 'running', evidences: [] });
+      // Poll for completion
+      const poll = async () => {
+        try {
+          const res = await api.get(`/api/adversary/run/${runId}`);
+          setAdversaryRun(res);
+          if (res.status === 'running') setTimeout(poll, 2000);
+          else setAdversaryBusy(false);
+        } catch (e) {
+          setAdversaryErr(e.message);
+          setAdversaryBusy(false);
+        }
+      };
+      setTimeout(poll, 2000);
+    } catch (e) {
+      setAdversaryErr(e.message);
+      setAdversaryBusy(false);
+    }
+  }, []);
 
   /*
    * The head's approval, with or without a key.
@@ -3396,6 +3425,16 @@ function Desk() {
               <AuditView entries={audit} loading={auditBusy} onExport={exportAudit} />
             )}
 
+            {view === 'adversary' && (
+              <AdversaryConsole
+                run={adversaryRun}
+                busy={adversaryBusy}
+                error={adversaryErr}
+                desk={session && session.role}
+                onRun={() => startAdversaryRun(null)}
+              />
+            )}
+
             {view === 'review' && (<>
               <SalesReview
                 purchase={purchase}
@@ -3660,6 +3699,219 @@ function TopBar({ onHome, status, wallet, busy, counts, needsApproval, settled, 
  * Finance has no reason to look at a negotiation transcript, and a rail that
  * offers it anyway is a rail that has stopped meaning anything.
  */
+/* ---------------------------------------------------------------- adversary */
+
+const ADV_CLASS_ORDER = ['on-chain', 'injection', 'phrasing', 'capability', 'identity', 'money', 'state'];
+const ADV_CLASS_LABEL = {
+  'on-chain': 'A. On-chain authority',
+  'injection': 'B. Injection',
+  'phrasing': 'C. Phrasing boundary',
+  'capability': 'D. Capability escalation',
+  'identity': 'E. Identity and role',
+  'money': 'F. Money',
+  'state': 'G. State integrity',
+};
+
+function VerdictBadge({ verdict }) {
+  if (!verdict || verdict === 'queued') return <span className="adv-verdict queued">queued</span>;
+  if (verdict === 'running') return <span className="adv-verdict running">running…</span>;
+  if (verdict === 'PASS') return <span className="adv-verdict pass">CONTAINED</span>;
+  if (verdict === 'BREACH') return <span className="adv-verdict breach" role="alert">⚠ BREACH</span>;
+  if (verdict === 'SKIPPED') return <span className="adv-verdict skipped">SKIPPED</span>;
+  return <span className="adv-verdict error">ERROR</span>;
+}
+
+function AttackCard({ ev, open, onToggle }) {
+  return (
+    <div className={`adv-card ${ev.verdict || 'queued'} ${open ? 'open' : ''}`}>
+      <button
+        className="adv-card-head"
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+      >
+        <span className="adv-card-id">{ev.id}</span>
+        <span className="adv-card-title">{ev.title}</span>
+        <span className="adv-card-vec">{ev.vector}</span>
+        <VerdictBadge verdict={ev.verdict} />
+      </button>
+      {open && (
+        <div className="adv-drawer" aria-live="polite">
+          <div className="adv-meta">
+            <span><b>Boundary:</b> {ev.targetBoundary}</span>
+            <span><b>Enforced by:</b> {ev.enforcedBy || ev.enforcementLayer}</span>
+            {ev.latencyMs != null && <span><b>Latency:</b> {ev.latencyMs}ms</span>}
+          </div>
+          <div className="adv-row"><b>Hypothesis:</b> {ev.hypothesis}</div>
+          {ev.expected && <div className="adv-row"><b>Expected:</b> {ev.expected}</div>}
+          {ev.observed && <div className="adv-row"><b>Observed:</b> {ev.observed}</div>}
+          {ev.skipReason && <div className="adv-row adv-skip"><b>Skip reason:</b> {ev.skipReason}</div>}
+          {ev.proof && (
+            <div className="adv-row">
+              <b>Proof:</b>
+              <pre className="adv-proof">{typeof ev.proof === 'string' ? ev.proof : JSON.stringify(ev.proof, null, 2)}</pre>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BoundaryMap({ evidences }) {
+  const layers = [
+    { id: 'Smart contract', label: 'Smart contract', colour: '#0D5D52', items: [] },
+    { id: 'Server', label: 'Server', colour: '#3b82d4', items: [] },
+    { id: 'Structural', label: 'Structural', colour: '#7c5cd8', items: [] },
+  ];
+  for (const ev of (evidences || [])) {
+    const layer = layers.find((l) => (ev.enforcedBy || '').includes(l.id));
+    if (layer) layer.items.push(ev);
+    else layers[1].items.push(ev); // default to server
+  }
+  return (
+    <div className="adv-boundary-map">
+      {layers.map((l) => (
+        <div key={l.id} className="adv-boundary-layer">
+          <div className="adv-bl-head" style={{ borderColor: l.colour, color: l.colour }}>
+            <span className="adv-bl-label">{l.label}</span>
+            <span className="adv-bl-count">{l.items.length} attack{l.items.length !== 1 ? 's' : ''}</span>
+          </div>
+          <div className="adv-bl-chips">
+            {l.items.map((e) => (
+              <span key={e.id} className={`adv-chip ${e.verdict || 'queued'}`}>{e.id}</span>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AdversaryConsole({ run, busy, error, desk, onRun }) {
+  const [openId, setOpenId] = useState(null);
+
+  const evidences = (run && run.evidences) || [];
+  const stats = run && run.stats;
+  const isRunning = run && run.status === 'running';
+  const isComplete = run && run.status === 'complete';
+  const breachCount = stats && stats.breaches;
+  const hasBreaches = breachCount > 0;
+
+  // Group by class
+  const byClass = {};
+  for (const ev of evidences) {
+    const c = ev.class || 'unknown';
+    if (!byClass[c]) byClass[c] = [];
+    byClass[c].push(ev);
+  }
+
+  const toggle = (id) => setOpenId((cur) => (cur === id ? null : id));
+
+  return (
+    <section className="section adv-section">
+      <div className="view-head">
+        <div className="eyebrow">Adversary Console</div>
+        <h2>
+          {isComplete
+            ? (hasBreaches
+              ? <span style={{ color: 'var(--crimson)' }}>⚠ {stats.score} contained — {breachCount} breach{breachCount !== 1 ? 'es' : ''}</span>
+              : <span style={{ color: 'var(--pine)' }}>{stats.score} contained</span>)
+            : 'Boundary containment check'}
+        </h2>
+        <p className="sub">
+          Attacks Limen's own running system and proves, with raw evidence, which layer refused each attack.
+          Every run uses a shadow workspace; no real purchase, policy, escrow deal, payment or document is mutated.
+        </p>
+        {desk && (
+          <p className="sub">Desk: <strong>{desk}</strong></p>
+        )}
+      </div>
+
+      {error && <div className="banner err" role="alert">{error}</div>}
+
+      <div className="adv-toolbar">
+        <button
+          className="btn btn-primary"
+          type="button"
+          disabled={busy}
+          onClick={onRun}
+        >
+          {busy ? 'Running…' : run ? 'Run again' : 'Run adversary checks'}
+        </button>
+        {isComplete && (
+          <span className="adv-last">
+            Last run: {run.completedAt ? new Date(run.completedAt).toLocaleString() : 'just now'}
+            {stats && <span className="adv-hash">hash {run.evidenceHash && run.evidenceHash.slice(0, 8)}</span>}
+          </span>
+        )}
+        {isComplete && (
+          <a
+            className="btn btn-secondary"
+            href={`/api/adversary/run/${run.runId}/report.pdf`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Download Containment Report
+          </a>
+        )}
+      </div>
+
+      {isRunning && (
+        <div className="adv-running" role="status">
+          <span className="dotpulse" aria-hidden="true" />
+          <span>Running attacks in a shadow workspace…</span>
+        </div>
+      )}
+
+      {isComplete && (
+        <>
+          <div className="adv-score-row">
+            {hasBreaches ? (
+              <div className="adv-breach-banner" role="alert">
+                <strong>BREACH DETECTED</strong> — {breachCount} attack{breachCount !== 1 ? 's' : ''} reached a boundary that did not hold.
+                This is evidence of a regression. Do not suppress this result.
+              </div>
+            ) : (
+              <div className="adv-pass-banner">
+                All {stats.contained} attacks contained. Boundaries held at every tested point.
+              </div>
+            )}
+          </div>
+
+          <BoundaryMap evidences={evidences} />
+        </>
+      )}
+
+      {evidences.length > 0 && (
+        <>
+          {ADV_CLASS_ORDER.filter((c) => byClass[c]).map((cls) => (
+            <div key={cls} className="adv-group">
+              <div className="adv-group-head">{ADV_CLASS_LABEL[cls] || cls}</div>
+              {byClass[cls].map((ev) => (
+                <AttackCard
+                  key={ev.id}
+                  ev={ev}
+                  open={openId === ev.id}
+                  onToggle={() => toggle(ev.id)}
+                />
+              ))}
+            </div>
+          ))}
+        </>
+      )}
+
+      {!run && !busy && (
+        <div className="view-empty">
+          <p>The adversary console runs a set of attacks against this server and reports which layer refused each one.</p>
+          <p>Every run creates an isolated shadow workspace, seeds it with the standard catalogue, and tears it down after.</p>
+          <p>A CONTAINED result means each boundary held for this build. It is evidence about this code, not a security audit.</p>
+        </div>
+      )}
+    </section>
+  );
+}
+
 const NAV_ITEMS = {
   run: { label: 'Procurement run', d: 'M4 12h4l3-7 4 14 3-7h2' },
   review: { label: 'My purchase', d: 'M4 6h16M4 12h16M4 18h10' },
@@ -3674,6 +3926,7 @@ const NAV_ITEMS = {
      held nothing. */
   audit: { label: 'Audit trail', d: 'M5 5h14v14H5zM5 10h14M10 10v9' },
   thread: { label: 'Messages', d: 'M4 5h16v11H9l-5 4z' },
+  adversary: { label: 'Adversary', d: 'M12 3l8 4-8 4-8-4zM4 7l8 4 8-4M4 17l8 4 8-4M4 12l8 4 8-4' },
 };
 
 function NavRail({ active = 'run', onSelect, role = 'sales', flag, unread = 0 }) {

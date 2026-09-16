@@ -306,11 +306,16 @@ money out: local rail, RAZORPAY_ACCOUNT_NUMBER is not set
 
 Limen is built on the assumption that the agent will eventually behave incorrectly. Every row below is now backed by an attack in the [Adversary Console](#adversary-console) rather than asserted on its own.
 
+<<<<<<< HEAD
 | Protection | Enforced by | Attack |
+=======
+| Protection | Enforced by | Adversary attack |
+>>>>>>> 5ccbdf2 (Add Security Observatory verification layer)
 | --- | --- | --- |
 | Spending ceiling | `ProcurementEscrow.createDeal` | A1 |
 | Agent cannot raise the buyer's ceiling | Separate buyer and agent policies, keyed on `msg.sender` | A2 |
 | Only the authorised agent can spend | `NotAuthorisedAgent` | A3 |
+<<<<<<< HEAD
 | Reputation writes | `SupplierRegistry`, restricted to the escrow | A5 |
 | Catalogue and free-text content cannot alter engine output | Deterministic engine, `server/engine/` | B1, B2 |
 | Floor prices never reach the client | Response serialisation, checked across every API surface | B3 |
@@ -322,6 +327,24 @@ Limen is built on the assumption that the agent will eventually behave incorrect
 | A desk cannot be entered by picking it | Per-desk code in `server/identity.js`, throttled in `server/doorlock.js` | E4 |
 | A delivery needs two signatures | `attestShipment` by the supplier, `confirmDelivery` by the buyer | A4 |
 | A payment is real, not claimed | HMAC verified server-side in `server/checkout.js` | F1, F2, F4 |
+=======
+| A delivery needs two signatures | `attestShipment` + `confirmDelivery` | A4 |
+| Reputation writes require escrow settlement | `SupplierRegistry`, restricted to the escrow | A5 |
+| Catalogue injection does not alter engine verdicts | Engine operates on parsed numeric values | B1 |
+| Request injection does not inflate budget | Deterministic parser ignores authority claims | B2 |
+| Supplier floor prices never exposed | Whitelist projection in `counsel.buildSnapshot` | B3 |
+| Model cannot drop a figure | Two-way numeric check in `server/summary.js` | C1 |
+| Model cannot introduce a figure | Same check, opposite direction | C2 |
+| Adversarial counsel phrasings refused | Clause-by-clause pattern match in `server/counsel.js` | D1 |
+| LIM AI cannot execute actions | No capability imports in `server/counsel.js` | D2 |
+| Role cannot be chosen by the caller | HMAC-signed token, role read back out of the signature | E1, E2 |
+| A desk cannot be used beyond its permissions | Role capability check in `server/identity.js` | E3 |
+| A desk cannot be entered by guessing | Per-desk code throttled in `server/doorlock.js` | E4 |
+| A payment is real, not claimed | HMAC verified server-side in `server/checkout.js` | F1, F4 |
+| No double credit on replay | Payment confirmation is idempotent | F2 |
+| Document values | Derived from server-side canonical state only | G1 |
+| Workspace isolation | `server/workspace.js` + token workspace binding | G2 |
+>>>>>>> 5ccbdf2 (Add Security Observatory verification layer)
 
 The API is not the final authority on the spending limit. The contract is.
 
@@ -331,6 +354,7 @@ The desk codes deserve precision. They stop the wrong browser tab from becoming 
 
 ## Adversary Console
 
+<<<<<<< HEAD
 Every row in the table above used to be a claim. The Adversary Console is what turns it into a result you can run yourself.
 
 It is a red-team harness that attacks Limen's own running system — real contract calls, real Express routes, real HMAC checks, real engine functions, nothing mocked — and reports, for each attempt, whether the system stayed contained and **which layer** refused it: the smart contract, the server, or the code's own structure.
@@ -354,10 +378,26 @@ Twenty-one attacks in total. Some are skipped rather than run, and that is corre
 ### Isolation
 
 Every run happens inside a disposable shadow workspace, seeded from a snapshot of the caller's real one and torn down afterward. An attack can try to overspend, forge a token, or cross into another workspace, but it cannot touch a real purchase, policy, escrow deal, payment float or document. `test/adversary.test.js` asserts this directly: it hashes the real workspace state before and after a full run and checks nothing moved.
+=======
+The Adversary Console is a red-team harness that attacks Limen's own running system and proves, with raw evidence, which layer refused each attack. It ships with the product rather than sitting in a separate repository, because a containment claim that is never tested is a claim that drifts.
+
+### What it attacks
+
+Twenty-five attacks across seven classes: on-chain authority, injection into the decision path, the phrasing boundary, capability escalation via LIM AI, identity and role, money, and state integrity. Each attack targets a real code path — real contract calls, real Express routes, real HMAC verification, real engine functions.
+
+Every run creates an isolated shadow workspace, seeds it from a snapshot of the standard catalogue, and tears it down after. No real purchase, policy, escrow deal, payment float or document is mutated.
+
+### What a contained result proves
+
+A CONTAINED result means this specific build resisted the specific attack as implemented, running against a simulated catalogue and an in-process EVM. It is evidence about this code at this commit. It is not a security audit and does not claim to be.
+
+The on-chain boundary is the hardest: the EVM enforces it and the harness cannot weaken it. The server boundary is correct in this build; a future change that removes a guard would be caught by the harness in CI because it is a regression gate. The structural boundary (no dangerous imports in `server/counsel.js`, document values from canonical state only) is verified by static analysis and is the most future-proof.
+>>>>>>> 5ccbdf2 (Add Security Observatory verification layer)
 
 ### Running it
 
 ```bash
+<<<<<<< HEAD
 npm start                # in one terminal
 npm run adversary        # in another: human-readable table, one row per attack
 npm run adversary -- --ci   # machine-readable, non-zero exit on any breach
@@ -380,6 +420,28 @@ A red-team suite that always says PASS is worthless. `test/adversary.test.js` in
 A contained result is evidence about this build, run against a simulated catalogue and an in-process EVM by default. It is not a security audit, and the Containment Report says so in its own honest-limits section rather than leaving that to a reader's assumptions.
 
 The console is not yet wired into `npm run sweep` or `npm run verify:ui` — see [Roadmap](#roadmap).
+=======
+npm start                          # server running in one terminal
+
+npm run adversary                  # human-readable console table
+npm run adversary -- --ci          # machine-readable, non-zero exit on breach
+npm run adversary -- --attacks A1  # single attack
+```
+
+The Adversary screen is also available in the UI navigation from any desk.
+
+### Reading the report
+
+The Containment Report PDF (available from the UI and uploaded as a CI artefact) has five sections:
+
+1. **Run metadata** — timestamp, desk, chain id, storage type, payment rails, commit sha
+2. **Containment score** — n/m contained, coloured red if any breach
+3. **Per-attack table** — id, class, verdict, enforcement layer, latency
+4. **Evidence appendix** — hypothesis, expected, observed, and the raw proof artifact for each attack
+5. **Honest limits** — what this result does and does not prove, and which attacks were skipped and why
+
+A breach in the report means a boundary that should hold did not. Do not suppress it. The harness is designed to be a regression gate: if a future refactor removes a load-bearing check, CI catches it here.
+>>>>>>> 5ccbdf2 (Add Security Observatory verification layer)
 
 ---
 

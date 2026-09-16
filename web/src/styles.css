@@ -4856,3 +4856,239 @@ h1, h2, h3 { text-wrap: balance; }
 /* The same for the homepage's ambient field once it is scrolled past. There is
    no way to know that in CSS, so it is left alone; the aura is three elements
    and the hero is short. Noted rather than guessed at. */
+
+/* ================================================================ adversary */
+
+.adv-section { padding-bottom: 48px; }
+
+.adv-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+.adv-last {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.adv-hash {
+  margin-left: 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.adv-running {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  font-size: 13.5px;
+  color: var(--ink-2);
+  margin-bottom: 16px;
+}
+
+/* Score banners */
+.adv-score-row { margin-bottom: 20px; }
+
+.adv-breach-banner {
+  padding: 14px 18px;
+  background: color-mix(in srgb, var(--crimson) 8%, var(--surface));
+  border: 2px solid var(--crimson);
+  border-radius: var(--r-sm);
+  color: var(--crimson);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.adv-pass-banner {
+  padding: 14px 18px;
+  background: color-mix(in srgb, var(--pine) 8%, var(--surface));
+  border: 1.5px solid var(--pine);
+  border-radius: var(--r-sm);
+  color: var(--pine);
+  font-size: 14px;
+}
+
+/* Boundary map */
+.adv-boundary-map {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 28px;
+}
+@media (max-width: 680px) { .adv-boundary-map { grid-template-columns: 1fr; } }
+
+.adv-boundary-layer {
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+
+.adv-bl-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  border-bottom: 1.5px solid var(--border);
+  border-left: 3px solid;
+  letter-spacing: .02em;
+}
+.adv-bl-label { text-transform: uppercase; letter-spacing: .06em; font-size: 10.5px; }
+.adv-bl-count { font-weight: 400; font-size: 11.5px; color: var(--ink-3); }
+
+.adv-bl-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 12px;
+  min-height: 36px;
+}
+
+.adv-chip {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: var(--r-xs);
+  background: var(--sunk);
+  color: var(--ink-2);
+}
+.adv-chip.PASS { background: color-mix(in srgb, var(--pine) 12%, var(--surface)); color: var(--pine); }
+.adv-chip.BREACH { background: color-mix(in srgb, var(--crimson) 14%, var(--surface)); color: var(--crimson); }
+.adv-chip.SKIPPED { background: color-mix(in srgb, var(--amber) 12%, var(--surface)); color: var(--amber); }
+
+/* Attack groups */
+.adv-group { margin-bottom: 24px; }
+
+.adv-group-head {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--ink-3);
+  padding: 6px 0 6px 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+
+/* Attack cards */
+.adv-card {
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  margin-bottom: 6px;
+  overflow: hidden;
+  transition: border-color var(--t-fast) var(--ease-firm);
+}
+.adv-card.BREACH { border-color: var(--crimson); }
+.adv-card.PASS { border-color: color-mix(in srgb, var(--pine) 40%, var(--border)); }
+
+.adv-card-head {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 40px 1fr 1fr 110px;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-size: 13px;
+  color: var(--ink);
+  transition: background var(--t-fast) var(--ease-firm);
+}
+.adv-card-head:hover { background: var(--surface-2); }
+.adv-card.BREACH .adv-card-head { background: color-mix(in srgb, var(--crimson) 4%, var(--surface)); }
+.adv-card.open .adv-card-head { background: var(--sunk); }
+
+.adv-card-id {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-2);
+}
+
+.adv-card-title { font-weight: 500; }
+.adv-card-vec { font-size: 12px; color: var(--ink-3); }
+
+/* Verdict badges */
+.adv-verdict {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: var(--r-xs);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.adv-verdict.pass { background: color-mix(in srgb, var(--pine) 12%, transparent); color: var(--pine); }
+.adv-verdict.breach {
+  background: var(--crimson);
+  color: #fff;
+  font-size: 12px;
+  padding: 3px 10px;
+  animation: adv-pulse 1.2s ease-in-out infinite;
+}
+.adv-verdict.skipped { background: color-mix(in srgb, var(--amber) 14%, transparent); color: var(--amber); }
+.adv-verdict.queued { background: var(--sunk); color: var(--ink-3); }
+.adv-verdict.running { background: var(--sunk); color: var(--ink-2); font-style: italic; }
+.adv-verdict.error { background: color-mix(in srgb, var(--crimson) 10%, transparent); color: var(--crimson); }
+
+@keyframes adv-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .7; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .adv-verdict.breach { animation: none; }
+}
+
+/* Evidence drawer */
+.adv-drawer {
+  padding: 14px 16px 14px 16px;
+  background: var(--sunk);
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.adv-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--ink-2);
+  margin-bottom: 10px;
+}
+
+.adv-row {
+  margin-bottom: 8px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.adv-skip { color: var(--amber); }
+
+.adv-proof {
+  display: block;
+  margin-top: 4px;
+  padding: 8px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xs);
+  font-size: 11.5px;
+  font-family: var(--mono);
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 240px;
+  overflow-y: auto;
+  line-height: 1.55;
+}
