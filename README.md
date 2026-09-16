@@ -30,6 +30,7 @@ That sentence is the whole product. Everything below is either a demonstration o
 - [Smart contracts](#smart-contracts)
 - [Payments and Razorpay](#payments-and-razorpay)
 - [Security model](#security-model)
+- [Adversary Console](#adversary-console)
 - [Testing](#testing)
 - [Deployment](#deployment)
 - [Environment variables](#environment-variables)
@@ -99,10 +100,12 @@ The first boot compiles the contracts with solc, deploys three of them to an in-
 | `npm run dev` | Runs the server without rebuilding the frontend |
 | `npm run dev:web` | Vite dev server for frontend work, with hot reload |
 | `npm run build:web` | Builds the frontend only |
-| `npm test` | 295 unit and contract tests. No server needed |
+| `npm test` | 316 unit and contract tests. No server needed |
 | `npm run sweep` | 154 checks against a running server |
 | `npm run verify:ui` | 70 checks in a real browser |
 | `npm run verify:tier4` | 20 more, including contrast in both themes |
+| `npm run adversary` | Runs the Adversary Console against a running server; human-readable table |
+| `npm run adversary -- --ci` | Same, machine-readable, non-zero exit on any breach — used in CI |
 | `npm run check:razorpay` | Reports whether the payment gateway is configured |
 | `npm run build:docs` | Rebuilds the pitch deck and technical document as PDFs |
 | `npm run deploy` | Deploys the contracts to an external EVM network |
@@ -144,6 +147,8 @@ To walk the whole flow on one machine, sign in as one desk, do its part, then us
 
 Two moments are worth watching. **Changing the agent's own policy does not change the buyer's ceiling**, which is the security claim, demonstrated rather than asserted. And at every step the screen names the desk that has to act next, so a desk is never shown a control it cannot use.
 
+For the same claims proven automatically, and against every boundary in the system rather than one, see [Adversary Console](#adversary-console) below.
+
 ---
 
 ## Architecture
@@ -167,6 +172,12 @@ flowchart TD
 
     API -. frozen snapshot .-> LIM[LIM AI]
     LIM -. optional phrasing .-> LLM[Language model]
+
+    API --> ADV[Adversary Console]
+    ADV -. attacks .-> ESC
+    ADV -. attacks .-> API
+    ADV -. attacks .-> LIM
+    ADV --> RPT[Containment report]
 ```
 
 | Component | Responsibility |
@@ -181,6 +192,8 @@ flowchart TD
 | `server/checkout.js` | Razorpay Checkout, money into the payment float |
 | `server/payments.js` | Razorpay Payouts, money out to the supplier |
 | `server/workspace.js` | Server-side workspace isolation |
+| `server/adversary/` | Attack registry, shadow-workspace runner, evidence capture, containment report |
+| `server/routes/adversary.js` | Adversary Console API |
 | `contracts/` | `ProcurementEscrow`, `SupplierRegistry`, `MockUSDC` |
 
 ---
@@ -204,7 +217,7 @@ If the model is unavailable, slow, malformed or refuses, the grounded text ships
 | Invalid completion | `malformed-completion` |
 | Model refusal | `refusal-not-sent` |
 
-**LIM AI** answers questions about a run from a frozen snapshot of it. It repairs typos before classifying, so "whyy ws ths supllier choosen" is answered and "increse the limit" is still refused. It cannot sign, approve, move funds or change a limit, and that is enforced by its import list rather than by an instruction in a prompt. A module with no capability imports has no capability.
+**LIM AI** answers questions about a run from a frozen snapshot of it. It repairs typos before classifying, so "whyy ws ths supllier choosen" is answered and "increse the limit" is still refused. It cannot sign, approve, move funds or change a limit, and that is enforced by its import list rather than by an instruction in a prompt. A module with no capability imports has no capability. This is the exact claim the Adversary Console's D-class attacks probe directly, including one that statically parses the import graph rather than just testing behaviour.
 
 ```bash
 node scripts/llm-check.js            # latency and failure modes
@@ -220,6 +233,8 @@ node scripts/llm-check.js --models   # list available models
 Holds the buyer's spending ceiling, agent authorisation, deal creation, escrow settlement and access control. The ceiling is enforced inside `createDeal`, and a request above it reverts with `ExceedsPerDealCap`.
 
 Settlement requires two signatures: `attestShipment` from the supplier's own key, then `confirmDelivery` from the buyer. The contract refuses the second without the first.
+
+The Adversary Console's A-class attacks call this contract directly — including trying to raise the agent's own policy first — and capture the decoded revert as proof.
 
 ### `SupplierRegistry`
 
@@ -254,6 +269,8 @@ Checkout charges a customer and does not disburse to a vendor, so using it to pa
 
 Without credentials the app runs a local stand-in, clearly labelled as one. The stand-in signs its confirmations the same way and they are verified by the same function, so the check that matters is exercised whether or not anyone has configured a key. The two modes do not accept each other's signatures: the local secret is in this repository, and if it verified in live mode it would be a way to credit the float for free.
 
+The Adversary Console's F-class attacks target exactly this boundary: a forged confirmation, a replay of a valid one, a stand-in signature presented in live mode, and a browser-claimed success with no signature at all.
+
 ### Turning the gateway on
 
 Take a **test** key pair from the Razorpay Dashboard under Account and Settings, API Keys, and put it in `.env`:
@@ -287,22 +304,24 @@ money out: local rail, RAZORPAY_ACCOUNT_NUMBER is not set
 
 ## Security model
 
-Limen is built on the assumption that the agent will eventually behave incorrectly.
+Limen is built on the assumption that the agent will eventually behave incorrectly. Every row below is now backed by an attack in the [Adversary Console](#adversary-console) rather than asserted on its own.
 
-| Protection | Enforced by |
-| --- | --- |
-| Spending ceiling | `ProcurementEscrow.createDeal` |
-| Agent cannot raise the buyer's ceiling | Separate buyer and agent policies, keyed on `msg.sender` |
-| Only the authorised agent can spend | `NotAuthorisedAgent` |
-| Reputation writes | `SupplierRegistry`, restricted to the escrow |
-| Document values | Derived from server-side canonical state |
-| Workspace isolation | `server/workspace.js` |
-| LIM AI cannot execute actions | No capability imports in `server/counsel.js` |
-| The model cannot introduce a figure | Two-way numeric check in `server/summary.js` |
-| Role cannot be chosen by the caller | HMAC-signed token, role read back out of the signature |
-| A desk cannot be entered by picking it | Per-desk code in `server/identity.js`, throttled in `server/doorlock.js` |
-| A delivery needs two signatures | `attestShipment` by the supplier, `confirmDelivery` by the buyer |
-| A payment is real, not claimed | HMAC verified server-side in `server/checkout.js` |
+| Protection | Enforced by | Attack |
+| --- | --- | --- |
+| Spending ceiling | `ProcurementEscrow.createDeal` | A1 |
+| Agent cannot raise the buyer's ceiling | Separate buyer and agent policies, keyed on `msg.sender` | A2 |
+| Only the authorised agent can spend | `NotAuthorisedAgent` | A3 |
+| Reputation writes | `SupplierRegistry`, restricted to the escrow | A5 |
+| Catalogue and free-text content cannot alter engine output | Deterministic engine, `server/engine/` | B1, B2 |
+| Floor prices never reach the client | Response serialisation, checked across every API surface | B3 |
+| Document values | Derived from server-side canonical state | G1 |
+| Workspace isolation | `server/workspace.js` | G2 |
+| LIM AI cannot execute actions | No capability imports in `server/counsel.js` | D2 |
+| The model cannot introduce a figure | Two-way numeric check in `server/summary.js` | C1, C2, C4 |
+| Role cannot be chosen by the caller | HMAC-signed token, role read back out of the signature | E1, E2 |
+| A desk cannot be entered by picking it | Per-desk code in `server/identity.js`, throttled in `server/doorlock.js` | E4 |
+| A delivery needs two signatures | `attestShipment` by the supplier, `confirmDelivery` by the buyer | A4 |
+| A payment is real, not claimed | HMAC verified server-side in `server/checkout.js` | F1, F2, F4 |
 
 The API is not the final authority on the spending limit. The contract is.
 
@@ -310,15 +329,70 @@ The desk codes deserve precision. They stop the wrong browser tab from becoming 
 
 ---
 
+## Adversary Console
+
+Every row in the table above used to be a claim. The Adversary Console is what turns it into a result you can run yourself.
+
+It is a red-team harness that attacks Limen's own running system — real contract calls, real Express routes, real HMAC checks, real engine functions, nothing mocked — and reports, for each attempt, whether the system stayed contained and **which layer** refused it: the smart contract, the server, or the code's own structure.
+
+It was built with IBM Project Bob, which first read the repository and produced `docs/ATTACK_SURFACE.md`: every place Limen refuses an action, and which of those places had no test behind them. That map is what the attacks below were built from.
+
+### What it attacks
+
+| Class | Targets | Attacks |
+| --- | --- | --- |
+| A — on-chain authority | The escrow contract directly: ceiling, self-policy escalation, unauthorised agents, the two-signature settlement, reputation writes | A1–A5 |
+| B — injection | Poisoned supplier listings, free-text requests carrying fake instructions, attempts to read a floor price off any response surface | B1–B3 |
+| C — phrasing boundary | Whether model phrasing can drop or invent a figure, and whether every failure mode ships the grounded text honestly | C1–C5 |
+| D — capability escalation | Whether LIM AI can be talked into acting, in ten adversarial phrasings, plus a structural check of its import graph | D1–D2 |
+| E — identity and role | Forged tokens, stripped or malformed signatures, cross-desk privilege, the sign-in throttle's backoff curve | E1–E4 |
+| F — money | Forged payment confirmations, replay, a stand-in signature presented as a live one, a browser claiming success with no signature | F1–F4 |
+| G — state integrity | Client-supplied figures overriding a document, one workspace reading another's data | G1–G2 |
+
+Twenty-one attacks in total. Some are skipped rather than run, and that is correct behaviour rather than a gap: the C-class attacks need `LLM_API_KEY` set to exercise model phrasing at all, and F3 needs live Razorpay credentials, matching how the rest of the app already treats unconfigured features.
+
+### Isolation
+
+Every run happens inside a disposable shadow workspace, seeded from a snapshot of the caller's real one and torn down afterward. An attack can try to overspend, forge a token, or cross into another workspace, but it cannot touch a real purchase, policy, escrow deal, payment float or document. `test/adversary.test.js` asserts this directly: it hashes the real workspace state before and after a full run and checks nothing moved.
+
+### Running it
+
+```bash
+npm start                # in one terminal
+npm run adversary        # in another: human-readable table, one row per attack
+npm run adversary -- --ci   # machine-readable, non-zero exit on any breach
+```
+
+Or from the app itself: sign in to any desk and open the **Adversary** screen. Run All streams each attack's status live, groups results by class, and shows a boundary map of which layer refused what — contract-enforced refusals are shown as the strongest evidence, because that is the actual product claim. Opening any attack's evidence drawer shows the hypothesis, the expected and observed result, and the raw proof: a decoded revert selector, an HTTP status and body, a computed-versus-supplied HMAC, or a field-level diff. **Download Containment Report** renders the same run as a PDF, built through the existing `server/pdf.js` from canonical run state, the same way every other document in the app is built.
+
+Current containment score: **run `npm run adversary` and see for yourself** — that is the point of the tool. As of the last local run this surfaced real findings, not a clean pass, including a floor price leaking through one API response and a workspace boundary missing on one route. Fixes for genuine findings are tracked as they land; a finding that turns out to be an attack aimed at the wrong route gets the attack corrected instead, never softened.
+
+### A harness that can prove it isn't a rubber stamp
+
+A red-team suite that always says PASS is worthless. `test/adversary.test.js` includes a meta-test that deliberately weakens a real check inside the test itself and asserts the harness reports a breach. If the harness ever stops noticing, that test fails first.
+
+### Continuous containment
+
+`.github/workflows/containment.yml` runs on every push and pull request: install, `npm test`, start the server, `node scripts/adversary.js --ci`, upload the Containment Report as a build artifact, and fail the job on any breach. The point is the same one the whole project is built around — a protection that isn't checked isn't a protection, it's a comment. This makes that true for the Adversary Console's own findings as well: if a future refactor quietly removes a load-bearing check, the build fails instead of the gap sitting undiscovered until a demo.
+
+### What this proves, and what it does not
+
+A contained result is evidence about this build, run against a simulated catalogue and an in-process EVM by default. It is not a security audit, and the Containment Report says so in its own honest-limits section rather than leaving that to a reader's assumptions.
+
+The console is not yet wired into `npm run sweep` or `npm run verify:ui` — see [Roadmap](#roadmap).
+
+---
+
 ## Testing
 
 ```bash
-npm test                 # 295 unit and contract tests, no server needed
+npm test                 # 316 unit and contract tests, no server needed
 
 npm start                # in one terminal
 npm run sweep            # in another: 154 checks against the live HTTP API
 npm run verify:ui        # and 70 checks in a real browser
 npm run verify:tier4     # and 20 more, including contrast in both themes
+npm run adversary        # 21 attacks against every enforcement boundary, isolated in a shadow workspace
 
 node scripts/e2e.js      # one full purchase, end to end
 node scripts/llm-check.js
@@ -336,7 +410,7 @@ On Windows, `@sparticuz/chromium` alone is not enough. It ships a Linux build fo
 
 They exist because a previous round of defects passed every other check. Three nav items had no screen behind them, the approver was shown nothing to decide on, and the run stepper read a browser variable instead of the purchase. All three are questions about what is drawn, and nothing that talks to the API can see them.
 
-**With Razorpay credentials configured**, `sweep`, `verify:ui` and `verify:tier4` stop with an explanation instead of running. All three fund the payment float to reach settlement, and once Checkout is live they cannot: a real order is paid with a card, by a person, in a browser. The server withholds the stand-in payment in live mode on purpose, because handing one out would let any page skip the gateway and credit itself. For a full run, comment out `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` and restart. `npm test` needs no toggling and covers both modes.
+**With Razorpay credentials configured**, `sweep`, `verify:ui` and `verify:tier4` stop with an explanation instead of running. All three fund the payment float to reach settlement, and once Checkout is live they cannot: a real order is paid with a card, by a person, in a browser. The server withholds the stand-in payment in live mode on purpose, because handing one out would let any page skip the gateway and credit itself. For a full run, comment out `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` and restart. `npm test` needs no toggling and covers both modes. `npm run adversary`'s F3 attack follows the same rule: it skips cleanly rather than failing when live credentials are set.
 
 ---
 
@@ -356,6 +430,8 @@ The frontend is built once at build time rather than at start time. `npm start` 
 This runs a persistent Node process on purpose. The chain is an in-process EVM, so a serverless target cannot host it: there is no process to keep the chain alive between requests.
 
 Set `DATABASE_URL` to any Postgres if you want state to survive a restart, and `LIMEN_SESSION_SECRET` so a restart does not sign all three desks out mid-demo. Everything else is optional.
+
+`.github/workflows/containment.yml` runs alongside deployment as a CI gate; it does not itself deploy anything.
 
 ---
 
@@ -407,6 +483,7 @@ Being clear about this is part of the point. A product about honest authority sh
 - **Delivery.** Settlement needs two signatures and the contract refuses the second without the first. Be precise about what that buys: it moves a fictitious delivery from something one party can do alone to something two parties must agree on. It does not remove it. A buyer and supplier acting together can still settle a deal that never moved. Closing that needs an attestation from somebody with no stake in the trade, which is a carrier or inspector integration, and therefore a partnership rather than a sprint.
 - **Currency.** Purchases and the escrow are in USD, the payment rail is in INR, and the conversion uses a stated constant rather than a live rate (`LIMEN_USD_INR`, default 85). Every screen showing a converted figure names the rate, and the rate is stored on the payment record so a conversion can be checked later against the number actually used. `server/fx.js` is shaped for a real feed to be substituted in.
 - **The desk codes** are not an identity system, and a real deployment replaces `server/identity.js` with its own sign-in.
+- **The Adversary Console** attacks a simulated catalogue and an in-process EVM by default. A contained result is evidence about this build, not a security audit, and it is not yet wired into `npm run sweep` or `npm run verify:ui`.
 
 ---
 
@@ -417,6 +494,8 @@ Being clear about this is part of the point. A product about honest authority sh
 3. **Supplier-side agents**, so both sides of the negotiation are autonomous.
 4. **Additional procurement verticals.**
 5. **Email notifications** alongside the webhook.
+6. **Wire the Adversary Console into `npm run sweep` and `npm run verify:ui`**, so containment is checked from both the API and the browser, not only from its own CLI and UI.
+7. **Close remaining Adversary Console findings.** See `docs/ATTACK_SURFACE.md` and the latest Containment Report for what is still open.
 
 ---
 
