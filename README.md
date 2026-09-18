@@ -31,6 +31,7 @@ That sentence is the whole product. Everything below is either a demonstration o
 - [Payments and Razorpay](#payments-and-razorpay)
 - [Security model](#security-model)
 - [Adversary Console](#adversary-console)
+- [Built with IBM Project Bob](#built-with-ibm-project-bob)
 - [Testing](#testing)
 - [Deployment](#deployment)
 - [Environment variables](#environment-variables)
@@ -304,47 +305,30 @@ money out: local rail, RAZORPAY_ACCOUNT_NUMBER is not set
 
 ## Security model
 
-Limen is built on the assumption that the agent will eventually behave incorrectly. Every row below is now backed by an attack in the [Adversary Console](#adversary-console) rather than asserted on its own.
+Limen is built on the assumption that the agent will eventually behave incorrectly. Every row below is backed by an attack in the [Adversary Console](#adversary-console) rather than asserted on its own.
 
-<<<<<<< HEAD
 | Protection | Enforced by | Attack |
-=======
-| Protection | Enforced by | Adversary attack |
->>>>>>> 5ccbdf2 (Add Security Observatory verification layer)
 | --- | --- | --- |
 | Spending ceiling | `ProcurementEscrow.createDeal` | A1 |
 | Agent cannot raise the buyer's ceiling | Separate buyer and agent policies, keyed on `msg.sender` | A2 |
 | Only the authorised agent can spend | `NotAuthorisedAgent` | A3 |
-<<<<<<< HEAD
-| Reputation writes | `SupplierRegistry`, restricted to the escrow | A5 |
-| Catalogue and free-text content cannot alter engine output | Deterministic engine, `server/engine/` | B1, B2 |
-| Floor prices never reach the client | Response serialisation, checked across every API surface | B3 |
-| Document values | Derived from server-side canonical state | G1 |
-| Workspace isolation | `server/workspace.js` | G2 |
-| LIM AI cannot execute actions | No capability imports in `server/counsel.js` | D2 |
-| The model cannot introduce a figure | Two-way numeric check in `server/summary.js` | C1, C2, C4 |
-| Role cannot be chosen by the caller | HMAC-signed token, role read back out of the signature | E1, E2 |
-| A desk cannot be entered by picking it | Per-desk code in `server/identity.js`, throttled in `server/doorlock.js` | E4 |
 | A delivery needs two signatures | `attestShipment` by the supplier, `confirmDelivery` by the buyer | A4 |
-| A payment is real, not claimed | HMAC verified server-side in `server/checkout.js` | F1, F2, F4 |
-=======
-| A delivery needs two signatures | `attestShipment` + `confirmDelivery` | A4 |
 | Reputation writes require escrow settlement | `SupplierRegistry`, restricted to the escrow | A5 |
-| Catalogue injection does not alter engine verdicts | Engine operates on parsed numeric values | B1 |
-| Request injection does not inflate budget | Deterministic parser ignores authority claims | B2 |
-| Supplier floor prices never exposed | Whitelist projection in `counsel.buildSnapshot` | B3 |
-| Model cannot drop a figure | Two-way numeric check in `server/summary.js` | C1 |
-| Model cannot introduce a figure | Same check, opposite direction | C2 |
-| Adversarial counsel phrasings refused | Clause-by-clause pattern match in `server/counsel.js` | D1 |
+| Catalogue injection does not alter engine verdicts | Deterministic engine operating on parsed numeric values | B1 |
+| Request injection does not inflate the budget | Deterministic parser ignores authority claims | B2 |
+| Supplier floor prices never reach the client | Whitelist projection in `counsel.buildSnapshot`, checked structurally across every API surface | B3 |
+| The model cannot drop a figure | Two-way numeric check in `server/summary.js` | C1 |
+| The model cannot introduce a figure | Same check, opposite direction | C2, C4 |
+| Every failure mode ships the grounded text honestly | `server/summary.js` | C3, C5 |
+| Instructions are refused in any language or script | Clause-by-clause match plus a multilingual verb lexicon in `server/counsel.js` | D1 |
 | LIM AI cannot execute actions | No capability imports in `server/counsel.js` | D2 |
 | Role cannot be chosen by the caller | HMAC-signed token, role read back out of the signature | E1, E2 |
 | A desk cannot be used beyond its permissions | Role capability check in `server/identity.js` | E3 |
 | A desk cannot be entered by guessing | Per-desk code throttled in `server/doorlock.js` | E4 |
-| A payment is real, not claimed | HMAC verified server-side in `server/checkout.js` | F1, F4 |
+| A payment is real, not claimed | HMAC verified server-side in `server/checkout.js` | F1, F3, F4 |
 | No double credit on replay | Payment confirmation is idempotent | F2 |
 | Document values | Derived from server-side canonical state only | G1 |
-| Workspace isolation | `server/workspace.js` + token workspace binding | G2 |
->>>>>>> 5ccbdf2 (Add Security Observatory verification layer)
+| Workspace isolation | `server/workspace.js` plus token workspace binding | G2 |
 
 The API is not the final authority on the spending limit. The contract is.
 
@@ -354,12 +338,11 @@ The desk codes deserve precision. They stop the wrong browser tab from becoming 
 
 ## Adversary Console
 
-<<<<<<< HEAD
 Every row in the table above used to be a claim. The Adversary Console is what turns it into a result you can run yourself.
 
-It is a red-team harness that attacks Limen's own running system — real contract calls, real Express routes, real HMAC checks, real engine functions, nothing mocked — and reports, for each attempt, whether the system stayed contained and **which layer** refused it: the smart contract, the server, or the code's own structure.
+It is a red-team harness that attacks Limen's own running system — real contract calls, real Express routes, real HMAC checks, real engine functions, nothing mocked — and reports, for each attempt, whether the system stayed contained and **which layer** refused it: the smart contract, the server, or the code's own structure. It ships with the product rather than sitting in a separate repository, because a containment claim that is never tested is a claim that drifts.
 
-It was built with IBM Project Bob, which first read the repository and produced `docs/ATTACK_SURFACE.md`: every place Limen refuses an action, and which of those places had no test behind them. That map is what the attacks below were built from.
+It was built with IBM Project Bob, which first read the repository and produced `docs/ATTACK_SURFACE.md`: every place Limen refuses an action, and which of those places had no test behind them. That map is what the attacks were built from. See [Built with IBM Project Bob](#built-with-ibm-project-bob) for what Bob did and what it did not.
 
 ### What it attacks
 
@@ -368,71 +351,68 @@ It was built with IBM Project Bob, which first read the repository and produced 
 | A — on-chain authority | The escrow contract directly: ceiling, self-policy escalation, unauthorised agents, the two-signature settlement, reputation writes | A1–A5 |
 | B — injection | Poisoned supplier listings, free-text requests carrying fake instructions, attempts to read a floor price off any response surface | B1–B3 |
 | C — phrasing boundary | Whether model phrasing can drop or invent a figure, and whether every failure mode ships the grounded text honestly | C1–C5 |
-| D — capability escalation | Whether LIM AI can be talked into acting, in ten adversarial phrasings, plus a structural check of its import graph | D1–D2 |
+| D — capability escalation | Whether LIM AI can be talked into acting — fourteen phrasings across six languages and three obfuscations — plus a structural check of its import graph | D1–D2 |
 | E — identity and role | Forged tokens, stripped or malformed signatures, cross-desk privilege, the sign-in throttle's backoff curve | E1–E4 |
 | F — money | Forged payment confirmations, replay, a stand-in signature presented as a live one, a browser claiming success with no signature | F1–F4 |
 | G — state integrity | Client-supplied figures overriding a document, one workspace reading another's data | G1–G2 |
 
-Twenty-one attacks in total. Some are skipped rather than run, and that is correct behaviour rather than a gap: the C-class attacks need `LLM_API_KEY` set to exercise model phrasing at all, and F3 needs live Razorpay credentials, matching how the rest of the app already treats unconfigured features.
+Twenty-five attacks in the registry. `F3` is skipped on a local run because it needs live Razorpay credentials to present a stand-in signature in live mode, matching how the rest of the app treats unconfigured features. A skip states its reason, and `npm run sweep` fails if more than one attack skips or if any skip has no reason attached — so a run where half the registry quietly skipped cannot print a perfect score.
 
 ### Isolation
 
-Every run happens inside a disposable shadow workspace, seeded from a snapshot of the caller's real one and torn down afterward. An attack can try to overspend, forge a token, or cross into another workspace, but it cannot touch a real purchase, policy, escrow deal, payment float or document. `test/adversary.test.js` asserts this directly: it hashes the real workspace state before and after a full run and checks nothing moved.
-=======
-The Adversary Console is a red-team harness that attacks Limen's own running system and proves, with raw evidence, which layer refused each attack. It ships with the product rather than sitting in a separate repository, because a containment claim that is never tested is a claim that drifts.
+Every run happens inside a disposable shadow workspace, seeded from a snapshot of the caller's real one and torn down afterwards. An attack can try to overspend, forge a token, or cross into another workspace, but it cannot touch a real purchase, policy, escrow deal, payment float or document. `test/adversary.test.js` asserts this directly: it hashes the real workspace state before and after a full run and checks nothing moved.
 
-### What it attacks
+### Current result
 
-Twenty-five attacks across seven classes: on-chain authority, injection into the decision path, the phrasing boundary, capability escalation via LIM AI, identity and role, money, and state integrity. Each attack targets a real code path — real contract calls, real Express routes, real HMAC verification, real engine functions.
+**24/24 contained, 1 skipped**, against a local in-process chain.
 
-Every run creates an isolated shadow workspace, seeds it from a snapshot of the standard catalogue, and tears it down after. No real purchase, policy, escrow deal, payment float or document is mutated.
+That number is worth the paragraph underneath it. The first time this harness was run against a live server it reported **15/21 contained, with six breaches and four skips**. Triaging those six found:
 
-### What a contained result proves
+- **two real defects in Limen**, both fixed — the capability boundary in `server/counsel.js` only refused instructions in English, and `server/normalize.js` was deleting every accented letter and every non-Latin script before classification, so a Devanagari instruction arrived as an empty string and could not be refused at all
+- **four attacks aimed at the wrong boundary**, all corrected — two fired at an unauthenticated read route and called the absence of a 401 a breach, one compared a lock's remaining time against a different lock's assigned time, and one matched the server's own `actor` echo as a data leak
+- **three skips that were not skips** — the runner handed `summary.facts()` the wrong projection, so three C-class attacks reported "not applicable" when they had simply never run
 
-A CONTAINED result means this specific build resisted the specific attack as implemented, running against a simulated catalogue and an in-process EVM. It is evidence about this code at this commit. It is not a security audit and does not claim to be.
+Every one of those is written up, with root cause and where the fix landed, in [`docs/CONTAINMENT_TRIAGE.md`](docs/CONTAINMENT_TRIAGE.md). A harness whose own failures are undocumented is not evidence of anything.
 
-The on-chain boundary is the hardest: the EVM enforces it and the harness cannot weaken it. The server boundary is correct in this build; a future change that removes a guard would be caught by the harness in CI because it is a regression gate. The structural boundary (no dangerous imports in `server/counsel.js`, document values from canonical state only) is verified by static analysis and is the most future-proof.
->>>>>>> 5ccbdf2 (Add Security Observatory verification layer)
+Where an attack turned out to be wrong it was **retargeted, not softened**. E1 now fires at a head-only route and carries three probes — forged token must be refused, a genuine sales token must also be refused, and a genuine head token must succeed — because without that last control a route that had been accidentally commented out would pass the attack perfectly. B3 moved from substring-matching stringified JSON to a structural scan for private keys plus a per-supplier floor comparison, which is strictly stricter than what it replaced.
+
+### A harness that can prove it isn't a rubber stamp
+
+A red-team suite that always says PASS is worthless. `test/adversary.test.js` includes a meta-test that deliberately weakens a real check — it stubs `counsel.classify` to never refuse anything — and asserts the harness reports a breach. The stub context answers `/api/counsel` exactly as the real route does, so both the HTTP seam and the direct call go quiet at once, which is precisely what a weakened boundary would look like in production. If the harness ever stops noticing, that test fails first.
+
+### Continuous containment
+
+`.github/workflows/containment.yml` runs on every push and pull request: install, `npm test`, start the server, `node scripts/adversary.js --ci`, upload the Containment Report as a build artifact, and fail the job on any breach.
+
+`npm run sweep` also drives a full adversary run against the live server and asserts the score, the skip discipline, the evidence completeness and the report PDF. `npm run verify:ui` drives the Adversary screen in a real browser and asserts the console renders a score, a row per attack with no row left queued, a populated boundary map, an evidence drawer that opens, and a downloadable report.
+
+The point is the one the whole project is built around — a protection that isn't checked isn't a protection, it's a comment.
+
+### What this proves, and what it does not
+
+A CONTAINED result means this specific build resisted the specific attack as implemented, running against a simulated catalogue and an in-process EVM by default. It is evidence about this code at this commit. It is not a security audit and does not claim to be, and the Containment Report says so in its own honest-limits section rather than leaving that to a reader's assumptions.
+
+The three boundaries are not equally strong, and the report distinguishes them:
+
+- **On-chain** is the hardest. The EVM enforces it and the harness cannot weaken it.
+- **Server** is correct in this build. A future change that removes a guard is caught by the harness in CI, because it is a regression gate.
+- **Structural** — no capability imports in `server/counsel.js`, document values from canonical state only — is verified by static analysis and is the most future-proof of the three.
 
 ### Running it
 
 ```bash
-<<<<<<< HEAD
-npm start                # in one terminal
-npm run adversary        # in another: human-readable table, one row per attack
-npm run adversary -- --ci   # machine-readable, non-zero exit on any breach
-```
-
-Or from the app itself: sign in to any desk and open the **Adversary** screen. Run All streams each attack's status live, groups results by class, and shows a boundary map of which layer refused what — contract-enforced refusals are shown as the strongest evidence, because that is the actual product claim. Opening any attack's evidence drawer shows the hypothesis, the expected and observed result, and the raw proof: a decoded revert selector, an HTTP status and body, a computed-versus-supplied HMAC, or a field-level diff. **Download Containment Report** renders the same run as a PDF, built through the existing `server/pdf.js` from canonical run state, the same way every other document in the app is built.
-
-Current containment score: **run `npm run adversary` and see for yourself** — that is the point of the tool. As of the last local run this surfaced real findings, not a clean pass, including a floor price leaking through one API response and a workspace boundary missing on one route. Fixes for genuine findings are tracked as they land; a finding that turns out to be an attack aimed at the wrong route gets the attack corrected instead, never softened.
-
-### A harness that can prove it isn't a rubber stamp
-
-A red-team suite that always says PASS is worthless. `test/adversary.test.js` includes a meta-test that deliberately weakens a real check inside the test itself and asserts the harness reports a breach. If the harness ever stops noticing, that test fails first.
-
-### Continuous containment
-
-`.github/workflows/containment.yml` runs on every push and pull request: install, `npm test`, start the server, `node scripts/adversary.js --ci`, upload the Containment Report as a build artifact, and fail the job on any breach. The point is the same one the whole project is built around — a protection that isn't checked isn't a protection, it's a comment. This makes that true for the Adversary Console's own findings as well: if a future refactor quietly removes a load-bearing check, the build fails instead of the gap sitting undiscovered until a demo.
-
-### What this proves, and what it does not
-
-A contained result is evidence about this build, run against a simulated catalogue and an in-process EVM by default. It is not a security audit, and the Containment Report says so in its own honest-limits section rather than leaving that to a reader's assumptions.
-
-The console is not yet wired into `npm run sweep` or `npm run verify:ui` — see [Roadmap](#roadmap).
-=======
 npm start                          # server running in one terminal
 
 npm run adversary                  # human-readable console table
 npm run adversary -- --ci          # machine-readable, non-zero exit on breach
-npm run adversary -- --attacks A1  # single attack
+npm run adversary -- --attacks A1  # a single attack
 ```
 
-The Adversary screen is also available in the UI navigation from any desk.
+The Adversary screen is also available in the UI navigation from any desk. Run All streams each attack's status live, groups results by class, and shows a boundary map of which layer refused what. Opening any attack's evidence drawer shows the hypothesis, the expected and observed result, and the raw proof: a decoded revert selector, an HTTP status and body, a computed-versus-supplied HMAC, or a field-level diff. **Download Containment Report** renders the same run as a PDF, built through the existing `server/pdf.js` from canonical run state, the same way every other document in the app is built.
 
 ### Reading the report
 
-The Containment Report PDF (available from the UI and uploaded as a CI artefact) has five sections:
+The Containment Report PDF has five sections:
 
 1. **Run metadata** — timestamp, desk, chain id, storage type, payment rails, commit sha
 2. **Containment score** — n/m contained, coloured red if any breach
@@ -440,8 +420,70 @@ The Containment Report PDF (available from the UI and uploaded as a CI artefact)
 4. **Evidence appendix** — hypothesis, expected, observed, and the raw proof artifact for each attack
 5. **Honest limits** — what this result does and does not prove, and which attacks were skipped and why
 
-A breach in the report means a boundary that should hold did not. Do not suppress it. The harness is designed to be a regression gate: if a future refactor removes a load-bearing check, CI catches it here.
->>>>>>> 5ccbdf2 (Add Security Observatory verification layer)
+A breach in the report means a boundary that should hold did not. Do not suppress it.
+
+---
+
+
+## Built with IBM Project Bob
+
+The Adversary Console was built with IBM Project Bob, an agentic development tool, working in a repository it had never seen. This section records what it did, because a claim about an AI tool is worth exactly as much as the evidence under it.
+
+### What Bob was asked to do, and in what order
+
+Bob was not asked to write code first. It was asked to **read the repository and report where Limen refuses an action** — from the source, not from the README. It came back with `docs/ATTACK_SURFACE.md`: every refusal point in the system, the file and mechanism behind each one, the trust boundary it sits on, and — the useful column — which of them had no test behind them.
+
+That map is the artefact everything else was built from. Thirteen protections were listed in the README at the time. One of them was visible in the demo. The other twelve were an invitation to trust us.
+
+### What Bob built
+
+Sixteen files, roughly 3,500 lines, in one coordinated pass:
+
+| Area | Files |
+| --- | --- |
+| Analysis | `docs/ATTACK_SURFACE.md` |
+| Engine | `server/adversary/attacks.js` (the registry), `runner.js` (shadow workspace, timeouts, teardown), `evidence.js` (one shape per outcome), `report.js` (PDF via the existing `server/pdf.js`) |
+| Entry points | `server/routes/adversary.js` (four endpoints behind existing auth), `scripts/adversary.js` (CLI), `server/index.js`, `package.json` |
+| Tests | `test/adversary.test.js` including the meta-test, `test/run.js` |
+| Contract layer | `server/chain.js` — a revert decoder |
+| Surfaces | `web/src/App.jsx`, `web/src/styles.css` — the Adversary screen |
+| CI | `.github/workflows/containment.yml` |
+| Docs | `README.md` |
+
+The existing suite went from **295 to 316 passing, zero failing**, with no regressions. Multi-file coherence across the server, the contract test layer, the React frontend, the PDF generator and CI — in a codebase it had not seen before — is the claim worth making here.
+
+The revert decoder is worth naming specifically. Bob wrote an attack, the attack produced a raw 4-byte selector, and Bob recognised that raw bytes are not evidence a human can read — so it went back into `server/chain.js` and added a decoder that turns the selector into `ExceedsPerDealCap`. Nobody asked for that. It is a small fix, and it shows the tool reasoning about whether its output was actually *useful* rather than merely green.
+
+### What Bob did not do
+
+The free trial ran out two-thirds of the way through the task list. Two items were left undone and one was never possible for a code-writing tool to do at all:
+
+- adversary checks were not wired into `npm run sweep`
+- UI coverage was not added to `npm run verify:ui`
+- **nobody had run the harness against a live server**, so there was no containment score
+
+All three are now done, by hand. The third mattered most, and it is the reason this section has a fourth part.
+
+### What running it found
+
+The first live run scored **15/21 contained: six breaches, four skips.** Triage is written up in full in [`docs/CONTAINMENT_TRIAGE.md`](docs/CONTAINMENT_TRIAGE.md).
+
+Four of the six breaches were Bob's attacks aimed at the wrong boundary — firing at an unauthenticated read route and scoring the absence of a 401 as a breach, comparing a lock's remaining time against another lock's assigned time, matching the server's own `actor` echo as a data leak. Three of the four skips were the runner passing `summary.facts()` the wrong projection, so attacks that had never run reported themselves as not applicable.
+
+That is a real limitation and it is stated plainly: an agentic tool built a harness that was confidently wrong about a quarter of its own findings, and nothing in the repository would have caught it, because the harness had never been executed.
+
+The other side of the ledger is that running it found **two genuine defects that were not on anybody's list**:
+
+- the capability boundary in `server/counsel.js` refused instructions only in English — `aprobar el trato ahora` was classified as a harmless question and answered
+- `server/normalize.js` used `\w` in its punctuation strip, which is ASCII-only in JavaScript, so every accented letter and every non-Latin script was deleted before classification. A Spanish question lost the `qué` that marked it as a question and was refused as an instruction. A Devanagari instruction arrived as an empty string and could not be refused at all.
+
+The first was found by the attack that was written to find it. The second was found by chasing why the fix for the first one did not take.
+
+### The honest split
+
+We wrote the threat model and decided which boundaries were worth attacking. Bob did the repository analysis, the implementation across all sixteen files, and the CI wiring. We rejected a few proposed attacks that did not touch real code paths. The trial then ran out, so the sweep hook, the browser-suite hook, the first live run, the triage of its six findings and the two product fixes that came out of it are ours.
+
+Both halves of that are load-bearing. Bob turned a map into 3,500 lines of working harness in a single pass, which no one on this team could have done in the time available. And the harness did not become evidence until somebody ran it and argued with the result.
 
 ---
 
@@ -454,7 +496,7 @@ npm start                # in one terminal
 npm run sweep            # in another: 154 checks against the live HTTP API
 npm run verify:ui        # and 70 checks in a real browser
 npm run verify:tier4     # and 20 more, including contrast in both themes
-npm run adversary        # 21 attacks against every enforcement boundary, isolated in a shadow workspace
+npm run adversary        # 25 attacks against every enforcement boundary, isolated in a shadow workspace
 
 node scripts/e2e.js      # one full purchase, end to end
 node scripts/llm-check.js
@@ -545,7 +587,7 @@ Being clear about this is part of the point. A product about honest authority sh
 - **Delivery.** Settlement needs two signatures and the contract refuses the second without the first. Be precise about what that buys: it moves a fictitious delivery from something one party can do alone to something two parties must agree on. It does not remove it. A buyer and supplier acting together can still settle a deal that never moved. Closing that needs an attestation from somebody with no stake in the trade, which is a carrier or inspector integration, and therefore a partnership rather than a sprint.
 - **Currency.** Purchases and the escrow are in USD, the payment rail is in INR, and the conversion uses a stated constant rather than a live rate (`LIMEN_USD_INR`, default 85). Every screen showing a converted figure names the rate, and the rate is stored on the payment record so a conversion can be checked later against the number actually used. `server/fx.js` is shaped for a real feed to be substituted in.
 - **The desk codes** are not an identity system, and a real deployment replaces `server/identity.js` with its own sign-in.
-- **The Adversary Console** attacks a simulated catalogue and an in-process EVM by default. A contained result is evidence about this build, not a security audit, and it is not yet wired into `npm run sweep` or `npm run verify:ui`.
+- **The Adversary Console** attacks a simulated catalogue and an in-process EVM by default. A contained result is evidence about this build, not a security audit. One attack (`F3`) skips locally because it needs live Razorpay credentials.
 
 ---
 
@@ -556,8 +598,8 @@ Being clear about this is part of the point. A product about honest authority sh
 3. **Supplier-side agents**, so both sides of the negotiation are autonomous.
 4. **Additional procurement verticals.**
 5. **Email notifications** alongside the webhook.
-6. **Wire the Adversary Console into `npm run sweep` and `npm run verify:ui`**, so containment is checked from both the API and the browser, not only from its own CLI and UI.
-7. **Close remaining Adversary Console findings.** See `docs/ATTACK_SURFACE.md` and the latest Containment Report for what is still open.
+6. **Run the Adversary Console against a public testnet**, so the on-chain boundary is proven somewhere other than an in-process EVM.
+7. **Widen the multilingual capability lexicon.** Six languages are covered. The mechanism is sound; the vocabulary is not exhaustive, and `D1` is where new phrasings get added.
 
 ---
 

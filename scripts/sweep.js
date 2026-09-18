@@ -577,6 +577,87 @@ async function waitForChain() {
     JSON.stringify(badPoint.body.headline));
   check('an unknown decision point is not marked irreversible', badPoint.body.irreversible === false);
 
+  console.log('\nAdversary containment');
+  /*
+   * The route sweep and the adversary harness ask different questions, and
+   * this is the only place both are running against the same live server.
+   *
+   * Everything above walks the honest path and checks it works. The harness
+   * walks the dishonest ones and checks they do not. A refactor that quietly
+   * removes a load-bearing check usually leaves the honest path intact, which
+   * is exactly why the sweep on its own would not notice.
+   *
+   * It runs in a throwaway shadow workspace with its own chain, so it cannot
+   * touch the state the checks above just built. What is asserted here is the
+   * harness's own health as much as the score: a run that errors, or that
+   * contains nothing because every attack skipped, is a failure even though no
+   * breach was reported.
+   */
+  const advStart = await call('POST', '/api/adversary/run', {}, { token: TOKENS.head });
+  check('the adversary run starts', advStart.status === 200 && !!advStart.body.runId,
+    advStart.body.error || JSON.stringify(advStart.body).slice(0, 120));
+
+  if (advStart.body && advStart.body.runId) {
+    const runId = advStart.body.runId;
+    let adv = null;
+    // Attacks spin up their own chain, so allow generously before giving up.
+    for (let i = 0; i < 180; i++) {
+      await new Promise((r) => setTimeout(r, 1000));
+      const poll = await call('GET', '/api/adversary/run/' + encodeURIComponent(runId), undefined, { token: TOKENS.head });
+      if (poll.status === 200 && poll.body.status !== 'running') { adv = poll.body; break; }
+    }
+
+    if (!check('the adversary run completes', !!adv && adv.status === 'complete',
+      adv ? (adv.error || adv.status) : 'timed out after 180s')) {
+      // Nothing below can mean anything without a completed run.
+    } else {
+      // The status route flattens the run: stats, evidences and evidenceHash
+      // sit at the top level rather than under `result`.
+      const stats = adv.stats || {};
+      const evidences = adv.evidences || [];
+
+      check('no attack errored', (stats.errors || 0) === 0, 'errors=' + stats.errors);
+      check('the run actually tested something', (stats.run || 0) > 0,
+        'contained=' + stats.contained + ' run=' + stats.run);
+      check('every attack is contained', (stats.breaches || 0) === 0,
+        evidences.filter((e) => e.verdict === 'BREACH').map((e) => e.id + ' ' + e.title).join(', '));
+
+      /*
+       * A skip is a check that did not happen. One is expected here — F3 needs
+       * live Razorpay credentials a local sweep does not have — but a run where
+       * half the registry quietly skipped would otherwise print a perfect score.
+       */
+      const skipped = evidences.filter((e) => e.verdict === 'SKIPPED');
+      // A skipped record carries its reason in `skipReason`; `observed` is
+      // empty for skips by design, so asking for `observed` here would fail a
+      // correctly-reported skip.
+      check('at most one attack skipped, and it says why',
+        skipped.length <= 1 && skipped.every((e) => !!(e.skipReason || e.observed)),
+        skipped.map((e) => e.id + (e.skipReason ? ' (' + e.skipReason + ')' : ' — no reason given')).join(', ') || 'none');
+
+      // Every attack states what it expected. Only the ones that actually ran
+      // can state what they observed.
+      check('every verdict carries its evidence',
+        evidences.every((e) => !!e.expected)
+          && evidences.filter((e) => e.verdict !== 'SKIPPED').every((e) => !!e.observed),
+        String(evidences.filter((e) => !e.expected || (e.verdict !== 'SKIPPED' && !e.observed)).map((e) => e.id)));
+
+      check('the run is fingerprinted', typeof adv.evidenceHash === 'string' && adv.evidenceHash.length > 8);
+
+      // The report is the artefact a person walks out of the room holding.
+      const advPdf = await call('GET', '/api/adversary/run/' + encodeURIComponent(runId) + '/report.pdf',
+        undefined, { token: TOKENS.head });
+      check('the containment report is a real PDF',
+        Buffer.isBuffer(advPdf.body) && advPdf.body.slice(0, 5).toString() === '%PDF-',
+        'type=' + advPdf.type);
+
+      console.log('  ->   containment ' + (stats.score || '?') + ', evidence ' + String(adv.evidenceHash).slice(0, 12));
+    }
+
+    const anonAdv = await call('POST', '/api/adversary/run', {}, { token: null });
+    check('an unsigned caller cannot run the adversary console', anonAdv.status === 401, String(anonAdv.status));
+  }
+
   console.log('\nReset');
   const reset = await call('POST', '/api/reset', {});
   check('workspace resets', reset.status === 200);

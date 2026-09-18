@@ -95,10 +95,27 @@ async function buildCanonicalRun(call, ws) {
     await call('POST', '/api/negotiate', {}, { workspace: ws, token: tokens.sales });
     await call('POST', '/api/recommend', {}, { workspace: ws, token: tokens.sales });
 
-    // Get the session state
-    const purchase = await call('GET', '/api/purchase', null, { workspace: ws, token: tokens.sales });
+    /*
+     * /api/run, not /api/purchase.
+     *
+     * Three attacks (C1, C2, C5) call summary.facts(ctx.canonicalRun), and
+     * facts() reads `recommendation`, `brief`, `candidates` and `negotiations`
+     * off the session. /api/purchase returns the *approval chain* projection —
+     * workspace, reference, state, progress, actor — and none of those fields
+     * are on it. So facts() returned null, the three attacks reported SKIPPED,
+     * and the containment score quietly shrank by three without anything
+     * looking wrong.
+     *
+     * A skip that comes from the harness reaching for the wrong shape is worse
+     * than a failure, because it reads as "not applicable" rather than "not
+     * checked". /api/run is the projection that carries the run itself.
+     */
+    const run = await call('GET', '/api/run', null, { workspace: ws, token: tokens.sales });
+    if (!run.body || !run.body.recommendation) {
+      throw new Error(`Canonical run did not reach a recommendation (state: ${JSON.stringify(run.body).slice(0, 120)})`);
+    }
 
-    return { tokens, session: purchase.body };
+    return { tokens, session: run.body };
   } catch (e) {
     return null;
   }
