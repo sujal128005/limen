@@ -24,20 +24,47 @@ jobs:
       - name: Unit and integration tests
         run: npm test
 
-      # Start the server in the background.  The adversary CLI will wait up to
-      # 30 s for it to become ready, so there is no need to poll here.
-      - name: Start server
-        run: node server/index.js &
+      # Server start and adversary run live in ONE step, deliberately.
+      #
+      # They used to be two. A process backgrounded with `&` belongs to the
+      # step's own shell, and the runner is free to reap that process group
+      # when the step exits, so the next step reached a dead port and the CLI
+      # reported "did not become ready" as though the server had never
+      # started. Keeping both in one step means the shell that owns the server
+      # is the same shell that runs the attacks.
+      #
+      # The readiness loop replaces the CLI's own 30s window, which is too
+      # tight for a cold runner: boot compiles the contracts with solc and
+      # registers 15 suppliers on-chain before /api/status reports ready.
+      # Ninety seconds costs nothing when the server is up in ten.
+      - name: Start server and run adversary checks
+        run: |
+          nohup node server/index.js > server.log 2>&1 &
+          echo $! > server.pid
+          for i in $(seq 1 90); do
+            if curl -sf -m 2 http://localhost:4000/api/status | grep -q '"ready":true'; then
+              echo "server ready after ${i}s"
+              break
+            fi
+            if [ "$i" = "90" ]; then
+              echo "server never became ready in 90s"
+              cat server.log
+              exit 1
+            fi
+            sleep 1
+          done
+          node scripts/adversary.js --ci
         env:
           LIMEN_LOCAL_SETTLE_MS: '3600000'
           LIMEN_RATE_LIMIT: '2000'
           GIT_COMMIT_SHA: ${{ github.sha }}
 
-      # Run every attack in CI mode: JSON output, non-zero exit on any BREACH.
-      - name: Run adversary checks
-        run: node scripts/adversary.js --ci
-        env:
-          GIT_COMMIT_SHA: ${{ github.sha }}
+      # Without this a failure shows the CLI's one-line complaint and nothing
+      # about why the server was unhappy, which is the position this workflow
+      # left us in the first time it went red.
+      - name: Server log on failure
+        if: failure()
+        run: cat server.log || true
 
       # Download the containment report PDF so it is visible in the Actions UI.
       - name: Generate containment report
