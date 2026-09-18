@@ -447,6 +447,85 @@ async function requireServer(base) {
     check(`${label} shows ${what} after settlement`, n > 0, `${n}`);
   }
 
+  // ---------------------------------------------------------------- C7
+  section('The adversary console runs and shows its evidence');
+  /*
+   * The screen, not the engine. `npm test` proves the attacks behave and
+   * `npm run adversary` proves the CLI path works; neither would notice if the
+   * console rendered an empty table, left the button disabled forever, or drew
+   * a score with no rows under it. That is the class of defect this file was
+   * written for: three nav items with no screen behind them passed every
+   * server-side check there was.
+   *
+   * Driven from the head's desk because every role carries `adversary` in its
+   * nav, so the head is as good as any and is already signed in above.
+   */
+  const advNav = head.locator('.rail2-item', { hasText: 'Adversary' }).first();
+  const advNavExists = await advNav.count().then((n) => n > 0).catch(() => false);
+  check('the adversary nav item exists', advNavExists);
+
+  if (advNavExists) {
+    await advNav.click();
+    await head.waitForTimeout(500);
+
+    const runBtn = head.locator('button', { hasText: /Run adversary checks|Run again/ }).first();
+    check('the console offers a run button', await runBtn.count() > 0);
+
+    await runBtn.click();
+
+    /*
+     * The run spins up its own chain in a shadow workspace, so this waits on
+     * the verdict table rather than on a fixed timeout. Three minutes is
+     * generous; a console that never finishes is a failure worth reporting as
+     * one rather than hiding behind a longer sleep.
+     */
+    let settled = false;
+    for (let i = 0; i < 180; i++) {
+      await head.waitForTimeout(1000);
+      const done = await head.locator('.adv-score-row').count().catch(() => 0);
+      if (done > 0) { settled = true; break; }
+    }
+    check('the run completes and a score is drawn', settled);
+
+    if (settled) {
+      const cards = await head.locator('.adv-card').count();
+      check('every attack in the registry has a row', cards >= 20, `${cards} rows`);
+
+      const verdicts = await head.locator('.adv-verdict').count();
+      check('every row carries a verdict', verdicts >= cards, `${verdicts} verdicts for ${cards} rows`);
+
+      // No row may still be sitting at "queued" once the run has settled.
+      const stillQueued = await head.locator('.adv-verdict.queued').count();
+      check('no row is left queued after the run settles', stillQueued === 0, `${stillQueued} queued`);
+
+      const boundaryMap = await head.locator('.adv-boundary-map').count();
+      check('the boundary map is drawn', boundaryMap > 0);
+
+      const chips = await head.locator('.adv-chip').count();
+      check('the boundary map is populated', chips > 0, `${chips} chips`);
+
+      /*
+       * The drawer is where a demo actually lands: the claim is not "it says
+       * CONTAINED", it is "here is the expected value, the observed value and
+       * the raw proof". A collapsed card proves nothing to a room.
+       */
+      await head.locator('.adv-card-head').first().click();
+      await head.waitForTimeout(400);
+      const drawer = await head.locator('.adv-drawer').first().count();
+      check('a card opens to show its evidence', drawer > 0);
+      const rows = await head.locator('.adv-drawer .adv-row').count();
+      check('the evidence names expected and observed', rows >= 2, `${rows} rows`);
+
+      const dl = await head.locator('a[href*="/report.pdf"]').count();
+      check('the containment report can be downloaded', dl > 0);
+
+      const hash = await head.locator('.adv-hash').count();
+      check('the run is fingerprinted on screen', hash > 0);
+
+      await shot(head, '/tmp/v-adversary.png');
+    }
+  }
+
   // ---------------------------------------------------------------- C6
   section('The same flow on a phone');
   const phone = await browser.newPage({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true });
