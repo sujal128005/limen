@@ -26,6 +26,58 @@ const QUESTION_PREFIX = /^\s*(why|how|what|explain|describe|tell me|which|when|w
 const DIRECTED_ACTION = /\b(approve|release|execute|transfer|pay|settle|sign|override|bypass)\b\s+(the|this|that|it|my|escrow|payment|deal|transaction|now|\$)/i;
 
 /*
+ * The boundary was English-only, and said so nowhere.
+ *
+ * Adversary attack D1 put ten phrasings of "approve the deal" through this
+ * module. Nine were refused. "aprobar el trato ahora" was classified `unknown`
+ * and answered. Nothing could act on it — this file still holds no capability,
+ * which is what D2 proves structurally — but a refusal that only fires in one
+ * language is a refusal with a published workaround, and a demo in India is not
+ * a monolingual room.
+ *
+ * Verbs only, in the imperative and infinitive forms an instruction actually
+ * takes. Nouns are deliberately absent: "el trato" (the deal) appears in
+ * questions about the deal just as often as in instructions to approve it, so
+ * matching the noun would refuse the questions this module exists to answer.
+ */
+const MULTILINGUAL_ACTION = [
+  // Spanish / Portuguese
+  /\b(aprobar|aprueba|aprueben|apruebe|aprovar|aprove|aprova|autorizar|autoriza|autorice|pagar|paga|pague|pagues|transferir|transfiere|transfira|liberar|libera|libere|firmar|firma|firme|assinar|assine|ejecutar|ejecuta|execute|executar|omitir|anular|saltar)\b/i,
+  // French
+  /\b(approuver|approuve|approuvez|autoriser|autorise|autorisez|payer|paie|payez|payer|transf[ée]rer|transf[èe]re|transf[ée]rez|lib[ée]rer|lib[èe]re|lib[ée]rez|signer|signe|signez|ex[ée]cuter|ex[ée]cute|contourner|contourne)\b/i,
+  // German
+  /\b(genehmige|genehmigen|genehmigt|freigeben|freigabe|freigib|bezahle|bezahlen|[üu]berweise|[üu]berweisen|unterschreibe|unterschreiben|unterzeichne|ausf[üu]hren|f[üu]hre\s+aus|umgehen|umgehe)\b/i,
+  /*
+   * Hindi and Hinglish. Romanised first, because that is how it is actually
+   * typed on a laptop in Kurnool, then Devanagari for the cases where it is not.
+   * "kar do" / "kar de" is the imperative that carries the instruction, so the
+   * English verb borrowed into a Hindi frame ("approve kar do") is caught here
+   * rather than by the English patterns, which want an English object after it.
+   */
+  /\b(approve|pay|release|transfer|sign|execute|settle)\s*(kar|kr)\s*(do|de|den|dijiye|dijie)\b/i,
+  /\b(manzoor|manjoor|manzoori|manjoori|bhugtan|bhej\s*do|bhej\s*de|kar\s*do\s*approve|paisa\s*bhej|payment\s*kar)\b/i,
+  /(मंजूर|मंज़ूर|स्वीकृत|स्वीकार\s*कर|भुगतान\s*कर|हस्ताक्षर\s*कर|भेज\s*दो|जारी\s*कर)/,
+];
+
+/*
+ * Question openers in the same languages, for the same reason QUESTION_PREFIX
+ * exists: "¿por qué no puedes aprobar?" is a question about the boundary, not
+ * an attempt to cross it, and refusing it would make the boundary look like a
+ * language barrier.
+ */
+/*
+ * The trailing guard is `(?![\p{L}\p{N}])` rather than `\b`. JavaScript's `\b`
+ * is defined over ASCII word characters only, so in "por qué no puedes" there
+ * is no boundary after the "é" — both it and the following space are non-word
+ * to the engine, and the whole prefix silently fails to match. That is how a
+ * plain Spanish question about the boundary got refused as an attempt to cross
+ * it. The lookahead asks the question that was actually meant: is the next
+ * character part of this word?
+ */
+const QUESTION_PREFIX_INTL =
+  /^\s*[¿¡]?\s*(por\s*qu[ée]|porqu[ée]|qu[ée]|c[oó]mo|cu[aá]l|cu[aá]les|qui[eé]n|cu[aá]ndo|cu[aá]nto|pourquoi|comment|quel|quelle|qui|quand|combien|warum|wieso|wie|welche|welcher|wer|wann|kyun|kyu|kyon|kaise|kaun|kab|kitna|kya|क्यों|कैसे|कौन|कब|कितना|क्या)(?![\p{L}\p{N}])/iu;
+
+/*
  * Clause by clause, not whole-input.
  *
  * The exemption for questions about actions ("why can the agent not raise its
@@ -50,18 +102,68 @@ function clausesOf(q) {
     .filter(Boolean);
 }
 
+/*
+ * Defence in depth, not a second spell-checker.
+ *
+ * normalize.js already repairs typed mistakes before the route calls classify,
+ * and it is good: "aprove ths deal" and "approv3 th3 d3al" both arrive here
+ * repaired. But the repair lives upstream, and a boundary that only holds
+ * because something in front of it is doing the work is a boundary that breaks
+ * the first time someone calls this module directly — which is exactly what the
+ * adversary harness does, and exactly what a future route might do.
+ *
+ * So the folding is repeated here, cheaply and narrowly:
+ *
+ *   zero-width and bidi marks  stripped, so "approve\u200B the deal" cannot
+ *                              hide a word boundary
+ *   NFKC                       fullwidth and mathematical letterforms fold to
+ *                              plain ASCII
+ *   leet digits                only inside tokens that already contain a letter
+ *
+ * That last restriction is what keeps it safe. "approv3" holds a letter and
+ * folds to "approve"; "9999" and "50000" are pure digits and are left exactly
+ * as they are, so a figure in a question is never silently turned into a word.
+ */
+const ZERO_WIDTH = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]/g;
+const LEET = { 0: 'o', 1: 'i', 3: 'e', 4: 'a', 5: 's', 7: 't', 8: 'b', 9: 'g', '@': 'a', $: 's' };
+
+function foldToken(tok) {
+  if (!/\p{L}/u.test(tok)) return tok; // a pure number or symbol run: leave it alone
+  return tok.replace(/[013457890@$]/g, (c) => LEET[c] || c);
+}
+
+function foldForIntent(q) {
+  return String(q || '')
+    .replace(ZERO_WIDTH, '')
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[\p{L}\p{N}@$]+/gu, foldToken);
+}
+
 function clauseIsAction(c) {
-  if (QUESTION_PREFIX.test(c) && !DIRECTED_ACTION.test(c)) return false;
+  // The exemption covers both language families, so a question stays a question
+  // whichever one it was asked in.
+  const isQuestion = QUESTION_PREFIX.test(c) || QUESTION_PREFIX_INTL.test(c);
+  if (isQuestion && !DIRECTED_ACTION.test(c)) return false;
   // A bare imperative such as "then approve it" carries no question prefix and
   // no broader pattern, so the directed form has to count on its own.
-  return ACTION_PATTERNS.some((r) => r.test(c)) || DIRECTED_ACTION.test(c);
+  return ACTION_PATTERNS.some((r) => r.test(c))
+    || DIRECTED_ACTION.test(c)
+    || MULTILINGUAL_ACTION.some((r) => r.test(c));
 }
 
 function isActionRequest(q) {
-  const clauses = clausesOf(q);
-  if (clauses.some(clauseIsAction)) return true;
-  // A directed action anywhere is refused regardless of how it was framed.
-  return DIRECTED_ACTION.test(q) && ACTION_PATTERNS.some((r) => r.test(q));
+  const raw = String(q || '');
+  const folded = foldForIntent(raw);
+  // The folded form is only worth a second pass when folding changed something.
+  const variants = folded === raw.toLowerCase() ? [raw] : [raw, folded];
+
+  for (const v of variants) {
+    if (clausesOf(v).some(clauseIsAction)) return true;
+    // A directed action anywhere is refused regardless of how it was framed.
+    if (DIRECTED_ACTION.test(v) && ACTION_PATTERNS.some((r) => r.test(v))) return true;
+  }
+  return false;
 }
 
 const REFUSAL =

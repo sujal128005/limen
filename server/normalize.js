@@ -208,9 +208,27 @@ function normalizeQuestion(raw) {
   // Collapse stretched letters: "whyyy" to "why", "sooo" to "so".
   s = s.replace(/([a-z])\1{2,}/g, '$1$1');
 
-  // Strip punctuation that carries no meaning here, keep sentence enders so
-  // clause splitting downstream still works.
-  s = s.replace(/[^\w\s?.!,;$%/-]/g, ' ');
+  /*
+   * Strip punctuation that carries no meaning here, keep sentence enders so
+   * clause splitting downstream still works.
+   *
+   * The class is Unicode-aware. It used to be `[^\w\s?.!,;$%/-]`, and `\w` in
+   * JavaScript is ASCII: A-Z, a-z, 0-9, underscore. Every accented letter and
+   * every non-Latin script therefore matched "punctuation that carries no
+   * meaning" and was replaced with a space, so "por qué no puedes aprobar"
+   * reached the classifier as "por qu no puedes aprobar" and "भुगतान कर दो"
+   * reached it as nothing at all.
+   *
+   * That silently broke two things at once. A Spanish question about the
+   * spending boundary lost the "qué" that marks it as a question and was
+   * refused as though it were an instruction, and a Devanagari instruction was
+   * erased into an empty string that could not be refused at all. Adversary D1
+   * caught the first; the second was sitting behind it.
+   *
+   * \p{L} covers letters in any script, \p{M} the combining marks that sit on
+   * them, so decomposed forms survive as well as precomposed ones.
+   */
+  s = s.replace(/[^\p{L}\p{M}\p{N}_\s?.!,;$%/-]/gu, ' ');
 
   const out = [];
   let prev = null;
