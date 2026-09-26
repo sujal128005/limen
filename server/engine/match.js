@@ -29,7 +29,19 @@ function evaluateCandidates(brief) {
           detail: `Minimum order ${p.moqKg.toLocaleString()} kg exceeds the ${brief.quantityKg.toLocaleString()} kg required` });
       } else satisfied.push({ constraint: 'moq', detail: `MOQ ${p.moqKg.toLocaleString()} kg` });
 
-      if (brief.quantityKg && p.monthlyCapacityKg < brief.quantityKg) {
+      /*
+       * A capacity nobody published is not unlimited capacity.
+       *
+       * The seeded catalogue states this on every listing, so for a long time
+       * the field was simply assumed. An external directory often does not
+       * publish it, and the old code called toLocaleString on the gap, which
+       * crashed the whole screening pass. Reporting it as not stated is the
+       * honest answer: the constraint was never checked, and saying so beats
+       * both crashing and quietly passing.
+       */
+      if (p.monthlyCapacityKg == null) {
+        satisfied.push({ constraint: 'capacity', detail: 'Capacity not stated by this supplier' });
+      } else if (brief.quantityKg && p.monthlyCapacityKg < brief.quantityKg) {
         violations.push({ constraint: 'capacity', negotiable: false,
           detail: `Monthly capacity ${p.monthlyCapacityKg.toLocaleString()} kg is below the order size` });
       } else satisfied.push({ constraint: 'capacity', detail: `${p.monthlyCapacityKg.toLocaleString()} kg/mo` });
@@ -40,7 +52,18 @@ function evaluateCandidates(brief) {
         } else satisfied.push({ constraint: 'certification', detail: c });
       }
 
-      if (brief.minQuality && p.qualityScore < brief.minQuality) {
+      /*
+       * A quality floor cannot be met by a listing that does not carry a score.
+       *
+       * Unlike capacity, this one blocks. The buyer asked for a minimum and
+       * there is no evidence it is met, so letting the listing through would
+       * put an unverified supplier in front of somebody who explicitly said
+       * quality mattered. Failing closed is the right direction here.
+       */
+      if (brief.minQuality && p.qualityScore == null) {
+        violations.push({ constraint: 'quality', negotiable: false,
+          detail: `No quality score published, and ${brief.minQuality} was required` });
+      } else if (brief.minQuality && p.qualityScore < brief.minQuality) {
         violations.push({ constraint: 'quality', negotiable: false,
           detail: `Quality ${p.qualityScore} below the required ${brief.minQuality}` });
       } else if (brief.minQuality) satisfied.push({ constraint: 'quality', detail: `Quality ${p.qualityScore}` });

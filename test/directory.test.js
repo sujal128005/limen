@@ -17,6 +17,10 @@ const { test, group, eq, ok } = require('./harness');
 const directory = require('../server/directory');
 const notify = require('../server/notify');
 const { SUPPLIERS, replaceCatalogue, publicCatalogue, listingCount } = require('../server/data/suppliers');
+const { parseRequest } = require('../server/engine/parse');
+const { evaluateCandidates, selectForNegotiation } = require('../server/engine/match');
+const { negotiateAll } = require('../server/engine/negotiate');
+const { recommend } = require('../server/engine/recommend');
 
 function tmpJson(name, data) {
   const p = path.join(os.tmpdir(), `limen-${name}-${Date.now()}.json`);
@@ -110,18 +114,66 @@ async function run() {
     ok(threw && /no suppliers/.test(threw.message), threw && threw.message);
   });
 
-  await test('a floor is simulated where the feed has none, and marked as simulated', async () => {
+  /*
+   * These two used to assert the defect.
+   *
+   * They checked for a floor at supplier.private.reservationPrices, which is
+   * where the adapter wrote it and where absolutely nothing read it.
+   * negotiate.js reads product.private.floorUnitPrice. So the tests passed, the
+   * feature crashed on every real feed, and the green suite was the reason
+   * nobody looked. Worth remembering: a test can protect a bug as easily as it
+   * protects a behaviour, if it asserts the wrong contract.
+   */
+  await test('a floor is simulated per product, where negotiate.js reads it', async () => {
     const s = directory.withSimulatedFloor(goodSupplier());
-    ok(s.private, 'the simulator needs something to bargain against');
-    eq(s.private.simulated, true, 'and nothing may mistake it for a published fact');
-    ok(s.private.reservationPrices['ACM-1'] < s.products[0].unitPrice, 'a floor below list');
+    const p = s.products[0];
+    ok(p.private, 'the simulator needs something to bargain against');
+    eq(p.private.simulated, true, 'and nothing may mistake it for a published fact');
+    ok(p.private.floorUnitPrice < p.listUnitPrice, 'a floor below list');
+    for (const k of ['concessionRate', 'minMarginPct', 'expediteMaxDays', 'expediteFeePct']) {
+      ok(p.private[k] !== undefined, `negotiate.js also reads ${k}`);
+    }
   });
 
-  await test('a feed that already carries a floor is left alone', async () => {
-    const withFloor = goodSupplier({ private: { reservationPrices: { 'ACM-1': 1.9 } } });
-    const s = directory.withSimulatedFloor(withFloor);
-    eq(s.private.reservationPrices['ACM-1'], 1.9, 'not overwritten');
-    ok(!s.private.simulated, 'and not relabelled as simulated');
+  await test('a listing that already carries a floor is left alone', async () => {
+    const withFloor = goodSupplier();
+    withFloor.products[0].private = { floorUnitPrice: 1.9, concessionRate: 0.2 };
+    const p = directory.withSimulatedFloor(withFloor).products[0];
+    eq(p.private.floorUnitPrice, 1.9, 'not overwritten');
+    ok(!p.private.simulated, 'and not relabelled as simulated');
+  });
+
+  await test('a price under either name resolves to the one the engine reads', async () => {
+    const asUnit = directory.withSimulatedFloor(goodSupplier()).products[0];
+    eq(asUnit.listUnitPrice, 2.4, 'unitPrice becomes listUnitPrice');
+
+    const asList = goodSupplier();
+    delete asList.products[0].unitPrice;
+    asList.products[0].listUnitPrice = 3.1;
+    eq(directory.withSimulatedFloor(asList).products[0].listUnitPrice, 3.1, 'listUnitPrice survives');
+  });
+
+  await test('a listing with no price under either name is refused', async () => {
+    const s = goodSupplier();
+    delete s.products[0].unitPrice;
+    let threw = null;
+    try { directory.validate([s], 'test'); } catch (e) { threw = e.message; }
+    ok(threw && /has no price/.test(threw), `expected a price refusal, got: ${threw}`);
+  });
+
+  await test('what the feed does not say is null, never a flattering guess', async () => {
+    const bare = {
+      id: 'bare', name: 'Bare Feed', country: 'India', walletIndex: 9,
+      products: [{ sku: 'B-1', material: 'PET resin', unitPrice: 2.0, moqKg: 50, leadTimeDays: 8 }],
+    };
+    const s = directory.withSimulatedFloor(bare);
+    const p = s.products[0];
+    eq(p.monthlyCapacityKg, null, 'unstated capacity is not unlimited capacity');
+    eq(p.qualityScore, null, 'unstated quality is not good quality');
+    eq(p.grade, null, 'unstated grade');
+    eq(s.onTimeRate, null, 'unstated delivery record');
+    eq(JSON.stringify(s.certifications), '[]', 'certifications is a list, so .includes works');
+    eq(s.priorDisputes, 0, 'no disputes on record is genuinely zero');
   });
 
   await test('replacing the catalogue is seen by every reader of it', async () => {
@@ -224,6 +276,105 @@ async function run() {
     } finally {
       delete process.env.LIMEN_NOTIFY_WEBHOOK;
       delete process.env.LIMEN_NOTIFY_TIMEOUT_MS;
+    }
+  });
+
+  /* ------------------------------------------------------------------------
+   * The test that was missing, and the reason a shipped feature could crash
+   * on every real input while seventeen adapter tests stayed green.
+   *
+   * Everything above checks that a feed LOADS. Nothing checked that the engine
+   * could then USE what was loaded. The gap between those two sentences is
+   * where the whole defect lived.
+   * ---------------------------------------------------------------------- */
+  group('A loaded feed survives the whole engine');
+
+  const feedSupplier = (over = {}) => ({
+    id: 'ext-a', name: 'External Alpha', country: 'India', city: 'Surat', walletIndex: 5,
+    certifications: ['ISO-9001', 'FDA-FOOD-CONTACT'], onTimeRate: 0.93, yearsActive: 6,
+    products: [{
+      sku: 'EXT-1', material: 'PET resin', grade: 'bottle-grade',
+      unitPrice: 2.30, moqKg: 100, monthlyCapacityKg: 40000,
+      leadTimeDays: 11, qualityScore: 93,
+    }],
+    ...over,
+  });
+
+  const BRIEF = '500 kg of bottle-grade PET resin, budget $1,400 total, '
+    + 'delivery within 14 days, FDA food-contact certified.';
+
+  await test('a feed loads, screens, negotiates and recommends end to end', async () => {
+    const snapshot = SUPPLIERS.map((x) => x);
+    const file = tmpJson('e2e', [
+      feedSupplier(),
+      feedSupplier({ id: 'ext-b', name: 'External Beta', walletIndex: 6 }),
+    ]);
+    process.env.LIMEN_SUPPLIER_FILE = file;
+    try {
+      const cat = await directory.load();
+      eq(cat.seeded, false, 'the feed replaced the seeded catalogue');
+      replaceCatalogue(cat.suppliers);
+
+      const brief = parseRequest(BRIEF);
+      const rows = evaluateCandidates(brief);
+      eq(rows.length, 2, 'both listings screened');
+      eq(rows.filter((r) => r.eligible).length, 2, 'both eligible');
+      ok(Number.isFinite(rows[0].listTotal), `listTotal must be a number, got ${rows[0].listTotal}`);
+
+      const results = negotiateAll(selectForNegotiation(rows), brief);
+      ok(results.length, 'somebody was negotiated with');
+      ok(results.some((r) => r.outcome === 'agreed'), 'at least one agreement');
+
+      const rec = recommend(results, rows, brief);
+      eq(rec.status, 'recommended', 'a recommendation came back');
+      ok(Number.isFinite(rec.winner.total), 'the winning total is a real number');
+      ok(rec.winner.total <= brief.budgetTotal, 'and it is inside the budget');
+    } finally {
+      delete process.env.LIMEN_SUPPLIER_FILE;
+      replaceCatalogue(snapshot);
+      fs.unlinkSync(file);
+    }
+  });
+
+  await test('a bare feed screens without crashing, and blocks what it cannot verify', async () => {
+    const snapshot = SUPPLIERS.map((x) => x);
+    const file = tmpJson('bare', [{
+      id: 'bare-a', name: 'Bare Alpha', country: 'India', walletIndex: 7,
+      products: [{ sku: 'BR-1', material: 'PET resin', unitPrice: 2.1, moqKg: 50, leadTimeDays: 9 }],
+    }]);
+    process.env.LIMEN_SUPPLIER_FILE = file;
+    try {
+      const cat = await directory.load();
+      replaceCatalogue(cat.suppliers);
+      const rows = evaluateCandidates(parseRequest(BRIEF));
+      eq(rows.length, 1, 'screened rather than crashed');
+      eq(rows[0].eligible, false, 'and it is blocked, because nothing was verified');
+      ok(rows[0].blockedBy.includes('certification'), 'no certifications on file means the required one is not held');
+    } finally {
+      delete process.env.LIMEN_SUPPLIER_FILE;
+      replaceCatalogue(snapshot);
+      fs.unlinkSync(file);
+    }
+  });
+
+  await test('the agent never offers above the ceiling, on a feed as on the seeded set', async () => {
+    const snapshot = SUPPLIERS.map((x) => x);
+    const file = tmpJson('ceiling', [feedSupplier()]);
+    process.env.LIMEN_SUPPLIER_FILE = file;
+    try {
+      replaceCatalogue((await directory.load()).suppliers);
+      const brief = parseRequest(BRIEF);
+      const rows = evaluateCandidates(brief);
+      for (const r of negotiateAll(selectForNegotiation(rows), brief)) {
+        for (const t of r.transcript.filter((x) => x.actor === 'agent' && x.unitPrice != null)) {
+          ok(t.unitPrice <= brief.budgetPerUnit + 1e-9,
+            `agent offered ${t.unitPrice} above the ${brief.budgetPerUnit} ceiling`);
+        }
+      }
+    } finally {
+      delete process.env.LIMEN_SUPPLIER_FILE;
+      replaceCatalogue(snapshot);
+      fs.unlinkSync(file);
     }
   });
 }

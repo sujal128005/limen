@@ -1,0 +1,29 @@
+[
+  {
+    "_comment": "Copy this file, fill it with real suppliers, then set LIMEN_SUPPLIER_FILE to its path. Delete the _comment keys.",
+
+    "id": "SUP-REAL-1",
+    "name": "Name of the actual company",
+    "country": "India",
+    "city": "Hyderabad",
+    "walletIndex": 2,
+
+    "certifications": ["ISO-9001", "FDA-FOOD-CONTACT"],
+    "onTimeRate": 0.94,
+    "yearsActive": 12,
+    "priorDisputes": 0,
+
+    "products": [
+      {
+        "sku": "PET-BG-01",
+        "material": "PET resin",
+        "grade": "bottle-grade",
+        "unitPrice": 2.35,
+        "moqKg": 250,
+        "monthlyCapacityKg": 40000,
+        "leadTimeDays": 12,
+        "qualityScore": 94
+      }
+    ]
+  }
+]

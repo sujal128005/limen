@@ -149,26 +149,70 @@ function parseRequest(text) {
  * parser above remains the fallback so the product never hard-fails on a network
  * problem mid-demo. Returns null when unavailable.
  */
+/*
+ * This was dead code, and it was dead in the quietest possible way.
+ *
+ * It read ANTHROPIC_API_KEY or OPENAI_API_KEY. Neither name appears anywhere
+ * else in this repository: not in .env.example, not in the README table, not in
+ * render.yaml. Every other model call in the product reads LLM_API_KEY. So the
+ * key was never present, the function returned null on its first line every
+ * time, and `llmAssisted` has never once been true in any deployment.
+ *
+ * It also hardcoded two model names and two provider URLs, which contradicted
+ * the rest of the product: grok.js is deliberately provider-agnostic so that
+ * switching vendor is three environment variables and no code change.
+ *
+ * Now it reads the same variables as everything else and speaks the same
+ * OpenAI-compatible shape, so the gap-filling pass actually runs when a key is
+ * configured. The legacy names still work if somebody has them set.
+ *
+ * What has not changed: this only ever FILLS GAPS the deterministic parser left
+ * open, it never overrides a value that was unambiguously in the text, and a
+ * failure of any kind returns null so the deterministic brief carries the
+ * request. No demo depends on a network call.
+ */
+
+const PARSE_TIMEOUT_MS = Number(process.env.LIMEN_PARSE_TIMEOUT_MS || 6000);
+
 async function llmParse(text) {
-  const key = process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY;
+  const key = process.env.LLM_API_KEY
+    || process.env.XAI_API_KEY
+    || process.env.OPENAI_API_KEY
+    || process.env.ANTHROPIC_API_KEY;
   if (!key) return null;
+
+  const base = (process.env.LLM_BASE_URL || 'https://api.x.ai/v1').replace(/\/+$/, '');
+  const model = process.env.LLM_MODEL || process.env.XAI_MODEL || 'grok-3-mini';
+
+  /* Bounded. A parse that hangs holds up the whole sourcing run, and the
+     deterministic brief is already correct, so there is nothing to wait for. */
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PARSE_TIMEOUT_MS);
+
   try {
-    const isAnthropic = !!process.env.ANTHROPIC_API_KEY;
-    const url = isAnthropic ? 'https://api.anthropic.com/v1/messages' : 'https://api.openai.com/v1/chat/completions';
-    const body = isAnthropic
-      ? { model: 'claude-sonnet-4-20250514', max_tokens: 600, messages: [{ role: 'user', content: EXTRACT_PROMPT + text }] }
-      : { model: 'gpt-4o-mini', messages: [{ role: 'user', content: EXTRACT_PROMPT + text }], max_tokens: 600 };
-    const headers = isAnthropic
-      ? { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' }
-      : { 'content-type': 'application/json', authorization: `Bearer ${key}` };
-    const r = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+    const r = await fetch(`${base}/chat/completions`, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
+      body: JSON.stringify({
+        model,
+        max_tokens: 600,
+        temperature: 0,
+        messages: [{ role: 'user', content: EXTRACT_PROMPT + text }],
+      }),
+    });
     if (!r.ok) return null;
     const j = await r.json();
-    const content = isAnthropic ? j.content[0].text : j.choices[0].message.content;
-    const parsed = JSON.parse(content.match(/\{[\s\S]*\}/)[0]);
-    return parsed;
+    const content = j && j.choices && j.choices[0] && j.choices[0].message
+      && j.choices[0].message.content;
+    if (typeof content !== 'string') return null;
+    const match = content.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    return JSON.parse(match[0]);
   } catch (_) {
     return null; // deterministic parser carries the request
+  } finally {
+    clearTimeout(timer);
   }
 }
 
