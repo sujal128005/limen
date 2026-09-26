@@ -40,7 +40,9 @@ const path = require('path');
    a bad feed fails at boot with a readable message rather than halfway through
    somebody's sourcing run. */
 const REQUIRED_SUPPLIER = ['id', 'name', 'country', 'walletIndex', 'products'];
-const REQUIRED_PRODUCT = ['sku', 'material', 'unitPrice', 'moqKg', 'leadTimeDays'];
+/* Price is checked separately, because a feed may call it either unitPrice or
+   listUnitPrice and exactly one of the two has to be present. */
+const REQUIRED_PRODUCT = ['sku', 'material', 'moqKg', 'leadTimeDays'];
 
 function fail(message, detail) {
   const e = new Error(detail ? `${message} ${detail}` : message);
@@ -98,8 +100,29 @@ function validate(raw, source) {
           throw fail(`Listing ${p.sku || '(no sku)'} on supplier "${s.id}" from ${source} is missing "${k}".`);
         }
       }
-      if (!(Number(p.unitPrice) > 0)) {
-        throw fail(`Listing ${p.sku} on "${s.id}" has a unit price of ${p.unitPrice}.`);
+      /*
+       * One price, under either name.
+       *
+       * The engine bargains down from listUnitPrice; a directory is more likely
+       * to publish unitPrice. Requiring the engine's name would reject every
+       * realistic feed, and requiring the feed's name is what produced NaN
+       * prices, so both are accepted and normalise() reconciles them.
+       */
+      const price = p.listUnitPrice != null ? p.listUnitPrice : p.unitPrice;
+      if (price === undefined || price === null) {
+        throw fail(
+          `Listing ${p.sku || '(no sku)'} on supplier "${s.id}" from ${source} has no price. `
+          + 'Give it "unitPrice" or "listUnitPrice".'
+        );
+      }
+      if (!(Number(price) > 0)) {
+        throw fail(`Listing ${p.sku} on "${s.id}" has a unit price of ${price}.`);
+      }
+      if (!(Number(p.moqKg) >= 0) || !(Number(p.leadTimeDays) > 0)) {
+        throw fail(
+          `Listing ${p.sku} on "${s.id}" has moqKg ${p.moqKg} and leadTimeDays ${p.leadTimeDays}. `
+          + 'Both must be numbers, and a lead time must be at least one day.'
+        );
       }
     }
   }
@@ -115,19 +138,98 @@ function validate(raw, source) {
  * negotiation is simulated; this is the code that makes that statement true
  * rather than a disclaimer over a hidden assumption.
  */
-function withSimulatedFloor(supplier) {
-  if (supplier.private) return supplier;
-  const margin = Number(process.env.LIMEN_SIMULATED_FLOOR || 0.88);
+/*
+ * The counterparty's floor, and the rest of the shape the engine expects.
+ *
+ * This used to hang a `private` block off the SUPPLIER carrying a map of
+ * reservation prices. Nothing read it. negotiate.js reads the floor off each
+ * PRODUCT, as `product.private.floorUnitPrice`, along with four other
+ * behavioural fields, so every external feed died at the first negotiation
+ * with "Cannot read properties of undefined (reading 'floorUnitPrice')".
+ *
+ * Two more mismatches sat underneath that one. The validator accepts
+ * `unitPrice` while match.js reads `listUnitPrice`, so a conformant feed
+ * produced NaN prices. And `monthlyCapacityKg` was neither required nor
+ * defaulted, so match.js crashed on `undefined.toLocaleString()` before
+ * negotiation was even reached.
+ *
+ * None of it was caught because no test ever negotiated against a loaded feed.
+ * The seeded catalogue already has every field, so the whole adapter was
+ * exercised only by the one input shape that could not expose the gap.
+ *
+ * So this normalises rather than decorates: a feed goes in, and what comes out
+ * is the exact shape server/data/suppliers.js produces. The engine is not asked
+ * to tolerate anything.
+ */
+
+const DEFAULT_FLOOR = 0.88;
+
+/* What a simulated counterparty does when the feed does not say. Mirrors the
+   seeded catalogue's own values so a real feed and the demo behave alike. */
+const SIMULATED_BEHAVIOUR = {
+  concessionRate: 0.30,
+  minMarginPct: 0.02,
+  expediteMaxDays: 3,
+  expediteFeePct: 0.05,
+};
+
+function normaliseProduct(p, margin) {
+  /* A real directory publishes one price. The engine calls it listUnitPrice
+     because it bargains down from it; a feed is more likely to call it
+     unitPrice. Accept either, and carry both so nothing downstream is
+     surprised. */
+  const list = Number(p.listUnitPrice != null ? p.listUnitPrice : p.unitPrice);
+
   return {
-    ...supplier,
-    private: {
+    ...p,
+    listUnitPrice: list,
+    unitPrice: Number(p.unitPrice != null ? p.unitPrice : list),
+
+    /*
+     * Null where the feed is silent, never a flattering guess.
+     *
+     * A missing capacity is not infinite capacity and a missing quality score
+     * is not a good one. match.js reports these as not stated rather than
+     * checking them, which is the honest answer: the constraint was never
+     * verified, and a screen that implied otherwise would be worse than one
+     * that admits it.
+     */
+    grade: p.grade != null ? p.grade : null,
+    monthlyCapacityKg: p.monthlyCapacityKg != null ? Number(p.monthlyCapacityKg) : null,
+    qualityScore: p.qualityScore != null ? Number(p.qualityScore) : null,
+
+    /*
+     * The reservation price, per product, which is where negotiate.js reads it.
+     *
+     * Derived so the simulator has something to bargain with, and marked so
+     * nothing downstream can mistake it for a figure somebody published. A real
+     * directory will not carry a floor: that is the supplier's whole
+     * negotiating position and they do not publish it.
+     */
+    private: p.private || {
       simulated: true,
       floorMultiplier: margin,
-      reservationPrices: Object.fromEntries(
-        supplier.products.map((p) => [p.sku, +(p.unitPrice * margin).toFixed(4)])
-      ),
+      floorUnitPrice: +(list * margin).toFixed(4),
+      ...SIMULATED_BEHAVIOUR,
     },
-    products: supplier.products,
+  };
+}
+
+function withSimulatedFloor(supplier) {
+  const margin = Number(process.env.LIMEN_SIMULATED_FLOOR || DEFAULT_FLOOR);
+  return {
+    ...supplier,
+
+    /* Empty, not absent. match.js calls .includes() on this, so an absent list
+       crashed; and an empty one fails a required certification, which is the
+       safe direction to fail in. */
+    certifications: Array.isArray(supplier.certifications) ? supplier.certifications : [],
+    onTimeRate: supplier.onTimeRate != null ? Number(supplier.onTimeRate) : null,
+    priorDisputes: supplier.priorDisputes != null ? Number(supplier.priorDisputes) : 0,
+    yearsActive: supplier.yearsActive != null ? Number(supplier.yearsActive) : null,
+    city: supplier.city != null ? supplier.city : null,
+
+    products: supplier.products.map((p) => normaliseProduct(p, margin)),
   };
 }
 
