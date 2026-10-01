@@ -50,7 +50,7 @@ const A1 = {
     const supplier = ctx.addresses.registeredSupplier;
     try {
       const res = await ctx.escrow.asAgent.createDeal.staticCall(
-        ctx.addresses.buyer, supplier, over, deadline, ethers.id('A1-test'),
+        ctx.addresses.buyer, supplier, over, 1n, deadline, ethers.id('A1-test'),
       );
       return { verdict: 'BREACH', expected: 'ExceedsPerDealCap revert', observed: `call succeeded with result ${res}`, proof: 'no revert' };
     } catch (e) {
@@ -94,7 +94,7 @@ const A2 = {
     const supplier = ctx.addresses.registeredSupplier;
     try {
       await ctx.escrow.asAgent.createDeal.staticCall(
-        ctx.addresses.buyer, supplier, over, deadline, ethers.id('A2-test'),
+        ctx.addresses.buyer, supplier, over, 1n, deadline, ethers.id('A2-test'),
       );
       return {
         verdict: 'BREACH',
@@ -143,7 +143,7 @@ const A3 = {
     const supplier = ctx.addresses.registeredSupplier;
     try {
       await escrowAsRogue.createDeal.staticCall(
-        ctx.addresses.buyer, supplier, USDC(100), now + 10 * 86400, ethers.id('A3-rogue'),
+        ctx.addresses.buyer, supplier, USDC(100), 1n, now + 10 * 86400, ethers.id('A3-rogue'),
       );
       return { verdict: 'BREACH', expected: 'NotAuthorisedAgent revert', observed: 'call succeeded', proof: `rogue=${rogue.address}` };
     } catch (e) {
@@ -178,7 +178,7 @@ const A4 = {
     const escrowAddr = await ctx.escrow.asOwner.getAddress();
     await (await ctx.usdc.asBuyer.approve(escrowAddr, USDC(1000))).wait();
     await (await ctx.escrow.asAgent.createDeal(
-      ctx.addresses.buyer, supplier, USDC(100), now + 10 * 86400, ethers.id('A4-deal'),
+      ctx.addresses.buyer, supplier, USDC(100), 1n, now + 10 * 86400, ethers.id('A4-deal'),
     )).wait();
     const dealId = await ctx.escrow.asOwner.dealCount();
 

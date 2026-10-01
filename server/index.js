@@ -49,6 +49,25 @@ const USDC_UNIT = 1_000_000n; // 6 decimals
 const toUnits = (usd) => BigInt(Math.round(usd * 1e6));
 const fromUnits = (u) => Number(u) / 1e6;
 
+/*
+ * Quantity for the chain: whole kilograms.
+ *
+ * createDeal takes the quantity because the supplier's floor is per unit, and
+ * the contract does not represent fractions. Rounding is UP, not nearest: the
+ * quantity exists to protect the supplier, and rounding up raises the total the
+ * floor demands. Rounding down would hand a buyer a sliver of a discount the
+ * supplier never agreed to, which is a small number and exactly the wrong
+ * direction.
+ *
+ * Floor of one, because zero quantity reverts with ZeroQuantity and a sourcing
+ * run that produced a winner has, by definition, bought something.
+ */
+const toQty = (kg) => {
+  const n = Number(kg);
+  if (!Number.isFinite(n) || n <= 0) return 1n;
+  return BigInt(Math.ceil(n));
+};
+
 const app = express();
 app.use(cors());
 /*
@@ -865,6 +884,260 @@ app.post('/api/policy', wrap(async (req, res) => {
 }));
 
 /**
+ * The other half of the authority model: a supplier publishes the price it will
+ * not go below.
+ *
+ * Signed by the SUPPLIER's own key, not this server's and not the buyer's.
+ * setSellerPolicy keys on msg.sender, so the floor lands against the address
+ * that signed and against no other. That is the whole security argument, and it
+ * is the same one line that makes the buyer's ceiling unescalatable - which is
+ * the point of building the seller side into this contract rather than into a
+ * second system: the supplier gets the property the buyer already had, from the
+ * same mechanism, with no new trust in us.
+ *
+ * What a supplier gains: an agent acting for it - ours, theirs, or one that has
+ * been argued into a bad position - cannot accept below its number, and neither
+ * can the operator of this product.
+ *
+ * WHAT A SUPPLIER GIVES UP, stated plainly because it is a real cost and a
+ * buyer-side product would be tempted not to mention it: contract storage is
+ * public. On a public chain the floor is readable by every buyer on it. That is
+ * tolerable for a DECLARED minimum - the "we do not sell below this" figure
+ * suppliers already publish in price lists - and it is not tolerable for a
+ * supplier's true reservation price, which is what it would cost the supplier if
+ * every buyer opened negotiations knowing it.
+ *
+ * So the two numbers must not be the same number, and in this build they are
+ * not: `floorUnitPrice` in the supplier's private block is the cost line the
+ * negotiation engine protects and never discloses, and what is published here is
+ * a declared floor the supplier chooses. The default below is derived from the
+ * private figure only because seeded suppliers have not declared one, and the
+ * response says so rather than letting a demo imply that real suppliers would
+ * publish their costs. Keeping the enforceable floor secret needs a commitment
+ * scheme the EVM can still compare against; that is not built, and the README
+ * carries the gap rather than this comment pretending otherwise.
+ */
+app.post('/api/supplier/floor', wrap(async (req, res) => {
+  const session = sessionFor(req);
+  /*
+   * Guarded on 'read' for the same reason the shipment simulation is: publishing
+   * a supplier's floor is not a step any Limen desk is entitled to take. It is
+   * the supplier's act, performed here only because the counterparties in this
+   * build are simulated and their keys are in this process.
+   */
+  guard(req, session, 'read');
+
+  const supplierId = String(req.body.supplierId || '');
+  const supplier = supplierId
+    ? findSupplier(supplierId)
+    : (session.recommendation && session.recommendation.winner
+      && findSupplier(session.recommendation.winner.supplierId));
+  if (!supplier) throw new Error('Name a supplier, or run a sourcing job first.');
+
+  const sku = String(req.body.sku || '')
+    || (session.recommendation && session.recommendation.winner
+      && session.recommendation.winner.sku)
+    || (supplier.products[0] && supplier.products[0].sku);
+  const product = supplier.products.find((p) => p.sku === sku);
+  if (!product) throw new Error(`Supplier ${supplier.id} does not list ${sku}.`);
+
+  const signer = chain.supplierSignerFor(supplier.walletIndex);
+  if (!signer) {
+    throw new Error(
+      'Supplier keys are not held by this server on a public network, which is correct. '
+      + 'On a public deployment the supplier publishes its own floor from its own wallet.'
+    );
+  }
+
+  const priv = product.private || {};
+  if (priv.floorUnitPrice == null && req.body.floorUnitPrice == null) {
+    // Fails closed. Inventing a floor for a supplier that has not stated one
+    // would put a number the supplier never chose into a slot only it can move.
+    throw new Error(
+      `No floor is stated for ${supplier.id}/${sku}, and this route will not invent one. `
+      + 'Pass floorUnitPrice, or add it to the supplier feed.'
+    );
+  }
+  const declared = req.body.floorUnitPrice == null
+    ? Number(priv.floorUnitPrice)
+    : Number(req.body.floorUnitPrice);
+  if (!Number.isFinite(declared) || declared <= 0) throw new Error('floorUnitPrice must be a positive number.');
+
+  /*
+   * Capacity in whole kilograms. monthlyCapacityKg is null for suppliers that
+   * did not state it - the Phase 1 change made that honest instead of guessing -
+   * so there is nothing to derive a cumulative cap from, and the body has to say.
+   */
+  const perDeal = Math.ceil(Number(req.body.maxPerDealKg || product.moqKg * 100 || 50_000));
+  const stated = product.monthlyCapacityKg != null ? Number(product.monthlyCapacityKg) : null;
+  const total = Math.ceil(Number(req.body.maxTotalKg || stated || perDeal * 10));
+  const days = Math.min(365, Math.max(1, Number(req.body.days || 30)));
+  const block = await chain.provider.getBlock('latest');
+  const expiry = block.timestamp + days * 86400;
+
+  const escrow = chain.contractAt('ProcurementEscrow', addresses.escrow, signer);
+  let tx;
+  try {
+    tx = await escrow.setSellerPolicy(toUnits(declared), BigInt(perDeal), BigInt(Math.max(total, perDeal)), expiry);
+  } catch (e) {
+    const reason = chain.explainRevert(e);
+    if (!reason) throw e;
+    throw new Error(reason);
+  }
+  const rc = await tx.wait();
+
+  const wallet = await chain.supplierAddressFor(supplier.id, supplier.walletIndex);
+  await audit(req, 'publish-seller-floor', null, {
+    supplierId: supplier.id, sku, floorUnitPrice: declared, txHash: rc.hash,
+  });
+
+  res.json({
+    txHash: rc.hash, blockNumber: rc.blockNumber, gasUsed: rc.gasUsed.toString(),
+    supplierId: supplier.id, supplierName: supplier.name, sku,
+    supplierWallet: wallet,
+    signedBy: wallet,
+    floorUnitPrice: declared,
+    maxPerDealKg: perDeal,
+    maxTotalKg: Math.max(total, perDeal),
+    expiry,
+    enforcedBy: 'ProcurementEscrow.createDeal',
+    keyedOn: 'msg.sender',
+    note: req.body.floorUnitPrice == null
+      ? 'Defaulted to the seeded supplier\'s internal cost line because no declared floor exists in the feed. '
+        + 'A real supplier publishes a declared minimum, not its cost: contract storage is public.'
+      : 'Declared by the supplier for this run.',
+  });
+}));
+
+/**
+ * The seller-side mirror of /api/attack/over-limit.
+ *
+ * Over-limit shows that the buyer's agent cannot spend above the ceiling the
+ * buyer set. This shows that it cannot buy below the floor the supplier set, in
+ * the same function, on the same transaction, with neither agent able to reach
+ * the state that bounds it. Taken together they are the only claim in this
+ * product that no competitor can currently make, so the demonstration has to be
+ * a real reverted transaction rather than a screenshot.
+ *
+ * Like over-limit, the attempt is forced under the floor before it is sent. A
+ * demonstration route that could accidentally succeed would be a funding route
+ * with a different name, which is the bug that had to be fixed in over-limit.
+ */
+app.post('/api/attack/sell-below-floor', wrap(async (req, res) => {
+  const session = sessionFor(req);
+  guard(req, session, 'read');
+  const rec = session.recommendation;
+  if (!rec || rec.status !== 'recommended') throw new Error('Run a sourcing job first.');
+
+  const w = rec.winner;
+  /*
+   * The winner by default, but any supplier by name.
+   *
+   * Not a convenience. A buyer's ceiling is per workspace, because each
+   * workspace has its own buyer key. A supplier's floor is NOT: it is keyed on
+   * the supplier's wallet, and a supplier has one wallet across the whole
+   * venue. So a floor published in one workspace is in force in every
+   * workspace, which is correct - it is the supplier's number, not this
+   * workspace's view of it - and it means "no floor published" is a state that
+   * can only be demonstrated against a supplier nobody has published for.
+   */
+  const named = req.body.supplierId ? findSupplier(String(req.body.supplierId)) : null;
+  if (req.body.supplierId && !named) throw new Error(`Unknown supplier ${req.body.supplierId}.`);
+  const supplierId = named ? named.id : w.supplierId;
+  const supplierWallet = supplierWallets[supplierId];
+  if (!supplierWallet) throw new Error(`No on-chain wallet for ${supplierId}.`);
+  const floorUnits = await chain.escrow.floorPrice(supplierWallet);
+  if (floorUnits === 0n) {
+    throw new Error(
+      'This supplier has not published a floor, so there is nothing for the contract to refuse. '
+      + 'Publish one with /api/supplier/floor first - and note that the absence of a floor is '
+      + 'not a loophole, it is a supplier that has not opted in.'
+    );
+  }
+
+  const { buyer, policy } = await buyerContext(session);
+  if (!policy.active) throw new Error('No spending policy published yet.');
+
+  const qty = toQty(w.quantityKg);
+  const floorTotal = floorUnits * qty;                       // the minimum the contract will take
+  const askedPct = Number(req.body.discountPct);
+  const discountPct = Number.isFinite(askedPct) && askedPct > 0 && askedPct < 100 ? askedPct : 20;
+  let attemptUnits = floorTotal * BigInt(Math.round((100 - discountPct) * 100)) / 10_000n;
+  // Forced under the floor whatever was asked for, and by at least one token
+  // unit, so this route can only ever produce a revert.
+  if (attemptUnits >= floorTotal) attemptUnits = floorTotal - 1n;
+  if (attemptUnits <= 0n) attemptUnits = 1n;
+
+  const dealsBefore = Number(await chain.escrow.dealCount());
+  const committedBefore = (await chain.escrow.sellerPolicies(supplierWallet)).committed;
+
+  const block = await chain.provider.getBlock('latest');
+  const deadline = block.timestamp + w.leadTimeDays * 86400;
+  const escrow = chain.contractAt('ProcurementEscrow', addresses.escrow, chain.agent);
+
+  let rejected = false, errorName = null, errorArgs = null, failedTxHash = null, explanation = null;
+
+  // (a) The real function body against real state, returning the decoded error.
+  try {
+    await escrow.createDeal.staticCall(
+      buyer.address, supplierWallet, attemptUnits, qty, deadline, ethers.id('below-floor-attempt'));
+  } catch (e) {
+    rejected = true;
+    errorName = e.revert ? e.revert.name : (e.shortMessage || 'reverted');
+    if (e.revert && e.revert.name === 'BelowSellerFloor') {
+      errorArgs = {
+        offeredUnitPrice: fromUnits(e.revert.args[0]),
+        minUnitPrice: fromUnits(e.revert.args[1]),
+        quantityKg: Number(e.revert.args[2]),
+      };
+    }
+    explanation = chain.explainRevert(e);
+  }
+
+  // (b) Broadcast it anyway, bypassing estimation, so there is a mined
+  //     transaction with status 0 that anybody can look up.
+  try {
+    const tx = await escrow.createDeal(
+      buyer.address, supplierWallet, attemptUnits, qty, deadline,
+      ethers.id('below-floor-attempt'), { gasLimit: 300000 });
+    failedTxHash = tx.hash;
+    await tx.wait();
+  } catch (e) {
+    rejected = true;
+    if (e.receipt) failedTxHash = e.receipt.hash;
+    else if (e.transaction && e.transaction.hash) failedTxHash = e.transaction.hash;
+  }
+
+  const dealsAfter = Number(await chain.escrow.dealCount());
+  const committedAfter = (await chain.escrow.sellerPolicies(supplierWallet)).committed;
+
+  res.json({
+    rejected,
+    supplierId,
+    supplierName: named ? named.name : w.name,
+    supplierWallet,
+    quantityKg: Number(qty),
+    floorUnitPrice: fromUnits(floorUnits),
+    floorTotal: fromUnits(floorTotal),
+    attemptedTotal: fromUnits(attemptUnits),
+    attemptedUnitPrice: fromUnits(attemptUnits / qty),
+    discountPct,
+    errorName,
+    errorArgs,
+    explanation,
+    failedTxHash,
+    stateUnchanged: dealsBefore === dealsAfter && committedBefore === committedAfter,
+    dealsBefore, dealsAfter,
+    enforcedBy: 'ProcurementEscrow.createDeal',
+    attemptedBy: chain.agentAddress,
+    whoCanMoveTheFloor:
+      'Only the supplier\'s own wallet. setSellerPolicy keys on msg.sender, so the buyer\'s agent, '
+      + 'the supplier\'s selling agent and the operator of this product all write their own policy '
+      + 'when they call it, never the supplier\'s. There is no owner or admin path to that slot.',
+  });
+}));
+
+/**
  * Commit the buyer's funds to escrow.
  *
  * The checkpoint is enforced here rather than in the browser, and the document
@@ -910,7 +1183,8 @@ async function fundEscrow(session) {
    */
   let tx;
   try {
-    tx = await escrow.createDeal(buyer.address, supplierWallet, toUnits(w.total), deadline, onChainTermsHash);
+    tx = await escrow.createDeal(
+      buyer.address, supplierWallet, toUnits(w.total), toQty(w.quantityKg), deadline, onChainTermsHash);
   } catch (e) {
     const reason = chain.explainRevert(e);
     if (!reason) throw e;
@@ -992,7 +1266,8 @@ app.post('/api/deal/attempt-over-limit', wrap(async (req, res) => {
   // (a) Ask the deployed contract directly. This executes the real function body
   //     against real state and returns the decoded custom error.
   try {
-    await escrow.createDeal.staticCall(buyer.address, supplierWallet, toUnits(amount), deadline, ethers.id('over-limit-attempt'));
+    await escrow.createDeal.staticCall(
+      buyer.address, supplierWallet, toUnits(amount), toQty(w.quantityKg), deadline, ethers.id('over-limit-attempt'));
   } catch (e) {
     rejected = true;
     errorName = e.revert ? e.revert.name : (e.shortMessage || 'reverted');
@@ -1004,7 +1279,9 @@ app.post('/api/deal/attempt-over-limit', wrap(async (req, res) => {
   // (b) Broadcast it for real, bypassing gas estimation, so there is an actual
   //     mined transaction with status 0 on the chain.
   try {
-    const tx = await escrow.createDeal(buyer.address, supplierWallet, toUnits(amount), deadline, ethers.id('over-limit-attempt'), { gasLimit: 300000 });
+    const tx = await escrow.createDeal(
+      buyer.address, supplierWallet, toUnits(amount), toQty(w.quantityKg), deadline,
+      ethers.id('over-limit-attempt'), { gasLimit: 300000 });
     failedTxHash = tx.hash;
     await tx.wait();
   } catch (e) {
@@ -1064,8 +1341,18 @@ app.post('/api/attack/raise-own-cap', wrap(async (req, res) => {
   const deadline = block.timestamp + w.leadTimeDays * 86400;
   let spendRejected = false, errorName = null;
   try {
+    /*
+     * Quantity is deliberately one unit here, not the winner's real tonnage.
+     *
+     * This attempt is about the buyer's ceiling and nothing else, and a large
+     * quantity against a small amount would trip the SUPPLIER's floor first -
+     * a correct refusal for the wrong reason, which would make the escalation
+     * demonstration read as a pricing problem. One unit at $5,000 clears every
+     * floor any supplier would publish, so the only thing left to refuse it is
+     * the buyer's policy, which is the claim being tested.
+     */
     await escrowAsAgent.createDeal.staticCall(
-      buyer.address, supplierWallet, toUnits(5000), deadline, ethers.id('escalation-attempt'));
+      buyer.address, supplierWallet, toUnits(5000), 1n, deadline, ethers.id('escalation-attempt'));
   } catch (e) {
     spendRejected = true;
     errorName = e.revert ? e.revert.name : (e.shortMessage || 'reverted');

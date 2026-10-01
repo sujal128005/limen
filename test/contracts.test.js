@@ -6,6 +6,18 @@ const { test, group, eq, ok, gt, reverts } = require('./harness');
 const USDC = (n) => BigInt(Math.round(n * 1e6));
 const DAY = 86400;
 
+/*
+ * A stand-in quantity for the deals in this file.
+ *
+ * createDeal now carries the quantity, because the supplier's floor is per
+ * unit. None of the tests below publish a seller policy, so the seller block in
+ * createDeal is skipped entirely and the number itself is inert here - it is a
+ * named constant rather than a bare 1000n so that nobody reads it as a
+ * meaningful part of the assertion. The floor tests live in their own group
+ * further down and state their quantities explicitly.
+ */
+const QTY = 1000n;
+
 async function run() {
   group('Smart contracts');
 
@@ -62,7 +74,7 @@ async function run() {
   });
 
   await test('deal creation is blocked when no agent policy exists', async () => {
-    await reverts(escrowAsAgent.createDeal.staticCall(buyerAddr, supplierAddr, USDC(1000), (await now()) + 10 * DAY, ethers.id('t')),
+    await reverts(escrowAsAgent.createDeal.staticCall(buyerAddr, supplierAddr, USDC(1000), QTY, (await now()) + 10 * DAY, ethers.id('t')),
       'PolicyInactive'
     );
   });
@@ -77,14 +89,14 @@ async function run() {
   });
 
   await test('POLICY: a single deal above the per-deal cap is rejected on-chain', async () => {
-    await reverts(escrowAsAgent.createDeal.staticCall(buyerAddr, supplierAddr, USDC(5001), (await now()) + 10 * DAY, ethers.id('t')),
+    await reverts(escrowAsAgent.createDeal.staticCall(buyerAddr, supplierAddr, USDC(5001), QTY, (await now()) + 10 * DAY, ethers.id('t')),
       'ExceedsPerDealCap'
     );
   });
 
   await test('unregistered suppliers cannot receive escrow', async () => {
     const stranger = await chain.supplierSigners[5].getAddress();
-    await reverts(escrowAsAgent.createDeal.staticCall(buyerAddr, stranger, USDC(100), (await now()) + 10 * DAY, ethers.id('t')),
+    await reverts(escrowAsAgent.createDeal.staticCall(buyerAddr, stranger, USDC(100), QTY, (await now()) + 10 * DAY, ethers.id('t')),
       'SupplierNotRegistered'
     );
   });
@@ -94,7 +106,7 @@ async function run() {
     await (await usdcAsBuyer.approve(escrowAddr, USDC(50000))).wait();
     const before = await chain.usdc.balanceOf(buyerAddr);
     const deadline = (await now()) + 12 * DAY;
-    const rc = await (await escrowAsAgent.createDeal(buyerAddr, supplierAddr, USDC(1190), deadline, ethers.id('terms-1'))).wait();
+    const rc = await (await escrowAsAgent.createDeal(buyerAddr, supplierAddr, USDC(1190), QTY, deadline, ethers.id('terms-1'))).wait();
     dealId = 1n;
     const after = await chain.usdc.balanceOf(buyerAddr);
     eq(before - after, USDC(1190), 'buyer debited');
@@ -168,7 +180,7 @@ async function run() {
 
   await test('late delivery earns materially less reputation than on-time', async () => {
     const deadline = (await now()) + 2 * DAY;
-    await (await escrowAsAgent.createDeal(buyerAddr, supplier2, USDC(1000), deadline, ethers.id('terms-late'))).wait();
+    await (await escrowAsAgent.createDeal(buyerAddr, supplier2, USDC(1000), QTY, deadline, ethers.id('terms-late'))).wait();
     const id = await chain.escrow.dealCount();
     await warp(4 * DAY); // blow through the agreed window
     await ship(id, chain.supplierSigners[1], 'awb-late');
@@ -184,7 +196,7 @@ async function run() {
 
   await test('expired undelivered deal refunds the buyer and penalises the supplier', async () => {
     const deadline = (await now()) + 2 * DAY;
-    await (await escrowAsAgent.createDeal(buyerAddr, supplierAddr, USDC(800), deadline, ethers.id('terms-fail'))).wait();
+    await (await escrowAsAgent.createDeal(buyerAddr, supplierAddr, USDC(800), QTY, deadline, ethers.id('terms-fail'))).wait();
     const id = await chain.escrow.dealCount();
     await warp(3 * DAY);
     const balBefore = await chain.usdc.balanceOf(buyerAddr);
@@ -207,12 +219,12 @@ async function run() {
     // cap is 20000 total; 2190 committed. A 5000 deal is fine, but not five of them.
     const deadline = (await now()) + 20 * DAY;
     for (let i = 0; i < 3; i++) {
-      await (await escrowAsAgent.createDeal(buyerAddr, supplierAddr, USDC(5000), deadline, ethers.id('bulk' + i))).wait();
+      await (await escrowAsAgent.createDeal(buyerAddr, supplierAddr, USDC(5000), QTY, deadline, ethers.id('bulk' + i))).wait();
     }
     // 2190 + 15000 = 17190 committed, 2810 headroom left
     const remaining = await chain.escrow.remainingAllowance(buyerAddr);
     eq(remaining, USDC(2810), 'remaining allowance');
-    await reverts(escrowAsAgent.createDeal.staticCall(buyerAddr, supplierAddr, USDC(5000), deadline, ethers.id('over')),
+    await reverts(escrowAsAgent.createDeal.staticCall(buyerAddr, supplierAddr, USDC(5000), QTY, deadline, ethers.id('over')),
       'ExceedsTotalCap'
     );
   });
@@ -226,7 +238,7 @@ async function run() {
     await (await usdcAsShort.approve(escrowAddr, USDC(10000))).wait();
     await (await escrowAsShort.setAgentPolicy(agentAddr, USDC(5000), USDC(9000), (await now()) + 2 * DAY)).wait();
     await warp(3 * DAY);
-    await reverts(escrowAsAgent.createDeal.staticCall(shortAddr, supplierAddr, USDC(100), (await now()) + 10 * DAY, ethers.id('x')),
+    await reverts(escrowAsAgent.createDeal.staticCall(shortAddr, supplierAddr, USDC(100), QTY, (await now()) + 10 * DAY, ethers.id('x')),
       'PolicyExpired'
     );
     eq(await chain.escrow.remainingAllowance(shortAddr), 0n, 'expired policy has no allowance');
@@ -249,7 +261,7 @@ async function run() {
   await test('SEPARATION: a stranger cannot spend under the buyer policy', async () => {
     const impostor = chain.contractAt('ProcurementEscrow', escrowAddr, chain.supplierSigners[3]);
     await reverts(
-      impostor.createDeal.staticCall(buyerAddr, supplierAddr, USDC(100), (await now()) + 10 * DAY, ethers.id('x')),
+      impostor.createDeal.staticCall(buyerAddr, supplierAddr, USDC(100), QTY, (await now()) + 10 * DAY, ethers.id('x')),
       'NotAuthorisedAgent'
     );
   });
@@ -268,7 +280,7 @@ async function run() {
   await test('SEPARATION: the inflated self-policy buys the agent nothing', async () => {
     // Still spending against the buyer's funds, so the buyer's cap still governs.
     await reverts(
-      escrowAsAgent.createDeal.staticCall(buyerAddr, supplierAddr, USDC(50000), (await now()) + 10 * DAY, ethers.id('esc')),
+      escrowAsAgent.createDeal.staticCall(buyerAddr, supplierAddr, USDC(50000), QTY, (await now()) + 10 * DAY, ethers.id('esc')),
       'ExceedsPerDealCap'
     );
   });
@@ -299,7 +311,7 @@ async function run() {
     // A different agent, authorised by nobody, targets the victim's policy.
     const escrowAsRogue = chain.contractAt('ProcurementEscrow', escrowAddr, rogueAgent);
     await reverts(
-      escrowAsRogue.createDeal.staticCall(victimAddr, supplierAddr, USDC(100), (await now()) + 5 * DAY, ethers.id('cross')),
+      escrowAsRogue.createDeal.staticCall(victimAddr, supplierAddr, USDC(100), QTY, (await now()) + 5 * DAY, ethers.id('cross')),
       'NotAuthorisedAgent'
     );
   });
@@ -311,7 +323,7 @@ async function run() {
     // Stranger re-points their policy at someone else entirely.
     await (await e.setAgentPolicy(await chain.supplierSigners[5].getAddress(), USDC(3000), USDC(9000), (await now()) + 10 * DAY)).wait();
     await reverts(
-      escrowAsAgent.createDeal.staticCall(strangerAddr, supplierAddr, USDC(100), (await now()) + 5 * DAY, ethers.id('x')),
+      escrowAsAgent.createDeal.staticCall(strangerAddr, supplierAddr, USDC(100), QTY, (await now()) + 5 * DAY, ethers.id('x')),
       'NotAuthorisedAgent'
     );
   });
@@ -326,12 +338,12 @@ async function run() {
 
     await (await e.setAgentPolicy(agentAddr, USDC(2000), USDC(8000), (await now()) + 10 * DAY)).wait();
     // works today
-    await escrowAsAgent.createDeal.staticCall(bAddr, supplierAddr, USDC(100), (await now()) + 5 * DAY, ethers.id('ok'));
+    await escrowAsAgent.createDeal.staticCall(bAddr, supplierAddr, USDC(100), QTY, (await now()) + 5 * DAY, ethers.id('ok'));
     // buyer swaps the agent out
     const newAgent = await chain.supplierSigners[5].getAddress();
     await (await e.setAgentPolicy(newAgent, USDC(2000), USDC(8000), (await now()) + 10 * DAY)).wait();
     await reverts(
-      escrowAsAgent.createDeal.staticCall(bAddr, supplierAddr, USDC(100), (await now()) + 5 * DAY, ethers.id('stale')),
+      escrowAsAgent.createDeal.staticCall(bAddr, supplierAddr, USDC(100), QTY, (await now()) + 5 * DAY, ethers.id('stale')),
       'NotAuthorisedAgent'
     );
   });
@@ -354,10 +366,10 @@ async function run() {
     const bAddr = await b.getAddress();
     const e = chain.contractAt('ProcurementEscrow', escrowAddr, b);
     await (await e.setAgentPolicy(agentAddr, USDC(5000), USDC(9000), (await now()) + 10 * DAY)).wait();
-    await escrowAsAgent.createDeal.staticCall(bAddr, supplierAddr, USDC(4000), (await now()) + 5 * DAY, ethers.id('big'));
+    await escrowAsAgent.createDeal.staticCall(bAddr, supplierAddr, USDC(4000), QTY, (await now()) + 5 * DAY, ethers.id('big'));
     await (await e.setAgentPolicy(agentAddr, USDC(500), USDC(9000), (await now()) + 10 * DAY)).wait();
     await reverts(
-      escrowAsAgent.createDeal.staticCall(bAddr, supplierAddr, USDC(4000), (await now()) + 5 * DAY, ethers.id('big2')),
+      escrowAsAgent.createDeal.staticCall(bAddr, supplierAddr, USDC(4000), QTY, (await now()) + 5 * DAY, ethers.id('big2')),
       'ExceedsPerDealCap'
     );
   });
@@ -367,7 +379,7 @@ async function run() {
     const bAddr = await b.getAddress();
     const e = chain.contractAt('ProcurementEscrow', escrowAddr, b);
     await (await e.setAgentPolicy(agentAddr, USDC(2000), USDC(9000), (await now()) + 10 * DAY)).wait();
-    await (await escrowAsAgent.createDeal(bAddr, supplierAddr, USDC(300), (await now()) + 5 * DAY, ethers.id('live'))).wait();
+    await (await escrowAsAgent.createDeal(bAddr, supplierAddr, USDC(300), QTY, (await now()) + 5 * DAY, ethers.id('live'))).wait();
     const id = await chain.escrow.dealCount();
     await (await e.revokeAgentPolicy()).wait(); // buyer pulls the agent's authority
 
@@ -380,7 +392,7 @@ async function run() {
     eq(after - before, USDC(300), 'existing escrow still settles');
     // but the agent can no longer open new ones
     await reverts(
-      escrowAsAgent.createDeal.staticCall(bAddr, supplierAddr, USDC(100), (await now()) + 5 * DAY, ethers.id('after')),
+      escrowAsAgent.createDeal.staticCall(bAddr, supplierAddr, USDC(100), QTY, (await now()) + 5 * DAY, ethers.id('after')),
       'PolicyInactive'
     );
   });
@@ -390,7 +402,7 @@ async function run() {
     const bAddr = await b.getAddress();
     const e = chain.contractAt('ProcurementEscrow', escrowAddr, b);
     await (await e.setAgentPolicy(agentAddr, USDC(2000), USDC(9000), (await now()) + 10 * DAY)).wait();
-    await (await escrowAsAgent.createDeal(bAddr, supplierAddr, USDC(200), (await now()) + 5 * DAY, ethers.id('dup'))).wait();
+    await (await escrowAsAgent.createDeal(bAddr, supplierAddr, USDC(200), QTY, (await now()) + 5 * DAY, ethers.id('dup'))).wait();
     const id = await chain.escrow.dealCount();
     await ship(id, supplierSigner, 'awb-dup');
     await (await e.confirmDelivery(id)).wait();
@@ -404,9 +416,9 @@ async function run() {
 
   await test('RT: zero-amount and past-deadline deals are rejected', async () => {
     await reverts(
-      escrowAsAgent.createDeal.staticCall(buyerAddr, supplierAddr, 0n, (await now()) + DAY, ethers.id('z')), 'ZeroAmount');
+      escrowAsAgent.createDeal.staticCall(buyerAddr, supplierAddr, 0n, QTY, (await now()) + DAY, ethers.id('z')), 'ZeroAmount');
     await reverts(
-      escrowAsAgent.createDeal.staticCall(buyerAddr, supplierAddr, USDC(10), (await now()) - 1, ethers.id('p')), 'DeadlineInPast');
+      escrowAsAgent.createDeal.staticCall(buyerAddr, supplierAddr, USDC(10), QTY, (await now()) - 1, ethers.id('p')), 'DeadlineInPast');
   });
 
   await test('RT: reputation cannot be written without a settlement', async () => {
