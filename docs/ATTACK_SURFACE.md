@@ -39,6 +39,42 @@
 | A-REENTRANCY | `ProcurementEscrow` `lock` modifier | Solidity custom error `Reentrancy()` | Smart contract | Yes | — |
 | A-SELF-POLICY | `ProcurementEscrow.setAgentPolicy` — keyed on `msg.sender` | Structural: writing a policy creates a record owned by the writer, not by the victim buyer | Smart contract | Yes — structural rather than a revert | `contracts.test.js` ("SEPARATION: the agent cannot widen the buyer mandate") |
 
+### A′. The seller's half of the same authority
+
+The rows above bound the buyer's agent from above. These bound every caller from
+below, on behalf of a supplier that has not signed the transaction and is not a
+party to it. Both sets are checked in one `createDeal` call, so a deal exists
+only inside the band both sides authorised.
+
+One asymmetry worth holding onto: a buyer's ceiling is per workspace, because
+each workspace holds its own buyer key, while a supplier's floor is keyed on the
+supplier's wallet and a supplier has one wallet across the venue. A floor
+published anywhere is therefore in force everywhere, which is correct and is
+asserted in `roles.test.js`.
+
+| Boundary ID | File / Function | Refusal mechanism | Trust boundary | Untrusted? | Tests |
+|---|---|---|---|---|---|
+| A-FLOOR | `ProcurementEscrow.createDeal` line 357 | Solidity custom error `BelowSellerFloor(offeredUnitPrice, minUnitPrice, quantity)` | Smart contract | Yes | `seller-floor.test.js`, `roles.test.js` |
+| A-SELLER-PER-DEAL | `ProcurementEscrow.createDeal` line 354 | Solidity custom error `ExceedsSellerPerDealCap(requested, cap)` | Smart contract | Yes | `seller-floor.test.js` |
+| A-SELLER-CAPACITY | `ProcurementEscrow.createDeal` line 356 | Solidity custom error `ExceedsSellerCapacity(requested, remaining)` | Smart contract | Yes | `seller-floor.test.js` |
+| A-SELLER-EXPIRED | `ProcurementEscrow.createDeal` line 353 | Solidity custom error `SellerPolicyExpired()` | Smart contract | Yes | `seller-floor.test.js` |
+| A-ZERO-QTY | `ProcurementEscrow.createDeal` line 316 | Solidity custom error `ZeroQuantity()` | Smart contract | Yes | `seller-floor.test.js` |
+| A-SELLER-SELF-POLICY | `ProcurementEscrow.setSellerPolicy` line 222 — keyed on `msg.sender` | Structural: the buyer's agent, the supplier's own selling agent and the operator all write their own policy when they call it, never the supplier's. No owner or admin path to that slot. | Smart contract | Yes — structural rather than a revert | `seller-floor.test.js` ("ESCALATION: the buyer's agent cannot lower a supplier's floor", "no third party can lower a supplier's floor either") |
+| A-FLOOR-BOUNDS | `ProcurementEscrow.setSellerPolicy` lines 223–235 | `require` strings: zero price, bad caps, expiry in past, price/quantity too large | Smart contract | Yes | `seller-floor.test.js` |
+
+**Known limitation, not a finding.** The floor is opt-in: a supplier with no
+active policy has no floor enforced and a deal at any price is accepted against
+it. Suppliers already trading under the contract are not retroactively
+protected. This is asserted explicitly in `seller-floor.test.js` so that nobody
+reads the absence of a refusal as a bypass.
+
+**Known limitation, not a finding.** Contract storage is public, so a published
+floor is readable by every buyer on the chain. That is acceptable for a
+*declared* minimum and unacceptable for a supplier's true reservation price,
+which the negotiation engine keeps private and never writes on chain. Keeping an
+*enforceable* floor secret needs a commitment scheme the EVM can still compare
+against; it is not built.
+
 ## B. SupplierRegistry.sol
 
 | Boundary ID | File / Function | Refusal mechanism | Trust boundary | Untrusted? | Tests |

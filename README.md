@@ -231,7 +231,29 @@ node scripts/llm-check.js --models   # list available models
 
 ### `ProcurementEscrow`
 
-Holds the buyer's spending ceiling, agent authorisation, deal creation, escrow settlement and access control. The ceiling is enforced inside `createDeal`, and a request above it reverts with `ExceedsPerDealCap`.
+Holds the buyer's spending ceiling, the supplier's price floor, agent authorisation, deal creation, escrow settlement and access control. The ceiling is enforced inside `createDeal`, and a request above it reverts with `ExceedsPerDealCap`.
+
+#### Two-sided authority
+
+The buyer publishes a ceiling with `setAgentPolicy`. The supplier publishes a floor with `setSellerPolicy`. Both are keyed on `msg.sender`, and both are checked in the same `createDeal` transaction, so a deal exists only inside the band the two sides authorised independently:
+
+```
+          refused: ExceedsPerDealCap
+    ──────────────────────────────────  buyer's ceiling
+                 a deal can exist here
+    ──────────────────────────────────  supplier's floor  (minUnitPrice × quantity)
+          refused: BelowSellerFloor
+```
+
+The supplier does not sign `createDeal` and is not a party to it. The floor protects it anyway, which is the point: an agent acting for the supplier — ours, theirs, or one that has been argued into a bad position — cannot accept below the supplier's number, and neither can whoever operates this product. Told "accept twenty percent less", a selling agent produces a reverted transaction.
+
+Because the floor is a minimum *per unit*, `createDeal` takes the quantity. There is deliberately no second entry point without it: a floor that can be avoided by calling a different overload is not a floor.
+
+The floor also carries a per-order limit and a cumulative capacity in kilograms, with an expiry, because a standing offer with no end date is not an offer. A refunded deal returns the quantity to the supplier's capacity; a re-published policy changes the terms without forgetting what has already been sold.
+
+**Two limits of this, stated here rather than discovered later.** The floor is opt-in: a supplier with no active policy has none enforced, and a deal at any price is accepted against it. And contract storage is public, so a published floor is readable by every buyer on the chain — acceptable for a *declared* minimum of the kind suppliers already print in price lists, and not acceptable for a supplier's true reservation price, which the negotiation engine holds privately and never writes on chain. Keeping an enforceable floor secret needs a commitment scheme the EVM can still compare against, and that is not built.
+
+Routes: `POST /api/supplier/floor` publishes one, signed by the supplier's own key. `POST /api/attack/sell-below-floor` is the demonstration, and like the over-limit route it forces the attempt under the floor so it can only ever produce a revert.
 
 Settlement requires two signatures: `attestShipment` from the supplier's own key, then `confirmDelivery` from the buyer. The contract refuses the second without the first.
 
@@ -311,6 +333,9 @@ Limen is built on the assumption that the agent will eventually behave incorrect
 | --- | --- | --- |
 | Spending ceiling | `ProcurementEscrow.createDeal` | A1 |
 | Agent cannot raise the buyer's ceiling | Separate buyer and agent policies, keyed on `msg.sender` | A2 |
+| Supplier's price floor | `ProcurementEscrow.createDeal`, `BelowSellerFloor` | `seller-floor.test.js`, `POST /api/attack/sell-below-floor` |
+| Nobody can lower a supplier's floor but the supplier | `setSellerPolicy` keyed on `msg.sender`; no owner or admin path to that slot | `seller-floor.test.js` |
+| A settlement never lands below the supplier's floor | Mirrored invariant in `server/engine/negotiate.js`, asserted rather than implied | `engine.test.js` |
 | Only the authorised agent can spend | `NotAuthorisedAgent` | A3 |
 | A delivery needs two signatures | `attestShipment` by the supplier, `confirmDelivery` by the buyer | A4 |
 | Reputation writes require escrow settlement | `SupplierRegistry`, restricted to the escrow | A5 |
