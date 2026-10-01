@@ -255,6 +255,15 @@ The floor also carries a per-order limit and a cumulative capacity in kilograms,
 
 Routes: `POST /api/supplier/floor` publishes one, signed by the supplier's own key. `POST /api/attack/sell-below-floor` is the demonstration, and like the over-limit route it forces the attempt under the floor so it can only ever produce a revert.
 
+#### Seeing it
+
+```bash
+npm start            # one terminal
+npm run demo:floor   # another
+```
+
+`demo:floor` runs a real sourcing job, publishes both limits, then tries to cheat twice — the buyer agent above its ceiling, the seller agent below its floor — and prints the two reverted transaction hashes. It asserts as it goes and exits non-zero if either refusal does not happen, so it is also a smoke test for the demo itself.
+
 Settlement requires two signatures: `attestShipment` from the supplier's own key, then `confirmDelivery` from the buyer. The contract refuses the second without the first.
 
 The Adversary Console's A-class attacks call this contract directly — including trying to raise the agent's own policy first — and capture the decoded revert as proof.

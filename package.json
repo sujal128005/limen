@@ -17,7 +17,8 @@
     "verify:tier4": "node scripts/verify-tier4.js",
     "check:razorpay": "node scripts/check-razorpay.js",
     "build:docs": "node scripts/build-docs.js",
-    "adversary": "node scripts/adversary.js"
+    "adversary": "node scripts/adversary.js",
+    "demo:floor": "node scripts/floor-demo.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
