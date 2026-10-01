@@ -152,6 +152,48 @@ function negotiate(candidate, brief, opts = {}) {
     };
   }
 
+  /*
+   * The mirror of the ceiling assertion above, and the reason it is here rather
+   * than left to the acceptance conditions that already imply it.
+   *
+   * Line 94 asserts the agent never offers above the buyer's authorised
+   * ceiling. Everything below it bounds the supplier's side, so the symmetric
+   * claim - that a settlement never lands under the supplier's floor - is just
+   * as load-bearing and had no assertion at all. It happened to hold, because
+   * both acceptance branches compare against minAcceptable. "Happens to hold"
+   * is what the ceiling invariant would also have been without line 94, and the
+   * whole argument of this product is that the two sides are enforced the same
+   * way.
+   *
+   * Two floors, deliberately:
+   *
+   *   floorUnitPrice  the supplier's real cost line. This is the number that
+   *                   becomes minUnitPrice in ProcurementEscrow, so a settlement
+   *                   under it is not a bad deal, it is a transaction the chain
+   *                   would refuse at funding time. Catching it here turns a
+   *                   revert the person cannot read into a crash we can.
+   *
+   *   minAcceptable   cost plus the margin the supplier negotiates for, and the
+   *                   expedite surcharge if the buyer asked for speed. A
+   *                   settlement under this means the simulated supplier
+   *                   accepted something it was programmed to refuse.
+   *
+   * Both are private to the supplier, which is why this check belongs to the
+   * engine and not to the agent: the agent cannot see either number, and that
+   * asymmetry is the point of negotiating at all.
+   */
+  const hardFloor = r4(priv.floorUnitPrice * feeMult);
+  if (agreedUnit < hardFloor - 1e-9) {
+    throw new Error(
+      `INVARIANT VIOLATED: settled unit price ${agreedUnit} is below the supplier's floor ${hardFloor}`
+    );
+  }
+  if (agreedUnit < minAcceptable - 1e-9) {
+    throw new Error(
+      `INVARIANT VIOLATED: settled unit price ${agreedUnit} is below the supplier's minimum acceptable ${minAcceptable}`
+    );
+  }
+
   const total = r2(agreedUnit * qty);
   const listTotal = candidate.listTotal;
 
