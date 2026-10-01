@@ -192,6 +192,52 @@ async function run() {
     }
   });
 
+  await test('the floor invariant is live, not a dead assertion', () => {
+    /*
+     * The mirror of the ceiling assertion, and the reason it is worth a test of
+     * its own: both invariants in negotiate.js are supposed to be unreachable,
+     * which is exactly the condition under which a guard rots without anybody
+     * noticing. An assertion nobody has ever seen fire and an assertion that
+     * cannot fire look identical from the outside.
+     *
+     * So the floor is moved above the settled price AFTER the negotiation has
+     * been run once, and the engine is asked to settle the same deal again. The
+     * number it would agree is now below the supplier's floor, and the engine
+     * must refuse to return it rather than hand back a deal the contract will
+     * revert at funding time.
+     */
+    const { SUPPLIERS } = require('../server/data/suppliers');
+    const b = parseRequest(REQ);
+    const shortlisted = selectForNegotiation(evaluateCandidates(b));
+    const cand = shortlisted.find((x) => negotiate(x, b).outcome === 'agreed');
+    ok(cand, 'precondition: at least one candidate settles');
+    const agreed = negotiate(cand, b);
+
+    const target = SUPPLIERS.find((x) => x.id === cand.supplierId);
+    const product = target.products.find((p) => p.sku === cand.sku);
+    const origFloor = product.private.floorUnitPrice;
+    const origMargin = product.private.minMarginPct;
+    try {
+      // A floor above what was just agreed, with the margin zeroed so the
+      // supplier's acceptance rule does not catch it first. Only the new
+      // assertion stands between this and a deal the chain would refuse.
+      product.private.floorUnitPrice = agreed.unitPrice * 2;
+      product.private.minMarginPct = -1;
+      let threw = null;
+      try {
+        negotiate(cand, b);
+      } catch (e) {
+        threw = e;
+      }
+      ok(threw, 'the engine must refuse to settle below the supplier floor');
+      ok(/INVARIANT VIOLATED/.test(threw.message), threw.message);
+      ok(/floor/i.test(threw.message), `and say which invariant: ${threw.message}`);
+    } finally {
+      product.private.floorUnitPrice = origFloor;
+      product.private.minMarginPct = origMargin;
+    }
+  });
+
   group('Counsel - capability boundary');
 
   const counsel = require('../server/counsel');
