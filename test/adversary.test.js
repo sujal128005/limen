@@ -18,6 +18,10 @@ const { ALL_ATTACKS } = require('../server/adversary/attacks');
 const { normalise, fromError, evidenceHash, summarise } = require('../server/adversary/evidence');
 const { buildReport } = require('../server/adversary/report');
 const { rejectRewrite, plain, facts } = require('../server/summary');
+
+/* Inert: no seller policy is published in this file, so the floor check in
+   createDeal is skipped and this is only here to satisfy the signature. */
+const QTY = 1000n;
 const { classify, REFUSAL } = require('../server/counsel');
 const workspace = require('../server/workspace');
 const { Chain } = require('../server/chain');
@@ -242,7 +246,7 @@ async function run() {
     let rawName = '';
     try {
       await chain.contractAt('ProcurementEscrow', escrowAddr, chain.agent)
-        .createDeal.staticCall(buyerAddr, s0Addr, USDC(5050), now + 10 * 86400, ethers.id('over'));
+        .createDeal.staticCall(buyerAddr, s0Addr, USDC(5050), QTY, now + 10 * 86400, ethers.id('over'));
     } catch (e) {
       reverted = true;
       rawName = chain.revertErrorName(e, 'ProcurementEscrow') || '';

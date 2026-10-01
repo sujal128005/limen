@@ -497,6 +497,33 @@ class Chain {
         return 'The supplier has already attested this shipment.';
       case 'BadState':
         return 'The deal is not in a state where that step is allowed.';
+
+      /*
+       * The seller side. These sentences carry more weight than the buyer-side
+       * ones, because they are the ones a person has never seen before: a
+       * refusal that protects the party who is not in the room and did not sign
+       * the transaction. They say who set the number and who cannot move it,
+       * since that is the only part that distinguishes this from a validation
+       * message in an ordinary marketplace.
+       */
+      case 'ZeroQuantity':
+        return 'The deal does not say how much is being bought, so no unit price can be '
+          + 'checked against the supplier\'s floor. The contract will not open a deal it cannot price.';
+      case 'BelowSellerFloor':
+        return `This offer works out at ${usd(a[0])} per kg and the supplier published a floor of `
+          + `${usd(a[1])} per kg, so the contract refused it. `
+          + 'The floor belongs to the supplier\'s own wallet: the buyer\'s agent cannot lower it, '
+          + 'the supplier\'s selling agent cannot lower it, and neither can we.';
+      case 'ExceedsSellerPerDealCap':
+        return `This order is ${Number(a[0]).toLocaleString('en-US')} kg and the supplier will not take `
+          + `more than ${Number(a[1]).toLocaleString('en-US')} kg in a single order. Split it or ask the supplier to raise it.`;
+      case 'ExceedsSellerCapacity':
+        return `This order is ${Number(a[0]).toLocaleString('en-US')} kg and the supplier has `
+          + `${Number(a[1]).toLocaleString('en-US')} kg of committable capacity left under its published policy.`;
+      case 'SellerPolicyExpired':
+        return 'The supplier\'s price floor has expired, so there is no current offer to trade against. '
+          + 'The supplier publishes it again to keep selling.';
+
       default:
         return `The contract refused this with ${parsed.name}.`;
     }

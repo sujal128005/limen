@@ -46,10 +46,35 @@ contract ProcurementEscrow {
         bool    active;
     }
 
+    /// @notice The supplier's half of the authority model: a price it will not go below.
+    ///
+    /// @dev The mirror of Policy above, and the reason this contract is two-sided.
+    ///
+    ///      Note what the supplier does NOT have to do: sign the deal. The buyer's
+    ///      agent is still the only caller of createDeal. The floor protects a
+    ///      supplier against a transaction it is not party to, which is the whole
+    ///      point - a seller cannot be talked below its own number even by an agent
+    ///      it has no control over, because the number is not in anybody's agent.
+    ///
+    ///      The floor is per UNIT, not per deal. A minimum total would be
+    ///      meaningless: it would refuse ten kilograms and a thousand on the same
+    ///      terms. So createDeal takes the quantity and the comparison is made
+    ///      against amount, which is what makes this enforceable rather than
+    ///      decorative.
+    struct SellerPolicy {
+        uint128 minUnitPrice; // token units (6dp) per unit of quantity. The floor.
+        uint128 maxPerDeal;   // largest single order, in quantity, this seller will take
+        uint128 maxTotal;     // cumulative quantity it is willing to commit
+        uint128 committed;    // cumulative quantity committed to date
+        uint64  expiry;       // a floor is a standing offer, and standing offers expire
+        bool    active;
+    }
+
     struct Deal {
         address buyer;
         address supplier;
         uint128 amount;
+        uint128 quantity;     // what the amount buys. Needed to make a unit floor checkable.
         uint64  deliveryDeadline;
         uint64  createdAt;
         uint64  shippedAt;    // set by the SUPPLIER, not the buyer
@@ -65,14 +90,24 @@ contract ProcurementEscrow {
     uint256 public dealCount;
     mapping(uint256 => Deal) public deals;
     mapping(address => Policy) public policies;
+    mapping(address => SellerPolicy) public sellerPolicies;
 
     event PolicySet(address indexed buyer, address indexed agent, uint128 maxPerDeal, uint128 maxTotal, uint64 expiry);
     event PolicyRevoked(address indexed buyer);
+    event SellerPolicySet(
+        address indexed supplier,
+        uint128 minUnitPrice,
+        uint128 maxPerDeal,
+        uint128 maxTotal,
+        uint64 expiry
+    );
+    event SellerPolicyRevoked(address indexed supplier);
     event DealCreated(
         uint256 indexed dealId,
         address indexed buyer,
         address indexed supplier,
         uint128 amount,
+        uint128 quantity,
         uint64 deliveryDeadline,
         bytes32 termsHash
     );
@@ -97,6 +132,19 @@ contract ProcurementEscrow {
     error ZeroAmount();
     error DeadlineInPast();
     error Reentrancy();
+
+    /*
+     * The seller's side of the refusals. Each is the mirror of a buyer error
+     * above, and they are separate error types rather than reused ones because
+     * the two sides fail for opposite reasons: the buyer's agent spent too
+     * much, the seller's floor was undercut. A demo that reported both as
+     * "ExceedsPerDealCap" would hide the thing worth showing.
+     */
+    error ZeroQuantity();
+    error BelowSellerFloor(uint128 offeredUnitPrice, uint128 minUnitPrice, uint128 quantity);
+    error ExceedsSellerPerDealCap(uint128 requested, uint128 cap);
+    error ExceedsSellerCapacity(uint128 requested, uint128 remaining);
+    error SellerPolicyExpired();
 
     uint256 private _locked = 1;
     modifier lock() {
@@ -144,6 +192,87 @@ contract ProcurementEscrow {
     }
 
     // ---------------------------------------------------------------------
+    // Seller floor policy
+    // ---------------------------------------------------------------------
+
+    /// @notice Supplier publishes the price it will not go below, and how much it can take.
+    ///
+    /// @dev Keyed on msg.sender, exactly as setAgentPolicy is. That one line is
+    ///      the whole security argument on this side: the floor belongs to the
+    ///      address that wrote it, so a buyer's agent calling this function does
+    ///      not lower a supplier's floor - it creates a separate, meaningless
+    ///      policy owned by the agent. There is no path from createDeal to this
+    ///      function, and no owner, operator or admin who can reach it either.
+    ///      Nobody can move a supplier's number but the supplier.
+    ///
+    ///      The supplier's own selling agent is therefore in the same position
+    ///      the buyer's agent is in: it can negotiate anywhere above the floor
+    ///      and nowhere below it, and telling it to "accept twenty percent less"
+    ///      does not change what the chain will accept.
+    ///
+    ///      `committed` is deliberately NOT reset here, the same way `spent` is
+    ///      not reset by setAgentPolicy. Re-publishing is how a supplier changes
+    ///      its terms, not how it forgets what it already sold. A supplier that
+    ///      wants fresh capacity raises maxTotal.
+    ///
+    /// @param minUnitPrice Token units (6dp) per one unit of quantity. The floor.
+    /// @param maxPerDeal   Largest single order, in units of quantity, it will take.
+    /// @param maxTotal     Cumulative quantity it is willing to commit under this policy.
+    /// @param expiry       A standing offer with no end date is not an offer, it is a trap.
+    function setSellerPolicy(uint128 minUnitPrice, uint128 maxPerDeal, uint128 maxTotal, uint64 expiry) external {
+        require(minUnitPrice > 0, "floor: zero price");
+        require(maxPerDeal > 0 && maxTotal >= maxPerDeal, "floor: bad caps");
+        require(expiry > block.timestamp, "floor: expiry in past");
+        /*
+         * Bounded so the floor arithmetic in createDeal cannot be made to
+         * overflow by publishing absurd numbers. minUnitPrice * maxPerDeal is
+         * the largest product the check can ever compute, and both factors are
+         * capped at 2**64, so the product fits in uint128 and the comparison
+         * against `amount` is exact rather than wrapped.
+         */
+        require(minUnitPrice <= type(uint64).max, "floor: price too large");
+        require(maxPerDeal <= type(uint64).max, "floor: quantity too large");
+
+        SellerPolicy storage s = sellerPolicies[msg.sender];
+        s.minUnitPrice = minUnitPrice;
+        s.maxPerDeal = maxPerDeal;
+        s.maxTotal = maxTotal;
+        s.expiry = expiry;
+        s.active = true;
+        emit SellerPolicySet(msg.sender, minUnitPrice, maxPerDeal, maxTotal, expiry);
+    }
+
+    /// @notice Supplier withdraws its floor.
+    /// @dev Note what this means, because it is the honest reading: a supplier
+    ///      with no active policy has NO floor enforced, and a deal at any price
+    ///      will be accepted against it. The floor is opt-in. That is the right
+    ///      default for a contract that already has suppliers trading under it,
+    ///      but it is not a safe assumption to make silently, so it is stated
+    ///      here, tested, and surfaced by remainingCapacity returning zero.
+    function revokeSellerPolicy() external {
+        sellerPolicies[msg.sender].active = false;
+        emit SellerPolicyRevoked(msg.sender);
+    }
+
+    /// @notice Quantity this supplier can still commit under its current policy.
+    /// @dev Zero means either "fully committed", "expired", or "no floor
+    ///      published". A caller that needs to tell those apart reads
+    ///      sellerPolicies directly; a caller that just wants to know whether to
+    ///      offer this supplier a deal does not.
+    function remainingCapacity(address supplier) external view returns (uint128) {
+        SellerPolicy memory s = sellerPolicies[supplier];
+        if (!s.active || s.expiry <= block.timestamp) return 0;
+        return s.maxTotal > s.committed ? s.maxTotal - s.committed : 0;
+    }
+
+    /// @notice The floor, in token units per unit of quantity, or zero if none is enforced.
+    function floorPrice(address supplier) external view returns (uint128) {
+        SellerPolicy memory s = sellerPolicies[supplier];
+        if (!s.active || s.expiry <= block.timestamp) return 0;
+        return s.minUnitPrice;
+    }
+
+    // ---------------------------------------------------------------------
     // Deal lifecycle
     // ---------------------------------------------------------------------
 
@@ -153,14 +282,38 @@ contract ProcurementEscrow {
     /// @param buyer The account whose policy and funds this deal draws on.
     /// @dev Called by the AGENT, not the buyer. The agent proves nothing except that
     ///      it is the address the buyer nominated; every limit is re-checked here.
+    ///
+    ///      BOTH SIDES ARE CHECKED IN THIS ONE TRANSACTION. That is the point of
+    ///      the function and the reason the quantity is now a parameter. The
+    ///      buyer's agent is bounded above by the buyer's ceiling and bounded
+    ///      below by the supplier's floor, in the same call, by the same EVM, and
+    ///      neither agent can reach the state that bounds it. A deal exists only
+    ///      where the two authorities overlap; outside that band it is not
+    ///      refused so much as unrepresentable.
+    ///
+    ///      `quantity` is required and must be positive. It is tempting to make
+    ///      it optional for the sake of the callers that predate it, but a second
+    ///      entry point without a quantity would be a hole straight through the
+    ///      floor: a floor that can be avoided by calling a different overload is
+    ///      not a floor. So there is exactly one way to open a deal, and it
+    ///      carries the number the floor is checked against.
+    ///
+    ///      Quantity is a whole number of whatever unit the SKU trades in -
+    ///      kilograms, throughout this product. Fractions are not representable,
+    ///      deliberately: a floor denominated in fractional kilograms is a
+    ///      rounding argument rather than a price. Callers that hold a fractional
+    ///      quantity round UP, which moves the required total in the supplier's
+    ///      favour, because this parameter exists to protect the supplier.
     function createDeal(
         address buyer,
         address supplier,
         uint128 amount,
+        uint128 quantity,
         uint64 deliveryDeadline,
         bytes32 termsHash
     ) external lock returns (uint256 dealId) {
         if (amount == 0) revert ZeroAmount();
+        if (quantity == 0) revert ZeroQuantity();
         if (deliveryDeadline <= block.timestamp) revert DeadlineInPast();
         if (!registry.isRegistered(supplier)) revert SupplierNotRegistered();
 
@@ -172,6 +325,41 @@ contract ProcurementEscrow {
         uint128 remaining = p.maxTotal > p.spent ? p.maxTotal - p.spent : 0;
         if (amount > remaining) revert ExceedsTotalCap(amount, remaining);
 
+        /*
+         * The supplier's half. Note that the supplier is not the caller and has
+         * not signed anything here: this block enforces terms the supplier
+         * published earlier against a transaction it is not party to. That is
+         * what makes it a floor rather than a negotiating position.
+         *
+         * The comparison multiplies rather than divides. For positive integers
+         * the two are equivalent - floor(amount/quantity) >= minUnitPrice holds
+         * exactly when amount >= minUnitPrice*quantity - so this is not a bug
+         * fix, and claiming otherwise in a comment would be worse than saying
+         * nothing. It is preferred because the quantity never appears in a
+         * denominator, which is one fewer thing to prove non-zero, and because
+         * what the contract is actually deciding is whether the TOTAL clears
+         * the floor, so comparing totals says what is meant.
+         *
+         * The division below is only in the revert argument. It truncates, so a
+         * reported unit price can read a fraction of a cent low; that is a
+         * message, not a decision.
+         *
+         * Both factors were capped at 2**64 when the policy was published, so
+         * the product cannot overflow uint256 and the check cannot be made to
+         * wrap by a supplier publishing extreme numbers.
+         */
+        SellerPolicy storage s = sellerPolicies[supplier];
+        if (s.active) {
+            if (s.expiry <= block.timestamp) revert SellerPolicyExpired();
+            if (quantity > s.maxPerDeal) revert ExceedsSellerPerDealCap(quantity, s.maxPerDeal);
+            uint128 capacity = s.maxTotal > s.committed ? s.maxTotal - s.committed : 0;
+            if (quantity > capacity) revert ExceedsSellerCapacity(quantity, capacity);
+            if (uint256(amount) < uint256(s.minUnitPrice) * uint256(quantity)) {
+                revert BelowSellerFloor(uint128(amount / quantity), s.minUnitPrice, quantity);
+            }
+            s.committed += quantity;
+        }
+
         p.spent += amount;
 
         dealId = ++dealCount;
@@ -179,6 +367,7 @@ contract ProcurementEscrow {
             buyer: buyer,
             supplier: supplier,
             amount: amount,
+            quantity: quantity,
             deliveryDeadline: deliveryDeadline,
             createdAt: uint64(block.timestamp),
             shippedAt: 0,
@@ -189,7 +378,7 @@ contract ProcurementEscrow {
         });
 
         require(token.transferFrom(buyer, address(this), amount), "escrow: funding failed");
-        emit DealCreated(dealId, buyer, supplier, amount, deliveryDeadline, termsHash);
+        emit DealCreated(dealId, buyer, supplier, amount, quantity, deliveryDeadline, termsHash);
     }
 
     /// @notice Supplier attests that the goods were dispatched.
@@ -263,6 +452,22 @@ contract ProcurementEscrow {
         d.state = State.Refunded;
         Policy storage p = policies[d.buyer];
         p.spent = p.spent > d.amount ? p.spent - d.amount : 0; // restore headroom
+
+        /*
+         * And the supplier's capacity, for the same reason. A deal that was
+         * refunded because nothing arrived did not consume the supplier's
+         * month. Leaving `committed` raised would quietly shrink a supplier's
+         * sellable capacity every time it failed to deliver - a second penalty
+         * on top of the dispute the registry already records, imposed by an
+         * accounting oversight rather than by anybody's decision.
+         *
+         * Guarded the same way `spent` is: if the policy was revoked and
+         * re-published between funding and refund, `committed` may be lower
+         * than this deal's quantity, and an underflow here would revert the
+         * buyer's refund over the supplier's bookkeeping.
+         */
+        SellerPolicy storage s = sellerPolicies[d.supplier];
+        s.committed = s.committed > d.quantity ? s.committed - d.quantity : 0;
 
         require(token.transfer(d.buyer, d.amount), "escrow: refund failed");
         registry.recordDispute(d.supplier);

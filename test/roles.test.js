@@ -916,6 +916,153 @@ async function run() {
     ok(dealsBefore === null || dealsBefore === undefined || true, 'sanity');
   });
 
+  group('The seller\'s floor, over HTTP');
+
+  /** A supplier in the seed directory that nobody has published a floor for. */
+  async function firstSupplierWithoutFloor() {
+    for (const [id, wallet] of Object.entries(app.supplierWallets)) {
+      if ((await app.chain.escrow.floorPrice(wallet)) === 0n) return id;
+    }
+    return null;
+  }
+
+  /*
+   * The contract-level proof is in seller-floor.test.js. These go over HTTP for
+   * the same reason every other check in this file does: a property the
+   * contract holds is worth nothing if no route reaches it, and the previous
+   * version of the separation-of-duties claim was false in exactly that way.
+   */
+
+  await test('a supplier publishes its floor, signed by its own wallet', async () => {
+    const c = await freshRun('floor-pub');
+    const r = await call('POST', '/api/supplier/floor', { token: c.sales, workspace: c.ws });
+    eq(r.status, 200, JSON.stringify(r.body));
+    ok(r.body.txHash, 'a real transaction');
+    ok(r.body.floorUnitPrice > 0, 'a positive floor');
+    eq(r.body.keyedOn, 'msg.sender', 'and the route says what makes it hold');
+
+    // The signer is the supplier's address, not the server's and not the buyer's.
+    const buyer = await app.chain.buyerFor(c.ws);
+    ok(r.body.signedBy !== buyer.address, 'the buyer did not sign the supplier\'s floor');
+    ok(r.body.signedBy !== app.chain.agentAddress, 'nor did the agent');
+    eq(r.body.signedBy, r.body.supplierWallet, 'the supplier signed its own');
+
+    // And it is readable on chain at that address.
+    const onChain = await app.chain.escrow.floorPrice(r.body.supplierWallet);
+    eq(Number(onChain) / 1e6, r.body.floorUnitPrice, 'the chain holds the published floor');
+  });
+
+  await test('the floor refusal demonstration needs a published floor first', async () => {
+    /*
+     * Named explicitly, and it has to be. A supplier's floor is keyed on the
+     * supplier's wallet, and a supplier has ONE wallet across the whole venue,
+     * so a floor published in any workspace is in force in every workspace.
+     * That asymmetry with the buyer's ceiling - per workspace, because each
+     * workspace holds its own buyer key - is correct and easy to forget: the
+     * first draft of this test asked about the winner and passed or failed
+     * depending on which tests had run before it.
+     */
+    const c = await freshRun('floor-none');
+    const unpublished = await firstSupplierWithoutFloor();
+    ok(unpublished, 'the seed directory must contain a supplier nobody has published for');
+    const r = await call('POST', '/api/attack/sell-below-floor', {
+      body: { supplierId: unpublished }, token: c.sales, workspace: c.ws,
+    });
+    /*
+     * Fails loudly rather than reporting "rejected: false", because a supplier
+     * that has not opted in is not a hole in the contract and must not be shown
+     * as one. The honest statement is that there is nothing to enforce yet.
+     */
+    ok(r.status >= 400, `expected a refusal to run, got ${r.status}`);
+    ok(/has not published a floor/i.test(JSON.stringify(r.body)), JSON.stringify(r.body));
+  });
+
+  await test('a supplier\'s floor is in force in every workspace, not just the one that published it', async () => {
+    const a = await freshRun('floor-ws-a');
+    const pub = await call('POST', '/api/supplier/floor', { token: a.sales, workspace: a.ws });
+    eq(pub.status, 200, JSON.stringify(pub.body));
+
+    // A different workspace, a different buyer key, the same supplier.
+    const b = await freshRun('floor-ws-b');
+    const r = await call('POST', '/api/attack/sell-below-floor', {
+      body: { supplierId: pub.body.supplierId }, token: b.sales, workspace: b.ws,
+    });
+    eq(r.status, 200, JSON.stringify(r.body));
+    eq(r.body.rejected, true, 'the floor binds a workspace that never saw it published');
+    eq(r.body.errorName, 'BelowSellerFloor', r.body.errorName);
+  });
+
+  await test('the contract refuses a purchase below the supplier\'s floor', async () => {
+    const c = await freshRun('floor-refuse');
+    const pub = await call('POST', '/api/supplier/floor', { token: c.sales, workspace: c.ws });
+    eq(pub.status, 200, JSON.stringify(pub.body));
+
+    const r = await call('POST', '/api/attack/sell-below-floor', {
+      body: { discountPct: 20 }, token: c.sales, workspace: c.ws,
+    });
+    eq(r.status, 200, JSON.stringify(r.body));
+    eq(r.body.rejected, true, 'the contract must refuse it');
+    eq(r.body.errorName, 'BelowSellerFloor', r.body.errorName);
+    ok(r.body.errorArgs, 'the refusal is decoded, not just caught');
+    ok(r.body.errorArgs.offeredUnitPrice < r.body.errorArgs.minUnitPrice, 'and names both prices');
+    eq(r.body.stateUnchanged, true, 'no deal, and no capacity consumed');
+    ok(r.body.failedTxHash, 'a mined transaction with status 0, not a simulation');
+    ok(/supplier/i.test(r.body.explanation || ''), 'explained in a sentence');
+  });
+
+  await test('the floor demonstration cannot be turned into a funding route', async () => {
+    /*
+     * The same bug the over-limit route had. A caller-supplied discount of zero
+     * would be a deal AT the floor, which the contract accepts: escrow funded
+     * with no approval and no role. The route forces the attempt under the floor
+     * by at least one token unit, so it can only ever revert.
+     */
+    const c = await freshRun('floor-fund');
+    const pub = await call('POST', '/api/supplier/floor', { token: c.sales, workspace: c.ws });
+    eq(pub.status, 200, JSON.stringify(pub.body));
+    for (const discountPct of [0, -5, 100, 1000, 'nonsense']) {
+      const r = await call('POST', '/api/attack/sell-below-floor', {
+        body: { discountPct }, token: c.sales, workspace: c.ws,
+      });
+      eq(r.status, 200, `discountPct=${discountPct}: ${JSON.stringify(r.body)}`);
+      eq(r.body.rejected, true, `discountPct=${discountPct} must still be forced under the floor`);
+      eq(r.body.stateUnchanged, true, `discountPct=${discountPct} must not create a deal`);
+    }
+    eq(await stateOf(c), 'AI_COMPLETED', 'the workflow must not have advanced');
+  });
+
+  await test('a published floor does not break the purchase the agent negotiated', async () => {
+    /*
+     * The one that would have bitten in a demo. The engine negotiates against a
+     * private cost line plus margin, and the route publishes the cost line, so
+     * the settled price should always clear the on-chain floor. "Should" is why
+     * this test exists: if it ever stops being true, funding reverts in front of
+     * an audience and the product looks broken rather than careful.
+     */
+    const c = await freshRun('floor-happy');
+    const pub = await call('POST', '/api/supplier/floor', { token: c.sales, workspace: c.ws });
+    eq(pub.status, 200, JSON.stringify(pub.body));
+
+    await call('POST', '/api/purchase/submit', { token: c.sales, workspace: c.ws });
+    await call('POST', '/api/purchase/send-to-head', { token: c.sales, workspace: c.ws });
+    const approved = await call('POST', '/api/purchase/approve', { token: c.head, workspace: c.ws });
+    eq(approved.status, 200, JSON.stringify(approved.body));
+    const status = (await call('GET', '/api/status', { token: c.sales, workspace: c.ws })).body;
+    ok(status.dealId, `the deal must have funded over a published floor: ${JSON.stringify(status)}`);
+
+    // And the supplier's committed quantity went up by what was actually bought.
+    const s = await app.chain.escrow.sellerPolicies(pub.body.supplierWallet);
+    ok(Number(s.committed) > 0, 'the supplier\'s committed capacity reflects the sale');
+  });
+
+  await test('the server cannot publish a floor for a supplier that never stated one', async () => {
+    const c = await freshRun('floor-invent');
+    const r = await call('POST', '/api/supplier/floor', {
+      body: { supplierId: 'SUP-DOES-NOT-EXIST' }, token: c.sales, workspace: c.ws,
+    });
+    ok(r.status >= 400, 'an unknown supplier is refused');
+  });
+
   group('Payment is a lifecycle, not a boolean');
 
   await test('releasing leaves the purchase processing, not settled', async () => {
