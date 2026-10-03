@@ -12,33 +12,40 @@ import { createPortal } from 'react-dom';
  * This is isolation, not authentication - there is nothing to log into. In
  * production the buyer's wallet signature replaces this header as the identity.
  */
-let WORKSPACE = (() => {
-  const KEY = 'limen.workspace';
+const mintId = (prefix) => {
   try {
-    /*
-     * localStorage, not sessionStorage.
-     *
-     * Three desks have to be looking at the same purchase: a head approving in
-     * one tab and a finance operator paying in another are two people at one
-     * company, not two unrelated visitors. sessionStorage is per tab, so each
-     * desk minted its own workspace and the head's screen sat empty while sales
-     * waited for a decision that had gone somewhere else.
-     *
-     * The isolation this replaces was between browsers, and that still holds:
-     * the id is random per browser and never leaves it.
-     */
-    let id = localStorage.getItem(KEY);
-    if (!id) {
-      const bytes = new Uint8Array(16);
-      crypto.getRandomValues(bytes);
-      id = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
-      localStorage.setItem(KEY, id);
-    }
-    return id;
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    return prefix + Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
   } catch (_) {
-    return 'ws-' + Math.random().toString(36).slice(2, 14);
+    return prefix + Math.random().toString(36).slice(2, 14) + Date.now().toString(36);
   }
-})();
+};
+
+const read = (k) => { try { return localStorage.getItem(k); } catch (_) { return null; } };
+const write = (k, v) => { try { localStorage.setItem(k, v); } catch (_) { /* private mode */ } };
+
+/*
+ * Two ids now, where there used to be one.
+ *
+ * The company is the buyer. It owns the procurement policy, the blocked
+ * suppliers and the spending ceiling, and it is stable for as long as this
+ * browser is this buyer. The tender is one purchase, and a company has
+ * several open at once - which is the whole reason for the split, because
+ * when there was one id a company sourcing three things had three policies
+ * and the head's ceiling applied to whichever purchase it was typed into.
+ *
+ * MIGRATION. A browser that was here before this change has limen.workspace
+ * and a purchase inside it. That value becomes both ids: the company it
+ * belongs to and its first tender. Nothing is lost, the server adopts the
+ * workspace into the company on the next request, and the purchase that was
+ * in progress is still the one on screen after the reload.
+ */
+const LEGACY = read('limen.workspace');
+let COMPANY = read('limen.company') || LEGACY || mintId('c');
+let WORKSPACE = read('limen.tender') || LEGACY || mintId('t');
+write('limen.company', COMPANY);
+write('limen.tender', WORKSPACE);
 
 /*
  * The signed role token.
@@ -95,15 +102,51 @@ const setSessionToken = (s) => {
 const headers = () => ({
   'content-type': 'application/json',
   'x-workspace': WORKSPACE,
+  'x-company': COMPANY,
   ...(SESSION ? { authorization: `Bearer ${SESSION.token}` } : {}),
 });
 
-// Connecting a wallet binds this browser's workspace to the address, so a buyer
-// returns to their own run instead of a random one. It does not change who signs
-// on the local demo chain: that stays the funded demo account, and the UI says so.
+/*
+ * Connecting a wallet binds this browser to a buyer, so they return to their
+ * own purchases instead of a random workspace.
+ *
+ * It binds the COMPANY, not the purchase. The wallet is who is buying; which
+ * of their purchases is on screen is a separate question and switching wallets
+ * should not lose the one they were in the middle of. The first tender keeps
+ * the same derived id so a browser that bound a wallet before this change
+ * comes back to the purchase it left.
+ *
+ * It does not change who signs on the local demo chain: that stays the funded
+ * demo account, and the UI says so.
+ */
 function bindWorkspaceToWallet(address) {
-  WORKSPACE = 'w' + address.slice(2, 34).toLowerCase();
-  try { localStorage.setItem('limen.workspace', WORKSPACE); } catch (_) {}
+  const derived = 'w' + address.slice(2, 34).toLowerCase();
+  if (COMPANY === derived) return;
+  COMPANY = derived;
+  WORKSPACE = derived;
+  write('limen.company', COMPANY);
+  write('limen.tender', WORKSPACE);
+}
+
+/*
+ * Move to another purchase at this company.
+ *
+ * A full reload rather than a refetch, deliberately. Switching purchases
+ * changes every answer on the screen - the brief, the shortlist, the
+ * transcript, the deal, the documents, the audit trail - and this screen
+ * holds several dozen pieces of derived state across as many hooks. Clearing
+ * them one by one is a list that a future panel gets left off, and the bug
+ * that produces is one purchase's figures shown under another's name, above
+ * an approve button. A reload cannot get that wrong. It costs a second.
+ *
+ * The sign-in survives it: the token is minted against the company, and it is
+ * held in sessionStorage, so the desk is still the same desk afterwards.
+ */
+function switchTender(id) {
+  if (!id || id === WORKSPACE) return;
+  WORKSPACE = id;
+  write('limen.tender', id);
+  window.location.reload();
 }
 
 /*
@@ -174,14 +217,14 @@ class ApiError extends Error {
   }
 }
 
-async function request(path, { method = 'GET', body, timeout } = {}) {
+async function request(path, { method = 'GET', body, timeout, key } = {}) {
   const ctrl = new AbortController();
   const budget = timeout ?? (method === 'GET' ? TIMEOUTS.read : TIMEOUTS.write);
   const timer = setTimeout(() => ctrl.abort(), budget);
   try {
     const r = await fetch(path, {
       method,
-      headers: headers(),
+      headers: key ? { ...headers(), 'idempotency-key': key } : headers(),
       signal: ctrl.signal,
       ...(body !== undefined ? { body: JSON.stringify(body || {}) } : {}),
     });
@@ -246,6 +289,9 @@ const api = {
   },
   patch(p, body, opts) {
     return request(p, { method: 'PATCH', body: body || {}, ...opts });
+  },
+  del(p, opts) {
+    return request(p, { method: 'DELETE', ...opts });
   },
 
   /*
@@ -3241,11 +3287,25 @@ function Desk() {
    * refusal verbatim if it refuses. Nothing here decides whether the action was
    * allowed.
    */
+  /*
+   * Every act carries a key, minted at the click.
+   *
+   * It is what lets the server tell a retry from a second instruction. A
+   * request that times out on the wire leaves this browser unable to say
+   * whether the money moved; with the key, sending it again is a read of the
+   * answer the first one gave rather than a second approval.
+   *
+   * Minted per click rather than derived from the purchase: two deliberate
+   * presses are two instructions and should stay two, and a key derived from
+   * state would quietly collapse a reject-then-approve into whichever came
+   * first.
+   */
   const act = useCallback(async (label, path, body) => {
     setActBusy(label);
     setActError(null);
+    const key = mintId('a');
     try {
-      const r = await api.post(path, body || {});
+      const r = await api.post(path, body || {}, { key });
       await refreshPurchase();
       await refreshStatusRef.current();
       return r;
@@ -4571,6 +4631,185 @@ function Desk() {
  * throw it away. What changed is that the frame around it holds still.
  * ======================================================================== */
 
+
+/* ======================================================================
+ * THE PURCHASE SWITCHER
+ *
+ * A buying desk has several requirements in flight at once. For most of
+ * this product's life it could hold exactly one, and the way to start the
+ * next thing was to reset the run - which is to say, to throw the last one
+ * away. That is a demonstration, not a desk.
+ *
+ * This is the smallest honest fix: the chip in the top bar names the
+ * purchase you are in, and opening it lists the others with where each one
+ * stands, so the question "what else is waiting on me" is answered without
+ * leaving the screen.
+ *
+ * Note what it does NOT show: a figure for a purchase that has not been
+ * negotiated yet, or a title for one nothing has been typed into. An empty
+ * row reads as empty, because the alternative is a list of identical
+ * placeholder names and a buyer clicking through them to find out which is
+ * which.
+ * =================================================================== */
+
+const TENDER_STATE_LABEL = {
+  DRAFT: 'Draft',
+  AI_COMPLETED: 'Ready to send up',
+  SALES_REVIEW: 'With sourcing',
+  HEAD_APPROVAL: 'With the head',
+  REJECTED: 'Rejected',
+  APPROVED: 'Approved',
+  FUNDED: 'In escrow',
+  PAYMENT_READY: 'Ready to pay',
+  PAYMENT_PROCESSING: 'Paying',
+  SETTLED: 'Settled',
+  FAILED: 'Payment failed',
+  REVERSED: 'Reversed',
+};
+
+function TenderSwitcher({ session }) {
+  const [open, setOpen] = useState(false);
+  const [data, setData] = useState(null);
+  const [busy, setBusy] = useState(null);
+  const [err, setErr] = useState(null);
+  const box = useRef(null);
+
+  const load = useCallback(async () => {
+    try {
+      setErr(null);
+      setData(await api.get('/api/tenders'));
+    } catch (e) {
+      /* A desk that cannot list is still a desk that can work. The chip falls
+         back to naming this purchase and says nothing it cannot support. */
+      setErr(e.message);
+      setData(null);
+    }
+  }, []);
+
+  useEffect(() => { if (session) load(); }, [session, load]);
+
+  // Close on an outside click or Escape, which is what every other popover on
+  // this page does and what a reader expects without being told.
+  useEffect(() => {
+    if (!open) return undefined;
+    const away = (e) => { if (box.current && !box.current.contains(e.target)) setOpen(false); };
+    const esc = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', away);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('mousedown', away); document.removeEventListener('keydown', esc); };
+  }, [open]);
+
+  if (!session) return null;
+
+  const tenders = (data && data.tenders) || [];
+  const mine = tenders.find((t) => t.current);
+  const label = (mine && mine.title) || 'Untitled purchase';
+  const atLimit = data && tenders.length >= data.max;
+
+  const openNew = async () => {
+    setBusy('new');
+    try {
+      const r = await api.post('/api/tenders');
+      switchTender(r.id);            // reloads; nothing after this runs
+    } catch (e) {
+      setErr(e.message);
+      setBusy(null);
+    }
+  };
+
+  const discard = async (id) => {
+    setBusy(id);
+    try {
+      await api.del(`/api/tenders/${id}`);
+      await load();
+    } catch (e) { setErr(e.message); }
+    setBusy(null);
+  };
+
+  return (
+    <div className="tsw" ref={box}>
+      <button
+        type="button"
+        className={`tsw-chip ${open ? 'open' : ''}`}
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        title="Switch between this company's purchases"
+      >
+        <span className="tsw-chip-k">Purchase</span>
+        <span className="tsw-chip-v">{label}</span>
+        {tenders.length > 1 && <span className="tsw-count">{tenders.length}</span>}
+        <svg className="tsw-caret" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M7 10l5 5 5-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="tsw-menu" role="menu">
+          <div className="tsw-menu-head">
+            <span>This company&rsquo;s purchases</span>
+            {data && <span className="tsw-menu-count">{tenders.length} of {data.max}</span>}
+          </div>
+
+          {err && <p className="tsw-err">{err}</p>}
+
+          <ul className="tsw-list">
+            {tenders.map((t) => (
+              <li key={t.id} className={`tsw-row ${t.current ? 'current' : ''}`}>
+                <button
+                  type="button"
+                  className="tsw-row-main"
+                  onClick={() => (t.current ? setOpen(false) : switchTender(t.id))}
+                  role="menuitem"
+                >
+                  <span className="tsw-row-title">{t.title || <em>Nothing typed yet</em>}</span>
+                  <span className="tsw-row-meta">
+                    <span className={`tsw-state s-${(t.state || '').toLowerCase()}`}>
+                      {TENDER_STATE_LABEL[t.state] || t.state}
+                    </span>
+                    {t.supplier && <span className="tsw-row-sup">{t.supplier}</span>}
+                    {t.amount != null && <span className="tsw-row-amt mono">{money(t.amount)}</span>}
+                  </span>
+                </button>
+                {/* Only a draft, and never the one on screen: anything with a
+                    deal behind it has a record, and the server refuses it too. */}
+                {!t.current && t.state === 'DRAFT' && (
+                  <button
+                    type="button"
+                    className="tsw-row-x"
+                    onClick={() => discard(t.id)}
+                    disabled={busy === t.id}
+                    title="Discard this empty draft"
+                    aria-label="Discard this draft"
+                  >×</button>
+                )}
+              </li>
+            ))}
+            {!tenders.length && !err && (
+              <li className="tsw-empty">
+                {data ? 'Only this one so far.' : 'Loading…'}
+              </li>
+            )}
+          </ul>
+
+          <button
+            type="button"
+            className="tsw-new"
+            onClick={openNew}
+            disabled={busy === 'new' || atLimit}
+            role="menuitem"
+          >
+            {busy === 'new' ? 'Opening…' : atLimit ? `Limit of ${data.max} reached` : '+ Start another purchase'}
+          </button>
+          {atLimit && (
+            <p className="tsw-note">Finish or discard one before starting another.</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TopBar({ onHome, status, wallet, busy, counts, needsApproval, settled, onPalette, session, onSwitchDesk }) {
   const env = status?.mode === 'in-process' || !status?.mode ? 'Test environment' : status.mode;
   return (
@@ -4582,10 +4821,18 @@ function TopBar({ onHome, status, wallet, busy, counts, needsApproval, settled, 
 
       <span className="tb-sep" aria-hidden="true" />
 
-      <span className="tb-crumb">
-        <span className="tb-crumb-k">Workspace</span>
-        <span className="tb-crumb-v mono">{wallet ? short(wallet) : 'Demo'}</span>
-      </span>
+      {/* The crumb used to say "Workspace: Demo", which named the storage and
+          not the work. It names the purchase now, and opens the others. When
+          nobody is signed in there is nothing to list, so the old crumb stands
+          in - a company's purchases are not an anonymous question. */}
+      {session
+        ? <TenderSwitcher session={session} />
+        : (
+          <span className="tb-crumb">
+            <span className="tb-crumb-k">Workspace</span>
+            <span className="tb-crumb-v mono">{wallet ? short(wallet) : 'Demo'}</span>
+          </span>
+        )}
 
       {/* Who is at this desk. Named rather than iconographic, because the whole
           demo turns on the reader knowing which of three people is acting. */}

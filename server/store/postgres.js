@@ -45,6 +45,14 @@ const SCHEMA = `
 CREATE TABLE IF NOT EXISTS workspaces (
   id          text PRIMARY KEY,
   state       jsonb NOT NULL,
+  company_id  text,
+  version     integer NOT NULL DEFAULT 1,
+  updated_at  timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS companies (
+  id          text PRIMARY KEY,
+  profile     jsonb,
   version     integer NOT NULL DEFAULT 1,
   updated_at  timestamptz NOT NULL DEFAULT now()
 );
@@ -53,6 +61,32 @@ CREATE TABLE IF NOT EXISTS payouts (
   payout_id    text PRIMARY KEY,
   workspace_id text NOT NULL,
   updated_at   timestamptz NOT NULL DEFAULT now()
+);
+
+/*
+ * Replayed responses, for clients that retry.
+ *
+ * A mutation that times out on the wire leaves the caller unable to tell
+ * whether it happened. Retrying is the only thing they can do and is also the
+ * thing that can approve a purchase twice. The key turns the retry into a
+ * read: the first request records what it answered, and every repeat of the
+ * same key is handed that answer back rather than running again.
+ *
+ * fingerprint is the method and path. The same key sent to a different route
+ * is a client bug, and replaying the wrong answer would turn it into a silent
+ * one, so it is refused instead.
+ *
+ * status null means in flight: claimed, not yet answered. A second request
+ * arriving in that window is told to wait rather than racing the first.
+ */
+CREATE TABLE IF NOT EXISTS idempotency (
+  workspace_id text NOT NULL,
+  key          text NOT NULL,
+  fingerprint  text NOT NULL,
+  status       integer,
+  body         jsonb,
+  at           timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (workspace_id, key)
 );
 
 CREATE TABLE IF NOT EXISTS webhook_events (
@@ -65,6 +99,7 @@ CREATE TABLE IF NOT EXISTS webhook_events (
 CREATE TABLE IF NOT EXISTS outcomes (
   id           bigserial PRIMARY KEY,
   workspace_id text NOT NULL,
+  company_id   text,
   event        text NOT NULL,
   supplier_id  text,
   ask          jsonb,
@@ -110,14 +145,47 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 `;
 
+/*
+ * Run after the schema, for deployments that predate a column.
+ *
+ * There is no migration runner here and one would be a lot of machinery for a
+ * product with a single deployment. What there is instead is this list, run
+ * every boot, and a check after it: company_id is load-bearing - without it
+ * every purchase belongs to no company and the tender list is empty - so init
+ * verifies the column is really there and refuses to start if it is not,
+ * rather than serving a quietly broken deployment.
+ */
+const MIGRATIONS = [
+  'ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS company_id text',
+  'ALTER TABLE outcomes ADD COLUMN IF NOT EXISTS company_id text',
+];
+
 /* Created separately: pg-mem does not accept an index inside the same batch as
    the table it indexes, and splitting them costs nothing. */
 const INDEXES = [
   'CREATE INDEX IF NOT EXISTS audit_workspace_idx ON audit (workspace_id, id)',
   'CREATE INDEX IF NOT EXISTS outcomes_workspace_idx ON outcomes (workspace_id, id)',
+  'CREATE INDEX IF NOT EXISTS outcomes_company_idx ON outcomes (company_id, id)',
   'CREATE INDEX IF NOT EXISTS messages_workspace_idx ON messages (workspace_id, id)',
   'CREATE INDEX IF NOT EXISTS workspaces_updated_idx ON workspaces (updated_at)',
+  'CREATE INDEX IF NOT EXISTS workspaces_company_idx ON workspaces (company_id, updated_at)',
+  'CREATE INDEX IF NOT EXISTS idempotency_at_idx ON idempotency (at)',
 ];
+
+/* One shape for an outcome row, used by both reads of it. Written once so the
+   per-purchase and per-company views cannot drift into two shapes. */
+const mapOutcome = (row) => ({
+  kind: 'outcome',
+  workspaceId: row.workspace_id,
+  companyId: row.company_id || null,
+  event: row.event,
+  supplierId: row.supplier_id,
+  ask: typeof row.ask === 'string' ? JSON.parse(row.ask) : row.ask,
+  terms: typeof row.terms === 'string' ? JSON.parse(row.terms) : row.terms,
+  outcome: row.outcome,
+  detail: row.detail,
+  at: row.at instanceof Date ? row.at.toISOString() : row.at,
+});
 
 function create({ url, pg, ssl } = {}) {
   const driver = pg || require('pg');
@@ -152,6 +220,26 @@ function create({ url, pg, ssl } = {}) {
 
     async init() {
       await q(SCHEMA);
+      for (const m of MIGRATIONS) {
+        /* A fresh database already has the column from CREATE TABLE, so a
+           failure here is only interesting on an upgrade - and the check below
+           is what decides whether it mattered. */
+        try { await q(m); } catch (_) { /* verified immediately after */ }
+      }
+      for (const [table, why] of [
+        ['workspaces', 'Purchases cannot be grouped by company without it'],
+        ['outcomes', 'A buyer would start every purchase with no history'],
+      ]) {
+        try {
+          await q(`SELECT company_id FROM ${table} LIMIT 1`);
+        } catch (e) {
+          throw new Error(
+            `The ${table} table has no company_id column and it could not be added. `
+            + `${why}. Add it by hand with: `
+            + `ALTER TABLE ${table} ADD COLUMN company_id text; (${e.message})`
+          );
+        }
+      }
       for (const idx of INDEXES) {
         // A pg-mem build without index support should not stop the product.
         try { await q(idx); } catch (_) { /* index is an optimisation */ }
@@ -163,12 +251,13 @@ function create({ url, pg, ssl } = {}) {
     },
 
     async load(id) {
-      const r = await q('SELECT state, version FROM workspaces WHERE id = $1', [id]);
+      const r = await q('SELECT state, version, company_id FROM workspaces WHERE id = $1', [id]);
       if (!r.rows.length) return null;
       const row = r.rows[0];
       return {
         state: typeof row.state === 'string' ? JSON.parse(row.state) : row.state,
         version: Number(row.version),
+        companyId: row.company_id || null,
       };
     },
 
@@ -178,10 +267,11 @@ function create({ url, pg, ssl } = {}) {
      * inserts and both end up with the same row, which is the behaviour a
      * caller wants and an INSERT alone would not give.
      */
-    async create(id, state) {
+    async create(id, state, companyId = null) {
       await q(
-        'INSERT INTO workspaces (id, state, version) VALUES ($1, $2, 1) ON CONFLICT (id) DO NOTHING',
-        [id, JSON.stringify(state)]
+        `INSERT INTO workspaces (id, state, company_id, version) VALUES ($1, $2, $3, 1)
+           ON CONFLICT (id) DO NOTHING`,
+        [id, JSON.stringify(state), companyId || null]
       );
       return this.load(id);
     },
@@ -255,6 +345,151 @@ function create({ url, pg, ssl } = {}) {
       }
     },
 
+    /* ------------------------------------------------------------ company */
+
+    /*
+     * Fill in the owner of a workspace that has none, and only then.
+     *
+     * Rows created before companies existed have no owner. The first request
+     * that arrives holding the workspace id claims it. That is not a new
+     * exposure: knowing the workspace id has always been the whole credential
+     * for that workspace. What the WHERE clause buys is that a workspace which
+     * already has an owner can never be re-pointed at a different one by a
+     * header, which is the attack that would matter.
+     */
+    async assignCompany(id, companyId) {
+      if (!companyId) return false;
+      const r = await q(
+        'UPDATE workspaces SET company_id = $2 WHERE id = $1 AND company_id IS NULL',
+        [id, companyId]
+      );
+      return (r.rowCount || 0) > 0;
+    },
+
+    async loadCompany(id) {
+      const r = await q('SELECT profile, version FROM companies WHERE id = $1', [id]);
+      if (!r.rows.length) return null;
+      const row = r.rows[0];
+      return {
+        profile: typeof row.profile === 'string' ? JSON.parse(row.profile) : row.profile,
+        version: Number(row.version),
+      };
+    },
+
+    /*
+     * Versioned like a workspace, and for the same reason with more at stake:
+     * this row holds the spending ceiling. Two desks editing it from two
+     * different purchases must not have one silently overwrite the other, so
+     * the second writer is told to reload rather than winning by arriving last.
+     *
+     * Version 0 means "I did not find a row", so the insert is the create. It
+     * races the same way a workspace create does and is settled the same way,
+     * by the primary key: ON CONFLICT DO NOTHING, then report the conflict to
+     * the caller rather than pretending the write landed.
+     */
+    async saveCompany(id, profileValue, version) {
+      const json = JSON.stringify(profileValue === undefined ? null : profileValue);
+      if (!version) {
+        const ins = await q(
+          `INSERT INTO companies (id, profile, version) VALUES ($1, $2, 1)
+             ON CONFLICT (id) DO NOTHING
+           RETURNING version`,
+          [id, json]
+        );
+        if (ins.rows.length) return { version: Number(ins.rows[0].version) };
+        throw new ConflictError(
+          'Another desk created these company settings while you were editing them. Reload and try again.'
+        );
+      }
+      const r = await q(
+        `UPDATE companies
+            SET profile = $1, version = version + 1, updated_at = now()
+          WHERE id = $2 AND version = $3
+        RETURNING version`,
+        [json, id, version]
+      );
+      if (!r.rows.length) {
+        throw new ConflictError(
+          'Another desk changed the company settings while you were editing them. Reload and try again.'
+        );
+      }
+      return { version: Number(r.rows[0].version) };
+    },
+
+    /*
+     * The purchases this company has open. Newest first, bounded, and the
+     * caller projects - the store does not know what a tender looks like on a
+     * screen and should not learn.
+     */
+    async listWorkspaces(companyId, limit = 50) {
+      const r = await q(
+        `SELECT id, state, version, updated_at FROM workspaces
+          WHERE company_id = $1 ORDER BY updated_at DESC, id DESC LIMIT $2`,
+        [companyId, limit]
+      );
+      return r.rows.map((row) => ({
+        id: row.id,
+        state: typeof row.state === 'string' ? JSON.parse(row.state) : row.state,
+        version: Number(row.version),
+        updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
+      }));
+    },
+
+    /* ------------------------------------------------------- idempotency */
+
+    /*
+     * Claim the key, or report what is already there.
+     *
+     * The insert is the claim, settled by the primary key exactly as the
+     * webhook claim is: first caller wins, and no amount of concurrency changes
+     * that answer. Written as a plain insert with 23505 caught rather than ON
+     * CONFLICT ... RETURNING, because the in-process engine the suite uses
+     * reports a row for the conflicting insert too, and a statement the tests
+     * cannot verify is a statement that ships untested.
+     */
+    async claimIdempotency(workspaceId, key, fingerprint) {
+      try {
+        await q(
+          'INSERT INTO idempotency (workspace_id, key, fingerprint) VALUES ($1, $2, $3)',
+          [workspaceId, key, fingerprint]
+        );
+        return { claimed: true };
+      } catch (e) {
+        if (!e || e.code !== '23505') throw e;
+      }
+      const r = await q(
+        'SELECT fingerprint, status, body FROM idempotency WHERE workspace_id = $1 AND key = $2',
+        [workspaceId, key]
+      );
+      if (!r.rows.length) return { claimed: true }; // raced with a cleanup; treat as fresh
+      const row = r.rows[0];
+      return {
+        claimed: false,
+        fingerprint: row.fingerprint,
+        status: row.status == null ? null : Number(row.status),
+        body: typeof row.body === 'string' ? JSON.parse(row.body) : row.body,
+      };
+    },
+
+    async recordIdempotency(workspaceId, key, status, body) {
+      await q(
+        'UPDATE idempotency SET status = $3, body = $4 WHERE workspace_id = $1 AND key = $2',
+        [workspaceId, key, status, body === undefined ? null : JSON.stringify(body)]
+      );
+    },
+
+    /* A claim whose request died before it answered must not block the retry
+       forever, and a table of recorded answers must not grow without end. */
+    async releaseIdempotency(workspaceId, key) {
+      await q('DELETE FROM idempotency WHERE workspace_id = $1 AND key = $2', [workspaceId, key]);
+    },
+
+    async expireIdempotency(olderThanMs) {
+      const cutoff = new Date(Date.now() - olderThanMs).toISOString();
+      const r = await q('DELETE FROM idempotency WHERE at < $1::timestamptz', [cutoff]);
+      return r.rowCount || 0;
+    },
+
     async appendAudit(entry) {
       await q(
         `INSERT INTO audit (workspace_id, actor_name, actor_role, action, from_state, to_state, detail)
@@ -273,10 +508,11 @@ function create({ url, pg, ssl } = {}) {
 
     async appendOutcome(row) {
       await q(
-        `INSERT INTO outcomes (workspace_id, event, supplier_id, ask, terms, outcome, detail, at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8::timestamptz, now()))`,
+        `INSERT INTO outcomes (workspace_id, company_id, event, supplier_id, ask, terms, outcome, detail, at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9::timestamptz, now()))`,
         [
           row.workspaceId,
+          row.companyId || null,
           row.event,
           row.supplierId || null,
           row.ask ? JSON.stringify(row.ask) : null,
@@ -302,17 +538,16 @@ function create({ url, pg, ssl } = {}) {
         'SELECT * FROM outcomes WHERE workspace_id = $1 ORDER BY id DESC LIMIT $2',
         [workspaceId, limit]
       );
-      return r.rows.reverse().map((row) => ({
-        kind: 'outcome',
-        workspaceId: row.workspace_id,
-        event: row.event,
-        supplierId: row.supplier_id,
-        ask: typeof row.ask === 'string' ? JSON.parse(row.ask) : row.ask,
-        terms: typeof row.terms === 'string' ? JSON.parse(row.terms) : row.terms,
-        outcome: row.outcome,
-        detail: row.detail,
-        at: row.at instanceof Date ? row.at.toISOString() : row.at,
-      }));
+      return r.rows.reverse().map(mapOutcome);
+    },
+
+    /* What this buyer has learned, across every purchase it has run. */
+    async companyOutcomes(companyId, limit = 1000) {
+      const r = await q(
+        'SELECT * FROM outcomes WHERE company_id = $1 ORDER BY id DESC LIMIT $2',
+        [companyId, limit]
+      );
+      return r.rows.reverse().map(mapOutcome);
     },
 
     async appendMessage(m) {
@@ -399,7 +634,27 @@ function create({ url, pg, ssl } = {}) {
       await q(`DELETE FROM audit WHERE workspace_id IN (${holes})`, ids);
       await q(`DELETE FROM outcomes WHERE workspace_id IN (${holes})`, ids);
       await q(`DELETE FROM messages WHERE workspace_id IN (${holes})`, ids);
+      await q(`DELETE FROM idempotency WHERE workspace_id IN (${holes})`, ids);
       await q(`DELETE FROM workspaces WHERE id IN (${holes})`, ids);
+      /*
+       * A company with no purchases left has nothing to apply its policy to,
+       * and companies is keyed by a value the caller supplies, so keeping the
+       * row forever is the unbounded table this whole function exists to
+       * prevent. A company that still owns a purchase keeps its policy: that
+       * is the case the row is for.
+       */
+      /* Read, difference, delete by id - the same portable shape the rest of
+         this file uses, because a correlated DELETE is one of the statements
+         the in-process test engine does not execute faithfully, and a prune
+         nobody can test is a prune nobody should ship. */
+      const live = await q('SELECT DISTINCT company_id FROM workspaces WHERE company_id IS NOT NULL');
+      const liveIds = new Set(live.rows.map((r) => r.company_id));
+      const all = await q('SELECT id FROM companies');
+      const dead = all.rows.map((r) => r.id).filter((cid) => !liveIds.has(cid));
+      if (dead.length) {
+        const ch = dead.map((_, i) => `$${i + 1}`).join(', ');
+        await q(`DELETE FROM companies WHERE id IN (${ch})`, dead);
+      }
       return ids.length;
     },
   };

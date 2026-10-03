@@ -204,6 +204,117 @@ async function checks(label, store) {
     eq(await store.load('gone'), null);
   });
 
+  /* ----------------------------------------------------------- retries */
+
+  await test(`${label}: a key is claimed once and answers every repeat`, async () => {
+    const first = await store.claimIdempotency('ws1', 'k1', 'POST /api/x');
+    eq(first.claimed, true);
+
+    const inFlight = await store.claimIdempotency('ws1', 'k1', 'POST /api/x');
+    eq(inFlight.claimed, false, 'the second caller does not get the claim');
+    eq(inFlight.status, null, 'and is told the first is still running');
+
+    await store.recordIdempotency('ws1', 'k1', 201, { id: 'made' });
+    const replay = await store.claimIdempotency('ws1', 'k1', 'POST /api/x');
+    eq(replay.claimed, false);
+    eq(replay.status, 201);
+    eq(replay.body.id, 'made');
+    eq(replay.fingerprint, 'POST /api/x', 'so a key sent to another route can be refused');
+  });
+
+  await test(`${label}: a released key can be used again, and keys do not cross workspaces`, async () => {
+    await store.claimIdempotency('ws1', 'k2', 'POST /api/y');
+    await store.releaseIdempotency('ws1', 'k2');
+    eq((await store.claimIdempotency('ws1', 'k2', 'POST /api/y')).claimed, true,
+      'a request that failed must not block its own retry');
+
+    // Same key, different purchase. These are different requests.
+    eq((await store.claimIdempotency('ws-other', 'k1', 'POST /api/x')).claimed, true);
+  });
+
+  await test(`${label}: recorded answers expire`, async () => {
+    await store.claimIdempotency('ws1', 'k3', 'POST /api/z');
+    await store.recordIdempotency('ws1', 'k3', 200, { ok: true });
+    eq(await store.expireIdempotency(24 * 60 * 60 * 1000), 0, 'nothing here is a day old yet');
+    ok(await store.expireIdempotency(-1) >= 1, 'and a cutoff in the future takes them');
+    eq((await store.claimIdempotency('ws1', 'k3', 'POST /api/z')).claimed, true,
+      'an expired key is a new request, which is the right reading: a retry is not a day late');
+  });
+
+  /* --------------------------------------------------------- the company */
+
+  await test(`${label}: a company's policy round-trips and is versioned`, async () => {
+    eq(await store.loadCompany('acme'), null, 'an unknown company is null, not an empty one');
+
+    const first = await store.saveCompany('acme', { limits: { perDeal: 5000 } }, 0);
+    eq(first.version, 1);
+    const read = await store.loadCompany('acme');
+    eq(read.profile.limits.perDeal, 5000);
+    eq(read.version, 1);
+
+    const second = await store.saveCompany('acme', { limits: { perDeal: 6000 } }, read.version);
+    eq(second.version, 2);
+    eq((await store.loadCompany('acme')).profile.limits.perDeal, 6000);
+  });
+
+  await test(`${label}: two desks editing one policy do not overwrite each other`, async () => {
+    /*
+     * This row holds the spending ceiling and a company has several purchases
+     * open, each with its own lock. Two heads editing the limit from two
+     * purchases at the same moment is therefore reachable, and last-write-wins
+     * would silently discard one of them.
+     */
+    const seen = await store.loadCompany('acme');
+    let threw = null;
+    try {
+      await store.saveCompany('acme', { limits: { perDeal: 1 } }, seen.version - 1);
+    } catch (e) { threw = e; }
+    ok(threw && threw.conflict, 'a stale version must be refused, not applied');
+    eq((await store.loadCompany('acme')).profile.limits.perDeal, 6000, 'and nothing may have changed');
+  });
+
+  await test(`${label}: a workspace records its company and lists under it`, async () => {
+    await store.create('co-a-1', { id: 'co-a-1' }, 'co-a');
+    await store.create('co-a-2', { id: 'co-a-2' }, 'co-a');
+    await store.create('co-b-1', { id: 'co-b-1' }, 'co-b');
+
+    eq((await store.load('co-a-1')).companyId, 'co-a');
+
+    const mine = await store.listWorkspaces('co-a', 50);
+    eq(mine.length, 2, JSON.stringify(mine.map((r) => r.id)));
+    ok(mine.every((r) => r.id.startsWith('co-a-')), 'and nobody else\'s');
+    ok(mine[0].updatedAt, 'the list carries when each was last touched');
+
+    eq((await store.listWorkspaces('co-nobody', 50)).length, 0);
+  });
+
+  await test(`${label}: an owned workspace cannot be re-pointed at another company`, async () => {
+    /*
+     * assignCompany exists to adopt rows created before companies did. It must
+     * only ever fill a hole: if it could reassign, a caller who knew a
+     * workspace id could move it into their own company and read it.
+     */
+    await store.create('orphan', { id: 'orphan' });            // no company
+    eq(await store.assignCompany('orphan', 'co-a'), true, 'an unowned row is adoptable');
+    eq((await store.load('orphan')).companyId, 'co-a');
+
+    eq(await store.assignCompany('orphan', 'co-b'), false, 'an owned row is not');
+    eq((await store.load('orphan')).companyId, 'co-a', 'and the owner is unchanged');
+  });
+
+  await test(`${label}: the outcome log reads by company, across purchases`, async () => {
+    await store.appendOutcome({ workspaceId: 'co-a-1', companyId: 'co-a', event: 'agreed', supplierId: 'SUP-001' });
+    await store.appendOutcome({ workspaceId: 'co-a-2', companyId: 'co-a', event: 'walked', supplierId: 'SUP-002' });
+    await store.appendOutcome({ workspaceId: 'co-b-1', companyId: 'co-b', event: 'agreed', supplierId: 'SUP-003' });
+
+    const mine = await store.companyOutcomes('co-a', 100);
+    eq(mine.length, 2, 'what the buyer learned in either purchase');
+    ok(mine.every((r) => r.companyId === 'co-a'), 'and nothing from another buyer');
+
+    // Still readable per purchase, which is what the audit view wants.
+    eq((await store.outcomes('co-a-1', 100)).length, 1);
+  });
+
   await test(`${label}: pruning a workspace takes its audit and outcomes with it`, async () => {
     /*
      * Pruning deleted the workspace row and left its children behind:
@@ -239,6 +350,25 @@ async function checks(label, store) {
 
     eq((await store.audit('doomed')).length, 0, 'eviction takes the audit rows with it');
     eq((await store.outcomes('doomed')).length, 0, 'and the outcomes');
+  });
+
+  await test(`${label}: a company with no purchases left goes too, one that still has them stays`, async () => {
+    /*
+     * companies is keyed by a value the caller supplies, so a row that is never
+     * deleted is the unbounded table prune exists to prevent. A company that
+     * still owns a purchase keeps its policy - that is the case the row is for -
+     * and runs after the prune test above because it depends on what that one
+     * evicted.
+     */
+    await store.create('live-1', { id: 'live-1' }, 'co-live');
+    await store.saveCompany('co-live', { company: 'Still buying' }, 0);
+    await store.saveCompany('co-dead', { company: 'Nothing left' }, 0);
+
+    await store.save('live-1', { id: 'live-1', touched: true }, 1);
+    await store.prune(1);
+
+    ok(await store.loadCompany('co-live'), 'a company with a live purchase keeps its policy');
+    eq(await store.loadCompany('co-dead'), null, 'one with nothing left does not');
   });
 
 

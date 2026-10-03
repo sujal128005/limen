@@ -5410,3 +5410,110 @@ tr.clickable:focus-visible { outline: 2px solid var(--pine); outline-offset: -2p
 .tmpl:disabled { opacity: .55; cursor: default; }
 .tmpl-add { border-style: dashed; color: var(--ink-4); }
 
+
+/* ======================================================================
+ * THE PURCHASE SWITCHER
+ *
+ * Sits where the "Workspace: Demo" crumb used to. It is a chip rather than
+ * a select, because the thing it opens is a list of work with state on it
+ * and not a list of values, and because at one purchase it has to read as
+ * a label that happens to be clickable rather than as a control demanding
+ * a decision.
+ * =================================================================== */
+
+.tsw { position: relative; flex: none; }
+
+.tsw-chip {
+  display: flex; align-items: center; gap: 8px;
+  height: 34px; padding: 0 8px 0 11px; max-width: 320px;
+  border-radius: var(--r-pill);
+  background: transparent; border: 1px solid transparent;
+  color: var(--ink-2); font: inherit; font-size: 12.5px; cursor: pointer;
+  transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+}
+.tsw-chip:hover, .tsw-chip.open { border-color: var(--hair-strong); background: var(--surface); }
+.tsw-chip:focus-visible { outline: 2px solid var(--pine); outline-offset: 2px; }
+.tsw-chip-k { font-size: 11.5px; color: var(--ink-4); flex: none; }
+.tsw-chip-v {
+  color: var(--ink-2); font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tsw-count {
+  flex: none; min-width: 18px; height: 18px; padding: 0 5px;
+  border-radius: var(--r-pill); background: var(--pine-wash); color: var(--pine);
+  font-size: 11px; font-weight: 600; display: grid; place-items: center;
+}
+.tsw-caret { width: 14px; height: 14px; flex: none; color: var(--ink-4); }
+
+.tsw-menu {
+  position: absolute; top: calc(100% + 8px); left: 0; z-index: 60;
+  width: min(380px, calc(100vw - 32px));
+  background: var(--surface); border: 1px solid var(--hair-strong);
+  border-radius: var(--r-md); box-shadow: var(--e3);
+  padding: 6px; display: flex; flex-direction: column; gap: 2px;
+}
+.tsw-menu-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 7px 9px 6px; font-size: 11.5px; color: var(--ink-4);
+}
+.tsw-menu-count { font-variant-numeric: tabular-nums; }
+.tsw-err { margin: 0; padding: 7px 9px; font-size: 12px; color: var(--amber); }
+
+.tsw-list { list-style: none; margin: 0; padding: 0; max-height: 46vh; overflow-y: auto; }
+.tsw-row { display: flex; align-items: stretch; gap: 2px; border-radius: var(--r-sm); }
+.tsw-row:hover { background: var(--sunk); }
+.tsw-row.current { background: var(--pine-wash); }
+
+.tsw-row-main {
+  flex: 1 1 auto; min-width: 0; text-align: left;
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 9px 10px; border: 0; background: none; color: inherit;
+  font: inherit; cursor: pointer; border-radius: var(--r-sm);
+}
+.tsw-row-main:focus-visible { outline: 2px solid var(--pine); outline-offset: -2px; }
+.tsw-row-title {
+  font-size: 13px; color: var(--ink-2); font-weight: 500;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tsw-row-title em { color: var(--ink-4); font-style: italic; font-weight: 400; }
+.tsw-row-meta { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--ink-4); flex-wrap: wrap; }
+.tsw-row-sup { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 14ch; }
+.tsw-row-amt { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+/* The state carries the only colour in the row, because it is the only thing
+   in it that changes what the reader should do next. */
+.tsw-state {
+  flex: none; padding: 1px 7px; border-radius: var(--r-pill);
+  background: var(--sunk); border: 1px solid var(--hair);
+  font-size: 10.5px; letter-spacing: .02em; color: var(--ink-3);
+}
+.tsw-state.s-head_approval, .tsw-state.s-ai_completed, .tsw-state.s-payment_ready {
+  background: var(--amber-wash); border-color: var(--amber-line); color: var(--amber);
+}
+.tsw-state.s-settled, .tsw-state.s-funded, .tsw-state.s-approved {
+  background: var(--pine-wash); border-color: var(--pine-line); color: var(--pine);
+}
+
+.tsw-row-x {
+  flex: none; width: 30px; border: 0; background: none; cursor: pointer;
+  color: var(--ink-4); font-size: 17px; line-height: 1; border-radius: var(--r-sm);
+}
+.tsw-row-x:hover { color: var(--ink-2); background: var(--hair); }
+.tsw-row-x:disabled { opacity: .4; cursor: default; }
+
+.tsw-empty { padding: 12px 10px; font-size: 12.5px; color: var(--ink-4); }
+
+.tsw-new {
+  margin-top: 4px; padding: 9px 10px; text-align: left;
+  border: 0; border-top: 1px solid var(--hair); background: none;
+  color: var(--pine); font: inherit; font-size: 12.5px; font-weight: 500;
+  cursor: pointer; border-radius: 0 0 var(--r-sm) var(--r-sm);
+}
+.tsw-new:hover:not(:disabled) { background: var(--pine-wash); }
+.tsw-new:disabled { color: var(--ink-4); cursor: default; }
+.tsw-note { margin: 0; padding: 0 10px 8px; font-size: 11.5px; color: var(--ink-4); }
+
+@media (max-width: 760px) {
+  .tsw-chip-k { display: none; }
+  .tsw-chip { max-width: 180px; }
+}
