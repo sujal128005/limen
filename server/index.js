@@ -16,6 +16,7 @@ const { parseRequest, parseDocument, llmParse } = require('./engine/parse');
 const intake = require('./intake/document');
 const correction = require('./engine/correction');
 const parse = require('./engine/parse');
+const profile = require('./profile');
 const { evaluateCandidates, selectForNegotiation } = require('./engine/match');
 const { negotiateAll } = require('./engine/negotiate');
 const { recommend } = require('./engine/recommend');
@@ -419,6 +420,131 @@ app.get('/api/suppliers', wrap(async (req, res) => {
   res.json(out);
 }));
 
+// --------------------------------------------------------- company profile
+
+/*
+ * The buying company, as opposed to the current purchase.
+ *
+ * Three routes rather than one, and the split is the whole point. A single
+ * PATCH over the whole profile would mean one permission check standing between
+ * the sourcing desk and the company's spending limits, and that check would be
+ * a line of code somebody could plausibly simplify away. Two routes with two
+ * capabilities cannot be simplified into one by accident.
+ */
+const profileOf = (session) => session.profile || profile.blankProfile();
+
+app.get('/api/profile', wrap(async (req, res) => {
+  const session = sessionFor(req);
+  guard(req, session, 'read');
+
+  /*
+   * The published ceiling travels with the profile, because the two numbers
+   * mean different things and showing one without the other is how a person
+   * comes to believe the settings page is what stops the money.
+   *
+   * The profile's limit is the company's stated intent and this server can
+   * change it. The on-chain figure is what the escrow will actually accept and
+   * this server cannot. When they differ, the chain wins, and the screen says
+   * so rather than leaving somebody to find out at the funding step.
+   */
+  let onChain = null;
+  try {
+    const buyer = await chain.buyerFor(session.id);
+    const p = await chain.escrow.policies(buyer.address);
+    onChain = {
+      active: p.active,
+      maxPerDeal: fromUnits(p.maxPerDeal),
+      maxTotal: fromUnits(p.maxTotal),
+      spent: fromUnits(p.spent),
+      expiry: Number(p.expiry),
+      agent: p.agent,
+    };
+  } catch (_) {
+    /* The chain is not reachable. The profile is still readable, and saying
+       nothing about the on-chain figure is honest; inventing one is not. */
+  }
+
+  res.json({ profile: profile.publicView(session.profile), onChain });
+}));
+
+/**
+ * Behaviour. The sourcing desk's half.
+ *
+ * Everything reachable here changes how the agent looks for a supplier. None of
+ * it changes what the agent may commit. Getting these wrong produces a worse
+ * purchase; it cannot produce an unauthorised one, which is precisely why this
+ * desk is allowed to hold them.
+ */
+app.patch('/api/profile', wrap(async (req, res) => {
+  const session = sessionFor(req);
+  guard(req, session, 'run');
+
+  const body = req.body || {};
+  /*
+   * Refused rather than ignored.
+   *
+   * Silently dropping `limits` from a sales request would be safe and would
+   * teach the caller nothing, and a client that believes it set a limit is
+   * worse off than one that was told it cannot. The refusal names the desk that
+   * can, because that is the useful half of the answer.
+   */
+  for (const field of profile.AUTHORITY_FIELDS) {
+    if (body[field] !== undefined) {
+      const e = new Error(
+        'Spending limits are not part of the sourcing desk\'s settings. '
+        + 'The head holds them, on the same page under Authority.'
+      );
+      e.status = 403;
+      throw e;
+    }
+  }
+
+  const { profile: next, conflicted } = profile.applyBehaviour(
+    session.profile, body, req.actor ? req.actor.role : null
+  );
+  session.profile = next;
+
+  await audit(req, 'profile-behaviour', null, {
+    fields: Object.keys(body).filter((k) => profile.BEHAVIOUR_FIELDS.includes(k)),
+    blocked: next.blockedSuppliers.length,
+    preferred: next.preferredSuppliers.length,
+  });
+
+  res.json({
+    profile: profile.publicView(next),
+    notes: conflicted.length
+      ? [`${conflicted.join(', ')} ${conflicted.length === 1 ? 'is' : 'are'} on both lists, so the block was kept and the preference dropped.`]
+      : [],
+  });
+}));
+
+/**
+ * Authority. The head's half, and nobody else's.
+ *
+ * Guarded on publishPolicy rather than on a new capability, deliberately: the
+ * desk that may publish a spending ceiling on chain is the desk that may state
+ * one here, and inventing a second capability would create a way for the two to
+ * come apart.
+ */
+app.patch('/api/profile/limits', wrap(async (req, res) => {
+  const session = sessionFor(req);
+  guard(req, session, 'publishPolicy');
+
+  const { profile: next, adjusted } = profile.applyLimits(
+    session.profile, req.body || {}, req.actor ? req.actor.role : null
+  );
+  session.profile = next;
+
+  await audit(req, 'profile-limits', null, {
+    perDeal: next.limits.perDeal,
+    perCategory: next.limits.perCategory,
+    autoApproveBelow: next.limits.autoApproveBelow,
+    adjusted,
+  });
+
+  res.json({ profile: profile.publicView(next), notes: adjusted });
+}));
+
 // ------------------------------------------------------------ AI pipeline
 app.post('/api/brief', wrap(async (req, res) => {
   const session = sessionFor(req);
@@ -443,9 +569,36 @@ app.post('/api/brief', wrap(async (req, res) => {
       brief.budgetPerUnit = +(brief.budgetTotal / brief.quantityKg).toFixed(4);
     }
   }
+  assertWithinCompanyLimits(session, brief);
   startNewRun(session, brief);
   res.json(brief);
 }));
+
+/*
+ * Refused at the brief, before a single supplier is looked at.
+ *
+ * This is the cheapest refusal in the product and the earliest. Nothing has
+ * been sourced, nothing negotiated, and no supplier has been approached about a
+ * purchase that was never going to be allowed - which matters once the
+ * counterparties are real companies rather than rows in a table, because an
+ * agent that opens negotiations it cannot finish costs a supplier real time.
+ *
+ * Be exact about what it is NOT. This check can be got around by anyone who can
+ * edit the profile, and it is not what stops the money. The escrow contract is,
+ * and the ceiling it holds is state this server cannot write. What this buys is
+ * that a person finds out at the start rather than at the funding step, and the
+ * message names which limit and whose decision it is to raise.
+ */
+function assertWithinCompanyLimits(session, brief) {
+  const check = profile.checkBrief(session.profile, brief);
+  if (check.ok) return;
+  const e = new Error(check.reason);
+  e.status = 400;
+  e.refusedByPolicy = true;
+  e.limit = check.limit;
+  e.scope = check.scope;
+  throw e;
+}
 
 /*
  * Everything a new brief has to clear.
@@ -459,6 +612,7 @@ app.post('/api/brief', wrap(async (req, res) => {
 function startNewRun(session, brief) {
   session.brief = brief;
   session.candidates = []; session.negotiations = []; session.recommendation = null;
+  session.excludedByPolicy = [];
   /*
    * A new brief starts a new run, so the previous run's settlement has to go
    * with it. Leaving settlementFacts and signature in place meant the summary
@@ -545,6 +699,9 @@ app.post(
     const doc = intake.readDocument(body, filename);
     const brief = parseDocument(doc.text);
 
+    /* The same gate as the typed path. A tender is not a way round the
+       company's own limits just because it arrived as a file. */
+    assertWithinCompanyLimits(session, brief);
     startNewRun(session, brief);
 
     /*
@@ -680,6 +837,7 @@ app.post('/api/brief/correct', wrap(async (req, res) => {
      * longer exists, which is worse than showing nothing.
      */
     session.candidates = []; session.negotiations = []; session.recommendation = null;
+  session.excludedByPolicy = [];
     session.settlementFacts = null; session.signature = null;
     session.submittedAt = null; session.submittedBy = null;
     session.sentToHeadAt = null; session.sentToHeadBy = null;
@@ -722,10 +880,37 @@ app.post('/api/candidates', wrap(async (req, res) => {
   const session = sessionFor(req);
   guard(req, session, 'run');
   if (!session.brief) throw new Error('No brief. Submit a request first.');
-  const rows = evaluateCandidates(session.brief);
+  const evaluated = evaluateCandidates(session.brief);
+
+  /*
+   * The company's two supplier lists, and they are not symmetric.
+   *
+   * Blocking is a SCREENING decision: the supplier is removed before anything
+   * is negotiated. Preferring is a RANKING one: it moves a supplier up a list
+   * it already earned a place on. A preference that could promote a supplier
+   * past a hard constraint would be a way to buy uncertified material by liking
+   * the vendor, so it cannot reach screening at all.
+   *
+   * The exclusions are reported rather than quietly applied. A blocklist is the
+   * easiest way in this product to hide a cheaper supplier from a buyer, and an
+   * exclusion nobody can see is indistinguishable from the engine deciding on
+   * its own. The run says who was removed and why.
+   */
+  const { rows, excluded } = profile.applyBlocklist(session.profile, evaluated);
   session.candidates = rows;
+  session.excludedByPolicy = excluded;
+
   const shortlist = selectForNegotiation(rows).map((r) => r.supplierId);
-  res.json({ candidates: rows, shortlist });
+  /* Preferred suppliers first WITHIN the shortlist the engine already chose.
+     The membership of that shortlist is not ours to change here. */
+  shortlist.sort((a, b) => Number(profile.isPreferred(session.profile, b)) - Number(profile.isPreferred(session.profile, a)));
+
+  res.json({
+    candidates: rows,
+    shortlist,
+    excludedByPolicy: excluded,
+    preferred: (session.profile && session.profile.preferredSuppliers) || [],
+  });
 }));
 
 app.post('/api/negotiate', wrap(async (req, res) => {
@@ -777,6 +962,7 @@ app.get('/api/run', wrap(async (req, res) => {
     shortlist: candidates.length ? selectForNegotiation(candidates).map((r) => r.supplierId) : [],
     negotiations: session.negotiations || [],
     recommendation: session.recommendation || null,
+    excludedByPolicy: session.excludedByPolicy || [],
     // Whether there is anything here at all, so a screen can tell "no run yet"
     // from "a run this desk has not loaded".
     hasRun: !!session.brief,
@@ -929,8 +1115,95 @@ app.post('/api/purchase/send-to-head', wrap(async (req, res) => {
   session.sentToHeadAt = new Date().toISOString();
   session.sentToHeadBy = req.actor.name;
   await audit(req, 'send-to-head', 'SALES_REVIEW');
-  res.json({ state: authorization.purchaseState(session), sentToHeadBy: session.sentToHeadBy, sentToHeadAt: session.sentToHeadAt });
+
+  /*
+   * The small tail of spending, approved by a standing rule instead of a person.
+   *
+   * Nobody wants a head of operations sanctioning a forty-pound box of
+   * fasteners, and a procurement system that makes them do it is one people
+   * work around rather than use. So a threshold exists - and it is the single
+   * most dangerous setting in this product, because it is the only one that can
+   * take a human out of the loop. Four things hold it down:
+   *
+   *   Only the head can set it. The desk that benefits from a higher threshold
+   *   is not the desk that may raise it.
+   *
+   *   It is capped as a fraction of the per-purchase limit, so no value anybody
+   *   types can automate a purchase that matters. The head is capped too:
+   *   separation of duties the duty-holder can switch off is not separation.
+   *
+   *   The CONTRACT IS UNAFFECTED. The escrow still checks the ceiling the head
+   *   published on chain, and an auto-approved purchase above it reverts
+   *   exactly as any other would. This threshold decides whether a person is
+   *   asked, never what the chain will accept.
+   *
+   *   Every one is recorded as auto-approved, naming the rule and the figure it
+   *   ran under, so the audit trail never shows a purchase a person appears to
+   *   have sanctioned and did not.
+   */
+  const auto = await autoApproveIfAllowed(req, session);
+
+  res.json({
+    state: authorization.purchaseState(session),
+    sentToHeadBy: session.sentToHeadBy,
+    sentToHeadAt: session.sentToHeadAt,
+    autoApproved: auto ? auto.approval : null,
+    funded: auto ? auto.funded : null,
+    contractError: auto ? auto.contractError : null,
+  });
 }));
+
+/**
+ * @returns {null|{approval, funded, contractError}} null when a person is still
+ *          needed, which is the default and the case worth defaulting to.
+ */
+async function autoApproveIfAllowed(req, session) {
+  const p = session.profile;
+  const threshold = p && p.limits ? Number(p.limits.autoApproveBelow || 0) : 0;
+  if (!(threshold > 0)) return null;
+
+  const { doc, termsHash, amount } = await packetFor(session);
+  if (!(Number(amount) < threshold)) return null;
+
+  session.headApproval = {
+    approver: 'Automatic approval',
+    approvedAmount: amount,
+    termsHash,
+    method: 'rule',
+    signerAddress: null,
+    /* The rule as it stood at the moment it was used, copied rather than
+       referenced. A threshold changed next week must not rewrite what this
+       purchase was approved under. */
+    rule: {
+      autoApproveBelow: threshold,
+      setBy: p.limitsUpdatedBy || 'unknown',
+      setAt: p.limitsUpdatedAt || null,
+      perDealLimit: p.limits.perDeal,
+    },
+    auto: true,
+    at: new Date().toISOString(),
+  };
+  session.signature = documents.signAgreement(session, doc, 'Automatic approval', {
+    method: 'rule', rule: session.headApproval.rule,
+  });
+
+  await audit(req, 'auto-approve', 'HEAD_APPROVAL', {
+    approvedAmount: amount, threshold, termsHash,
+    ruleSetBy: p.limitsUpdatedBy || 'unknown', ruleSetAt: p.limitsUpdatedAt || null,
+  });
+
+  let funded = null;
+  let contractError = null;
+  try {
+    funded = await fundEscrow(session);
+    await audit(req, 'fund-escrow', 'APPROVED', { dealId: funded.dealId, txHash: funded.txHash, auto: true });
+  } catch (e) {
+    contractError = String(e.shortMessage || e.message).split('\n')[0].slice(0, 200);
+    await audit(req, 'fund-escrow-refused', 'APPROVED', { error: contractError, auto: true });
+  }
+
+  return { approval: session.headApproval, funded, contractError };
+}
 
 /**
  * Head: sanction an amount.

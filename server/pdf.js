@@ -325,8 +325,19 @@ function agreementPdf(d, sig) {
       (signed && sig.method === 'wallet'
         ? 'The approval carries an EIP-712 signature over the commercial terms, verified against '
           + 'the signing address recorded below. The key is not bound to a verified legal identity. '
-        : 'The approval was captured as a typed name and is a demonstration e-signature, not a '
-          + 'cryptographic one. ') +
+        : signed && sig.method === 'rule'
+          /*
+           * The one case where the document has to volunteer something nobody
+           * asked it. A purchase approved by a standing threshold was looked at
+           * by no person at all, and a reader who assumes otherwise has been
+           * misled by a document that merely stayed quiet.
+           */
+          ? 'NO PERSON APPROVED THIS PURCHASE. It was sanctioned by a standing automatic-approval '
+            + `threshold of $${sig.rule && sig.rule.autoApproveBelow != null ? Number(sig.rule.autoApproveBelow).toLocaleString() : 'unknown'}, `
+            + `set by ${sig.rule && sig.rule.setBy ? sig.rule.setBy : 'an unrecorded role'}. `
+            + 'The on-chain spending ceiling was enforced by the escrow contract regardless. '
+          : 'The approval was captured as a typed name and is a demonstration e-signature, not a '
+            + 'cryptographic one. ') +
       'Supplier records are seeded demo data.',
     draw(doc) {
       let y = header(doc, {
@@ -395,7 +406,9 @@ function agreementPdf(d, sig) {
         { role: 'Supplier representative' },
       ], signed && sig.method === 'wallet'
         ? `Signed with key ${sig.address}. Verified against the commercial fingerprint.`
-        : 'Demo e-signature, captured as a typed name. Not legally binding.');
+        : signed && sig.method === 'rule'
+          ? 'Approved automatically by a standing threshold. No person signed this.'
+          : 'Demo e-signature, captured as a typed name. Not legally binding.');
 
       verificationBlock(doc, y, [
         ['Document ID', d.reference],

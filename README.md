@@ -227,6 +227,27 @@ node scripts/llm-check.js --models   # list available models
 
 ---
 
+## The buying company
+
+Everything else in a workspace is one purchase: a brief, a shortlist, a negotiation, an approval, all of it thrown away when somebody starts again. A company is not. Its name, what it buys, which suppliers it will not deal with and what it is willing to spend outlive every individual purchase, and the **Company** screen holds them.
+
+**The page is in two halves, and the split is the point.** This product rests on one sentence — *a company can change how its agent **behaves**, it cannot change what its agent is **allowed to do*** — and a settings page is exactly where that sentence gets quietly broken, because on a settings page a spending limit looks like just another field with a number in it.
+
+| | Who owns it | What it is |
+|---|---|---|
+| **Behaviour** | Sourcing desk | Company details, categories, preferred and blocked suppliers, how the agent weighs price against speed. Getting these wrong produces a worse purchase. It cannot produce an unauthorised one. |
+| **Authority** | Head, and only the head | What may be spent on one purchase, what may be spent in a category, and the threshold below which no person is asked. Getting these wrong produces money leaving the company that nobody approved. |
+
+They are separate objects, written through separate functions, guarded by separate capabilities and reached by separate routes. A `limits` key sent to the behaviour route is refused rather than ignored, and the refusal names the desk that holds it.
+
+**A limit here is not the limit.** The profile's ceiling stops a run at the brief — before a single supplier is looked at, which matters once the counterparties are real companies rather than rows in a table. What the escrow will actually accept is whatever the head last published on chain, in contract state this server cannot write. The screen shows both figures side by side, and says which one wins when they differ.
+
+**Blocking and preferring are not symmetric.** A blocked supplier is removed in screening; a preferred one is moved up a shortlist it already earned a place on. A preference that could promote a supplier past a hard requirement would be a way to buy uncertified material by liking the vendor. Every exclusion is named on the run, because a blocklist is the easiest way in this product to hide a cheaper supplier from a buyer, and an exclusion nobody can see is indistinguishable from the engine deciding on its own.
+
+**Automatic approval is bounded, including for the head.** Nobody wants a head of operations sanctioning a box of fasteners, so a threshold exists — and it is the only setting in the product that can take a human out of the loop. Only the head may set it; it is capped at 20% of the per-purchase limit so no value anybody types can automate a purchase that matters; the escrow still enforces the on-chain ceiling regardless; and the agreement PDF for such a purchase opens with **NO PERSON APPROVED THIS PURCHASE**, naming the threshold and who set it. Separation of duties the duty-holder can switch off is not separation of duties.
+
+---
+
 ## Starting from a tender document
 
 Real procurement does not begin with a sentence. It begins with a tender, so a buyer can drop the file in instead of retyping it. PDF, Word (`.docx`) and plain text. There is a six-page sample at `docs/samples/sample-tender-pet-resin.pdf`.
