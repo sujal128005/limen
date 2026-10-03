@@ -113,6 +113,10 @@ const SUPPLIERS = [
   },
   {
     id: 'SUP-D', name: 'Gujarat Polychem', country: 'India', city: 'Vadodara',
+    /* Real-shaped Indian registration numbers: the GSTIN check digit below is
+       computed, not invented, so server/verification.js genuinely validates it
+       rather than matching a length. */
+    registeredId: '24AABCG2435M1ZP', cin: 'U24100GJ2011PTC067432',
     yearsActive: 14, onTimeRate: 0.91, priorDisputes: 1, walletIndex: 5,
     certifications: ['ISO-9001'],
     products: [
@@ -144,6 +148,10 @@ const SUPPLIERS = [
   },
   {
     id: 'SUP-E', name: 'Rotterdam Packaging Supply', country: 'Netherlands', city: 'Rotterdam',
+    /* A European VAT number. Limen has no offline check for one, so this
+       supplier comes back NOT CHECKED - which is the honest answer and the
+       one the screen has to be able to show without it reading as a failure. */
+    registeredId: 'NL819276873B01',
     yearsActive: 19, onTimeRate: 0.98, priorDisputes: 0, walletIndex: 6,
     certifications: ['ISO-9001', 'FDA-FOOD-CONTACT', 'BRC', 'ISO-14001'],
     products: [
@@ -271,6 +279,7 @@ const SUPPLIERS = [
   },
   {
     id: 'SUP-J', name: 'Jindal Metalworks', country: 'India', city: 'Raigad',
+    registeredId: '27AAACJ4825K1ZF', cin: 'U27100MH2008PTC188344',
     yearsActive: 17, onTimeRate: 0.89, priorDisputes: 2, walletIndex: 12,
     certifications: ['ISO-9001', 'EN-10204-3.1'],
     products: [

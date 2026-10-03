@@ -100,6 +100,17 @@ function blankProfile() {
       perDeal: null,            // null means no stated limit, not an unlimited one
       perCategory: {},          // categoryId -> amount
       autoApproveBelow: 0,      // 0 means every purchase needs a person
+      /*
+       * Authority rather than behaviour, and the reasoning is worth stating
+       * because it looks like a preference.
+       *
+       * Turning this ON only narrows what the agent may buy, which is safe.
+       * Turning it OFF widens it, and the desk that wants a deal to go through
+       * is exactly the desk that would be tempted to widen it at five o'clock.
+       * A control is owned by whoever loses from relaxing it, not by whoever is
+       * inconvenienced by it.
+       */
+      requireVerifiedSuppliers: false,
     },
     createdAt: Date.now(),
     updatedAt: null,
@@ -267,6 +278,10 @@ function applyLimits(profile, patch, by) {
     }
   }
 
+  if (patch.requireVerifiedSuppliers !== undefined) {
+    next.limits.requireVerifiedSuppliers = !!patch.requireVerifiedSuppliers;
+  }
+
   if (patch.autoApproveBelow !== undefined) {
     const asked = num(patch.autoApproveBelow) ?? 0;
     const cap = next.limits.perDeal == null ? 0 : next.limits.perDeal * AUTO_APPROVE_MAX_FRACTION;
@@ -360,15 +375,49 @@ function checkBrief(profile, brief) {
  * promote a supplier past a hard constraint would be a way to buy uncertified
  * material by liking the vendor.
  */
-function applyBlocklist(profile, rows) {
-  if (!profile || !profile.blockedSuppliers.length) return { rows, excluded: [] };
-  const blocked = new Set(profile.blockedSuppliers);
+/**
+ * Suppliers this company's own policy will not let the agent buy from.
+ *
+ * Two rules, and they are different kinds of thing. A blocklist is a judgement
+ * the company has made about a named supplier. A verification requirement is a
+ * standing rule about evidence, and it catches suppliers nobody has ever
+ * considered.
+ *
+ * Both exclude, and both are REPORTED. A supplier removed for want of a
+ * registration number has a remediable problem and deserves to know it exists;
+ * a buyer shown nine suppliers when the agent screened twelve deserves to know
+ * what happened to the other three.
+ */
+function excludedBy(profile, row, verificationOf) {
+  const id = String(row.supplierId || row.id).toUpperCase();
+  if (profile.blockedSuppliers.includes(id)) {
+    return { supplierId: row.supplierId || row.id, name: row.name, rule: 'blocklist', reason: 'On your blocked list' };
+  }
+  if (profile.limits && profile.limits.requireVerifiedSuppliers) {
+    const v = verificationOf ? verificationOf(row) : null;
+    const status = v ? v.status : 'unverified';
+    if (status !== 'verified') {
+      return {
+        supplierId: row.supplierId || row.id,
+        name: row.name,
+        rule: 'verification',
+        reason: status === 'failed'
+          ? 'Supplied a registration number that was never issued'
+          : 'No checkable registration number, and your policy requires one',
+      };
+    }
+  }
+  return null;
+}
+
+function applyBlocklist(profile, rows, verificationOf) {
+  const requiresVerified = !!(profile && profile.limits && profile.limits.requireVerifiedSuppliers);
+  if (!profile || (!profile.blockedSuppliers.length && !requiresVerified)) return { rows, excluded: [] };
   const excluded = [];
   const kept = [];
   for (const r of rows) {
-    if (blocked.has(String(r.supplierId).toUpperCase())) {
-      excluded.push({ supplierId: r.supplierId, name: r.name, reason: 'On your blocked list' });
-    } else kept.push(r);
+    const hit = excludedBy(profile, r, verificationOf);
+    if (hit) excluded.push(hit); else kept.push(r);
   }
   return { rows: kept, excluded };
 }
@@ -392,6 +441,6 @@ function publicView(profile) {
 
 module.exports = {
   blankProfile, applyBehaviour, applyLimits,
-  checkBrief, categoryFor, applyBlocklist, isPreferred, publicView,
+  checkBrief, categoryFor, applyBlocklist, excludedBy, isPreferred, publicView,
   BEHAVIOUR_FIELDS, AUTHORITY_FIELDS, AUTO_APPROVE_MAX_FRACTION,
 };

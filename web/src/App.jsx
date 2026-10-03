@@ -718,22 +718,22 @@ const ROLE_DESKS = {
     label: 'Sales / Procurement',
     short: 'Sales',
     blurb: 'Runs the sourcing, reviews what the agent found, and sends it up for approval.',
-    home: 'run',
-    nav: ['run', 'review', 'thread', 'suppliers', 'company', 'documents', 'audit', 'adversary'],
+    home: 'dashboard',
+    nav: ['dashboard', 'run', 'review', 'thread', 'suppliers', 'company', 'documents', 'audit', 'adversary'],
   },
   head: {
     label: 'Head / Manager',
     short: 'Head',
     blurb: 'Owns the spending policy and sanctions the amount. Does not pay.',
     home: 'approvals',
-    nav: ['approvals', 'thread', 'suppliers', 'company', 'documents', 'audit', 'adversary'],
+    nav: ['dashboard', 'approvals', 'thread', 'suppliers', 'company', 'documents', 'audit', 'adversary'],
   },
   finance: {
     label: 'Finance / Payments',
     short: 'Finance',
     blurb: 'Executes an authorised payment. Cannot raise one or approve one.',
     home: 'payments',
-    nav: ['payments', 'thread', 'suppliers', 'company', 'documents', 'audit', 'adversary'],
+    nav: ['dashboard', 'payments', 'thread', 'suppliers', 'company', 'documents', 'audit', 'adversary'],
   },
 };
 
@@ -2156,7 +2156,64 @@ function DecisionPacket({ brief, candidates, negotiations, rec, defaultOpen }) {
  * thing that word made people expect.
  */
 
+/* ---------------------------------------------------------- trust, shown */
+
+/*
+ * A trust score, with the thing that makes it meaningful attached.
+ *
+ * Never rendered alone. A 71 built on nine settled deals and a 71 built on what
+ * a supplier says about itself are different objects, and a buyer who cannot
+ * tell them apart has been handed a worse tool than no score at all. The basis
+ * line is not decoration; it is the number's units.
+ */
+function TrustBadge({ trust, verification }) {
+  if (!trust) return <span className="hint">not scored</span>;
+  const v = verification && verification.status;
+  return (
+    <div className="trust">
+      <span className={`trust-score${trust.earnedWeight >= 60 ? ' is-earned' : ''}`}>{trust.score}</span>
+      <span className="trust-basis">{trust.basis}</span>
+      {v === 'verified' && <span className="chip chip-ok" title={verification.meaning}>verified</span>}
+      {v === 'failed' && <span className="chip chip-bad" title={verification.meaning}>bad number</span>}
+    </div>
+  );
+}
+
 function SuppliersView({ suppliers, loading, currentSupplierId }) {
+  const [q, setQ] = useState('');
+  const [material, setMaterial] = useState('');
+  const [cert, setCert] = useState('');
+  const [onlyVerified, setOnlyVerified] = useState(false);
+  const [sort, setSort] = useState('trust');
+
+  const materials = useMemo(
+    () => [...new Set((suppliers || []).flatMap((s) => s.materials || []))].sort(),
+    [suppliers]
+  );
+  const certs = useMemo(
+    () => [...new Set((suppliers || []).flatMap((s) => s.certifications || []))].sort(),
+    [suppliers]
+  );
+
+  const shown = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    let rows = (suppliers || []).filter((s) => {
+      if (needle && !`${s.name} ${s.city} ${s.country} ${s.id}`.toLowerCase().includes(needle)) return false;
+      if (material && !(s.materials || []).includes(material)) return false;
+      if (cert && !(s.certifications || []).includes(cert)) return false;
+      if (onlyVerified && !(s.verification && s.verification.status === 'verified')) return false;
+      return true;
+    });
+    const by = {
+      trust: (a, b) => (b.trust ? b.trust.score : 0) - (a.trust ? a.trust.score : 0),
+      name: (a, b) => a.name.localeCompare(b.name),
+      deals: (a, b) => (b.onChain ? b.onChain.settledCount || 0 : 0) - (a.onChain ? a.onChain.settledCount || 0 : 0),
+      lead: (a, b) => (a.leadTimeDays || 999) - (b.leadTimeDays || 999),
+    };
+    rows = [...rows].sort(by[sort] || by.trust);
+    return rows;
+  }, [suppliers, q, material, cert, onlyVerified, sort]);
+
   if (loading) return <Working title="Reading the supplier registry" sub="Reputation is read from the chain, one supplier at a time." />;
   if (!suppliers || !suppliers.length) {
     return (
@@ -2173,13 +2230,42 @@ function SuppliersView({ suppliers, loading, currentSupplierId }) {
     <section className="section">
       <div className="view-head">
         <div className="eyebrow">Directory</div>
-        <h2>{suppliers.length} suppliers in the registry</h2>
+        <h2>{suppliers.length} suppliers</h2>
         <p className="sub">
-          Reputation below is read from the chain, not from this application. Only the escrow
-          contract can write it, and only when funds actually move, so nobody in this picture
-          can edit their own record.
+          Three different kinds of claim sit in this table and they are kept apart rather than merged:
+          what a supplier says about itself, what arithmetic establishes about its registration number,
+          and what the escrow contract recorded when money actually moved. Only the last one is
+          something nobody in this picture can edit.
         </p>
       </div>
+
+      <div className="filters">
+        <input
+          className="filter-q" value={q} onChange={(e) => setQ(e.target.value)}
+          placeholder="Search name, city or country" aria-label="Search suppliers" spellCheck={false}
+        />
+        <select value={material} onChange={(e) => setMaterial(e.target.value)} aria-label="Material">
+          <option value="">Any material</option>
+          {materials.map((m) => <option key={m} value={m}>{m}</option>)}
+        </select>
+        <select value={cert} onChange={(e) => setCert(e.target.value)} aria-label="Certification">
+          <option value="">Any certification</option>
+          {certs.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sort by">
+          <option value="trust">Most trusted</option>
+          <option value="deals">Most settled deals</option>
+          <option value="lead">Fastest lead time</option>
+          <option value="name">Name</option>
+        </select>
+        <label className="filter-check">
+          <input type="checkbox" checked={onlyVerified} onChange={(e) => setOnlyVerified(e.target.checked)} />
+          Verified registration only
+        </label>
+        <span className="spacer" />
+        <span className="hint">{shown.length} of {suppliers.length}</span>
+      </div>
+
       <div className="panel">
         <div className="tablewrap">
           <table className="dtable">
@@ -2187,47 +2273,49 @@ function SuppliersView({ suppliers, loading, currentSupplierId }) {
               <tr>
                 <th>Supplier</th>
                 <th>Location</th>
+                <th>Trust</th>
                 <th>Certifications</th>
-                <th className="num">On time</th>
-                <th className="num">Score</th>
+                <th className="num">Lead</th>
                 <th className="num">Deals</th>
                 <th className="num">Settled</th>
               </tr>
             </thead>
             <tbody>
-              {suppliers.map((s) => (
+              {shown.map((s) => (
                 <tr key={s.id} className={s.id === currentSupplierId ? 'hit' : ''}>
                   <td>
-                    <div className="dt-name">{s.name}</div>
+                    <div className="dt-name">
+                      {s.name}
+                      {s.blockedByPolicy && <span className="chip chip-bad" title="Your company has blocked this supplier">blocked</span>}
+                      {s.preferredByPolicy && <span className="chip chip-ok">preferred</span>}
+                    </div>
                     <div className="dt-sub mono">{short(s.wallet)}</div>
                   </td>
                   <td>{s.city}, {s.country}</td>
+                  <td><TrustBadge trust={s.trust} verification={s.verification} /></td>
                   <td>
                     <div className="chips">
                       {(s.certifications || []).map((c) => <span key={c} className="chip">{c}</span>)}
                     </div>
                   </td>
-                  <td className="num">{Math.round((s.onTimeRate || 0) * 100)}%</td>
-                  <td className="num">{s.onChain ? s.onChain.score.toFixed(2) : '0.00'}</td>
-                  <td className="num">{s.onChain ? s.onChain.completedDeals : 0}</td>
-                  <td className="num">{usd0(s.onChain ? s.onChain.settledVolume : 0)}</td>
+                  <td className="num">{Number.isFinite(s.leadTimeDays) ? `${s.leadTimeDays}d` : '—'}</td>
+                  <td className="num">{s.onChain && s.onChain.settledCount != null ? s.onChain.settledCount : '—'}</td>
+                  <td className="num">{s.onChain && s.onChain.settledVolume != null ? usd0(s.onChain.settledVolume) : '—'}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+        {!shown.length && (
+          <p className="sub" style={{ padding: '16px' }}>
+            No supplier matches those filters. That is a statement about the filters, not about the market.
+          </p>
+        )}
       </div>
     </section>
   );
 }
 
-/*
- * Contracts and invoices.
- *
- * Both PDFs have existed as endpoints the whole time and no screen reachable
- * from the head or finance desks linked to either. They were being asked to
- * approve and to pay against a document they could not open.
- */
 function DocumentsView({ purchase, summaryDoc, settlementDoc, onPreview }) {
   const settled = purchase && purchase.state === 'SETTLED';
   const reference = (purchase && purchase.reference) || (summaryDoc && summaryDoc.reference);
@@ -2567,6 +2655,148 @@ function CompanyView({ data, loading, role, onSaveBehaviour, onSaveLimits, notes
   );
 }
 
+/* --------------------------------------------------------- the dashboard */
+
+/*
+ * Where the buyer lands.
+ *
+ * Until now the answer to "where are we" lived across five screens and a
+ * person's memory. This is one page that answers it: what is in flight and
+ * whose turn it is, what this company has actually spent, and what the record
+ * says about the suppliers it has dealt with.
+ *
+ * Every figure here comes from the outcome log or the chain, and a figure with
+ * no history behind it is reported as absent rather than as zero. A dashboard
+ * that shows a confident 0% on-time because nothing has ever been delivered is
+ * the version that gets believed, and it is lying.
+ */
+function Dashboard({ profile: prof, history, purchase, suppliers, onGo }) {
+  const sum = history && history.summary;
+  const limits = prof && prof.profile ? prof.profile.limits : null;
+  const onChain = prof && prof.onChain;
+
+  const waiting = purchase && purchase.state && !['SETTLED', 'DRAFT', 'AI_COMPLETED'].includes(purchase.state)
+    ? purchase : null;
+
+  const topSuppliers = (history && history.suppliers ? history.suppliers : []).slice(0, 5);
+  const verifiedCount = (suppliers || []).filter((s) => s.verification && s.verification.status === 'verified').length;
+
+  return (
+    <section className="section">
+      <div className="view-head">
+        <div className="eyebrow">Dashboard</div>
+        <h2>{prof && prof.profile && prof.profile.company.name ? prof.profile.company.name : 'Your procurement'}</h2>
+        <p className="sub">What is in flight, what it has cost, and what the record says. Figures with no history behind them say so rather than showing a zero.</p>
+      </div>
+
+      {/* ---- whose turn */}
+      <div className={`dash-now${waiting ? ' is-live' : ''}`}>
+        {waiting ? (
+          <>
+            <div className="dash-now-k">In flight</div>
+            <div className="dash-now-v">
+              {purchase.supplier ? purchase.supplier.name : 'A purchase'}
+              {purchase.amount ? ` — ${usd0(purchase.amount)}` : ''}
+            </div>
+            <div className="dash-now-s">{STATE_BLURB[purchase.state] || purchase.state}</div>
+          </>
+        ) : (
+          <>
+            <div className="dash-now-k">Nothing in flight</div>
+            <div className="dash-now-v">Describe what you need, or upload a tender.</div>
+            <button className="btn btn-primary" onClick={() => onGo('run')}>Start a run</button>
+          </>
+        )}
+      </div>
+
+      {/* ---- the numbers */}
+      <div className="dash-grid">
+        <div className="dash-card">
+          <div className="dash-k">Settled purchases</div>
+          <div className="dash-v mono">{sum && sum.hasHistory ? sum.settled : '—'}</div>
+          <div className="dash-s">{sum && sum.hasHistory ? `${sum.runs} sourcing run${sum.runs === 1 ? '' : 's'}` : 'Nothing bought through Limen yet.'}</div>
+        </div>
+        <div className="dash-card">
+          <div className="dash-k">Spent</div>
+          <div className="dash-v mono">{sum && sum.settled ? usd0(sum.spend) : '—'}</div>
+          <div className="dash-s">{sum && sum.settled ? `${usd0(sum.savedAgainstList)} below list across those deals` : 'No money has moved.'}</div>
+        </div>
+        <div className="dash-card">
+          <div className="dash-k">Single-purchase limit</div>
+          <div className="dash-v mono">{limits && limits.perDeal != null ? usd0(limits.perDeal) : 'not set'}</div>
+          <div className="dash-s">
+            {onChain && onChain.active
+              ? `Chain enforces ${usd0(onChain.maxPerDeal)}`
+              : 'No policy published on chain — the agent cannot spend at all.'}
+          </div>
+        </div>
+        <div className="dash-card">
+          <div className="dash-k">Suppliers</div>
+          <div className="dash-v mono">{suppliers ? suppliers.length : '—'}</div>
+          <div className="dash-s">
+            {suppliers ? `${verifiedCount} with a verified registration number` : ''}
+            {limits && limits.requireVerifiedSuppliers ? ' · unverified are excluded' : ''}
+          </div>
+        </div>
+      </div>
+
+      {/* ---- what the record says */}
+      <div className="panel">
+        <div className="panel-head">
+          <h3>What the record says</h3>
+          <button className="btn btn-quiet" onClick={() => onGo('suppliers')}>All suppliers</button>
+        </div>
+        {!topSuppliers.length ? (
+          <p className="sub" style={{ padding: '0 16px 16px' }}>
+            No supplier has been dealt with yet, so there is nothing here. This fills itself as runs complete —
+            and an empty table is the honest state, not a broken one.
+          </p>
+        ) : (
+          <div className="tablewrap">
+            <table className="dtable">
+              <thead>
+                <tr>
+                  <th>Supplier</th>
+                  <th className="num">Runs</th>
+                  <th className="num">Agreed</th>
+                  <th className="num">Walked</th>
+                  <th className="num">Avg discount</th>
+                  <th>Confidence</th>
+                </tr>
+              </thead>
+              <tbody>
+                {topSuppliers.map((h) => (
+                  <tr key={h.supplierId}>
+                    <td className="dt-name">{h.supplierId}</td>
+                    <td className="num">{h.runs}</td>
+                    <td className="num">{h.agreed}</td>
+                    <td className="num">{h.walkedAway}</td>
+                    <td className="num">{h.avgConcession != null ? `${(h.avgConcession * 100).toFixed(1)}%` : '—'}</td>
+                    {/* A rate computed over two runs is not a rate, and the
+                        column that says so is doing more work than the one
+                        beside it. */}
+                    <td><span className={`chip${h.confidence === 'good' ? ' chip-ok' : ''}`}>{h.confidence}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+const STATE_BLURB = {
+  SALES_REVIEW: 'With the sourcing desk, to check and send up.',
+  HEAD_APPROVAL: 'Waiting on the head to sanction the amount.',
+  APPROVED: 'Approved. Waiting for the supplier to ship.',
+  FUNDED: 'Funds in escrow. Waiting on delivery.',
+  PAYMENT_READY: 'Delivered and confirmed. Finance can pay.',
+  PAYMENT_PROCESSING: 'Payment sent, waiting for the rail to settle it.',
+  REJECTED: 'Rejected. Run sourcing again to raise a new one.',
+};
+
 function AuditView({ entries, loading, onExport }) {
   if (loading) return <Working title="Reading the audit trail" sub="Every transition, in the order it happened." />;
   return (
@@ -2645,6 +2875,7 @@ function Desk() {
   const [companyBusy, setCompanyBusy] = useState(false);
   const [companyNotes, setCompanyNotes] = useState([]);
   const [companyErr, setCompanyErr] = useState(null);
+  const [history, setHistory] = useState(null);
   /* The last correction the agent checked, with its verdict and quotes. */
   const [correction, setCorrection] = useState(null);
   const [candidates, setCandidates] = useState(null);
@@ -2934,6 +3165,23 @@ function Desk() {
       .finally(() => { if (live) setSuppliersBusy(false); });
     return () => { live = false; };
   }, [session, view, suppliers]);
+
+  useEffect(() => {
+    if (!session || view !== 'dashboard') return;
+    let live = true;
+    /* Three reads, because the dashboard is the one screen that answers a
+       question spanning all three: the company's limits, what the chain
+       holds, and what has actually been bought. */
+    Promise.allSettled([api.get('/api/profile'), api.get('/api/history'), api.get('/api/suppliers')])
+      .then(([pr, hi, su]) => {
+        if (!live) return;
+        if (pr.status === 'fulfilled') setCompanyProfile(pr.value);
+        if (hi.status === 'fulfilled') setHistory(hi.value);
+        if (su.status === 'fulfilled') setSuppliers(su.value);
+      });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, view, purchase && purchase.state]);
 
   useEffect(() => {
     if (!session || view !== 'company') return;
@@ -3827,6 +4075,16 @@ function Desk() {
               />
             )}
 
+            {view === 'dashboard' && (
+              <Dashboard
+                profile={companyProfile}
+                history={history}
+                purchase={purchase}
+                suppliers={suppliers}
+                onGo={setView}
+              />
+            )}
+
             {view === 'company' && (
               <CompanyView
                 data={companyProfile}
@@ -4356,6 +4614,7 @@ const NAV_ITEMS = {
   /* The buying company, as opposed to the current purchase. Visible to every
      desk because the limits on it are what they all work under; writable in two
      halves, and the server decides which half each desk may touch. */
+  dashboard: { label: 'Overview', d: 'M4 13h7V4H4zM13 9h7V4h-7zM13 20h7v-9h-7zM4 20h7v-5H4z' },
   company: { label: 'Company', d: 'M4 20V8l8-4 8 4v12M9 20v-6h6v6' },
   audit: { label: 'Audit trail', d: 'M5 5h14v14H5zM5 10h14M10 10v9' },
   thread: { label: 'Messages', d: 'M4 5h16v11H9l-5 4z' },

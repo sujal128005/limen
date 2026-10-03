@@ -17,6 +17,9 @@ const intake = require('./intake/document');
 const correction = require('./engine/correction');
 const parse = require('./engine/parse');
 const profile = require('./profile');
+const verification = require('./verification');
+const trust = require('./trust');
+const outcomes = require('./outcomes');
 const { evaluateCandidates, selectForNegotiation } = require('./engine/match');
 const { negotiateAll } = require('./engine/negotiate');
 const { recommend } = require('./engine/recommend');
@@ -398,26 +401,90 @@ app.get('/api/status', wrap(async (req, res) => {
   });
 }));
 
+/**
+ * Read the on-chain record for one supplier into the shape the trust engine
+ * expects. Separated because three routes need it and a second transcription of
+ * the same struct is a second place for the field names to drift.
+ */
+async function registryFor(supplierId) {
+  const wallet = supplierWallets[supplierId];
+  if (!wallet) return { wallet: null, onChain: null };
+  try {
+    const rec = await chain.registry.getSupplier(wallet);
+    const completed = Number(rec.completedDeals);
+    return {
+      wallet,
+      onChain: {
+        score: Number(rec.score) / 100,
+        settledCount: completed,
+        disputes: Number(rec.disputedDeals),
+        lateDeliveries: Number(rec.lateDeliveries),
+        /* The registry counts what was late; the trust engine wants what was on
+           time. Derived here rather than stored twice. */
+        onTimeCount: Math.max(0, completed - Number(rec.lateDeliveries)),
+        settledVolume: fromUnits(rec.settledVolume),
+      },
+    };
+  } catch (_) {
+    /* The chain is unreachable. The trust engine scores that as unknown rather
+       than as bad, which is the difference between "we could not look" and
+       "we looked and it was empty". */
+    return { wallet, onChain: null };
+  }
+}
+
+/**
+ * Every supplier, with what can actually be established about each.
+ *
+ * Three different kinds of claim travel together here and they are kept apart
+ * rather than merged: what the supplier says about itself, what arithmetic can
+ * establish about its registration number, and what the escrow contract has
+ * recorded about money that actually moved.
+ */
 app.get('/api/suppliers', wrap(async (req, res) => {
   const session = sessionFor(req);
   const out = [];
   for (const s of SUPPLIERS) {
-    const wallet = supplierWallets[s.id];
-    const rec = await chain.registry.getSupplier(wallet);
+    const { wallet, onChain } = await registryFor(s.id);
+    const checked = verification.verifySupplier(s);
     out.push({
       id: s.id, name: s.name, country: s.country, city: s.city,
       wallet, certifications: s.certifications,
       onTimeRate: s.onTimeRate, yearsActive: s.yearsActive,
-      onChain: {
-        score: Number(rec.score) / 100,
-        completedDeals: Number(rec.completedDeals),
-        disputedDeals: Number(rec.disputedDeals),
-        lateDeliveries: Number(rec.lateDeliveries),
-        settledVolume: fromUnits(rec.settledVolume),
-      },
+      materials: [...new Set((s.products || []).map((p) => p.material))],
+      leadTimeDays: Math.min(...(s.products || []).map((p) => p.leadTimeDays).filter(Number.isFinite)),
+      onChain: onChain || { score: null, settledCount: null, disputes: null, lateDeliveries: null, settledVolume: null },
+      verification: checked,
+      trust: trust.scoreSupplier(s, checked, onChain),
+      /* Whether this company's own policy would let the agent buy from them,
+         so the directory and the sourcing run cannot disagree on screen. */
+      blockedByPolicy: !!(session.profile && session.profile.blockedSuppliers
+        && session.profile.blockedSuppliers.includes(String(s.id).toUpperCase())),
+      preferredByPolicy: profile.isPreferred(session.profile, s.id),
     });
   }
   res.json(out);
+}));
+
+/** One supplier, with every verification line including the ones not run. */
+app.get('/api/suppliers/:id', wrap(async (req, res) => {
+  const session = sessionFor(req);
+  guard(req, session, 'read');
+  const s = findSupplier(String(req.params.id));
+  if (!s) throw new Error(`No supplier ${req.params.id}.`);
+  const { wallet, onChain } = await registryFor(s.id);
+  const checked = verification.verifySupplier(s);
+  res.json({
+    ...s,
+    /* The reservation price is the supplier's negotiating position and the one
+       thing on this record a buyer must never see. Stripped by name here, and
+       the whitelist test around counsel.buildSnapshot covers the rest. */
+    products: (s.products || []).map(({ private: _p, ...rest }) => rest),
+    wallet,
+    onChain,
+    verification: checked,
+    trust: trust.scoreSupplier(s, checked, onChain),
+  });
 }));
 
 // --------------------------------------------------------- company profile
@@ -432,6 +499,32 @@ app.get('/api/suppliers', wrap(async (req, res) => {
  * capabilities cannot be simplified into one by accident.
  */
 const profileOf = (session) => session.profile || profile.blankProfile();
+
+/**
+ * Write one row to the outcome log.
+ *
+ * Goes through the audit store rather than the workspace document, because the
+ * whole value of this log is that it outlives the run it describes. A reset, a
+ * second attempt, a new tender - none of them may erase what the last purchase
+ * taught, and a record living inside the thing being reset would be erased by
+ * definition.
+ *
+ * Failures are swallowed and logged, exactly as audit failures are. A log entry
+ * that could fail a purchase would be a purchase that fails because of its own
+ * bookkeeping.
+ */
+async function logOutcome(req, event, fields) {
+  try {
+    const session = req.session || {};
+    await workspace.recordAudit(outcomes.row(event, {
+      workspaceId: session.id,
+      brief: session.brief,
+      ...fields,
+    }));
+  } catch (e) {
+    console.warn('[outcomes] could not record %s: %s', event, e.message);
+  }
+}
 
 app.get('/api/profile', wrap(async (req, res) => {
   const session = sessionFor(req);
@@ -592,6 +685,13 @@ app.post('/api/brief', wrap(async (req, res) => {
 function assertWithinCompanyLimits(session, brief) {
   const check = profile.checkBrief(session.profile, brief);
   if (check.ok) return;
+  /* Logged before it is thrown. A company that keeps hitting its own ceiling is
+     telling its head something, and a refusal that left no trace would mean
+     nobody found out until somebody complained. */
+  workspace.recordAudit(outcomes.row('refused', {
+    workspaceId: session.id, brief,
+    outcome: check.scope, detail: check.reason,
+  })).catch(() => {});
   const e = new Error(check.reason);
   e.status = 400;
   e.refusedByPolicy = true;
@@ -896,14 +996,39 @@ app.post('/api/candidates', wrap(async (req, res) => {
    * exclusion nobody can see is indistinguishable from the engine deciding on
    * its own. The run says who was removed and why.
    */
-  const { rows, excluded } = profile.applyBlocklist(session.profile, evaluated);
+  const { rows, excluded } = profile.applyBlocklist(
+    session.profile, evaluated,
+    /* Verification is computed per row rather than passed in, so a company that
+       has not turned the requirement on pays nothing for it. */
+    (row) => verification.verifySupplier(findSupplier(row.supplierId))
+  );
+  /*
+   * Trust travels with the row, so the shortlist, the recommendation and the
+   * supplier directory cannot show three different numbers for the same
+   * company. It RANKS and never screens: a score that could exclude a supplier
+   * would be a veto nobody on the receiving end could see.
+   */
+  for (const r of rows) {
+    const full = findSupplier(r.supplierId);
+    const { onChain } = await registryFor(r.supplierId);
+    const checked = verification.verifySupplier(full);
+    r.verification = checked ? { status: checked.status, meaning: checked.meaning } : null;
+    r.trust = trust.scoreSupplier(full, checked, onChain);
+  }
+
   session.candidates = rows;
   session.excludedByPolicy = excluded;
 
   const shortlist = selectForNegotiation(rows).map((r) => r.supplierId);
   /* Preferred suppliers first WITHIN the shortlist the engine already chose.
      The membership of that shortlist is not ours to change here. */
-  shortlist.sort((a, b) => Number(profile.isPreferred(session.profile, b)) - Number(profile.isPreferred(session.profile, a)));
+  const trustOf = (id) => {
+    const row = rows.find((r) => r.supplierId === id);
+    return row && row.trust ? row.trust.score : 0;
+  };
+  shortlist.sort((a, b) =>
+    (Number(profile.isPreferred(session.profile, b)) - Number(profile.isPreferred(session.profile, a)))
+    || (trustOf(b) - trustOf(a)));
 
   res.json({
     candidates: rows,
@@ -920,6 +1045,18 @@ app.post('/api/negotiate', wrap(async (req, res) => {
   const shortlist = selectForNegotiation(session.candidates);
   const results = negotiateAll(shortlist, session.brief);
   session.negotiations = results;
+
+  /* One row per counterparty, including the ones that walked away. A log that
+     only recorded successes would teach the next run that every negotiation
+     ends in a deal. */
+  for (const r of results) {
+    await logOutcome(req, 'negotiated', {
+      supplierId: r.supplierId,
+      outcome: r.outcome,
+      detail: r.outcome === 'failed' ? r.failureReason : null,
+      terms: r.outcome === 'agreed' ? r : null,
+    });
+  }
   res.json(results);
 }));
 
@@ -929,6 +1066,12 @@ app.post('/api/recommend', wrap(async (req, res) => {
   if (!session.negotiations.length) throw new Error('No negotiations completed yet.');
   const rec = recommend(session.negotiations, session.candidates, session.brief);
   session.recommendation = rec;
+  await logOutcome(req, 'sourced', {
+    outcome: rec.status,
+    supplierId: rec.winner ? rec.winner.supplierId : null,
+    terms: rec.winner || null,
+    detail: rec.winner ? null : 'No supplier met the requirement.',
+  });
   res.json(rec);
 }));
 
@@ -1921,6 +2064,20 @@ const confirmReceipt = wrap(async (req, res) => {
   session.settlementFacts = { ...(session.settlementFacts || {}), deliveryTx: rc.hash, onTime };
   session.receipt = { confirmedBy: req.actor.name, at: new Date().toISOString(), onTime };
   await audit(req, 'confirm-receipt', 'FUNDED', { onTime, txHash: rc.hash });
+  /*
+   * The row the log exists for.
+   *
+   * Everything above it is about what was ASKED and what was AGREED, which a
+   * sufficiently optimistic system can produce all day. This one says whether
+   * the goods turned up when the supplier said they would, and it is the only
+   * line in the log that costs a supplier anything to get wrong.
+   */
+  await logOutcome(req, 'delivered', {
+    supplierId: session.recommendation && session.recommendation.winner
+      ? session.recommendation.winner.supplierId : null,
+    outcome: onTime ? 'on-time' : 'late',
+    terms: session.recommendation ? session.recommendation.winner : null,
+  });
   res.json({
     txHash: rc.hash, blockNumber: rc.blockNumber, gasUsed: rc.gasUsed.toString(),
     onTime, state: authorization.purchaseState(session), receipt: session.receipt,
@@ -2176,6 +2333,16 @@ const releasePayment = wrap(async (req, res) => {
    */
   await audit(req, 'release-payment', 'PAYMENT_READY', {
     payoutId: payout.id, rail: rail.mode, amount, releaseTx: rc.hash,
+  });
+  /* The row that closes the loop. Everything before it describes an intention;
+     this one is money that left the company, which is what the spend figures on
+     the dashboard are allowed to be computed from. */
+  await logOutcome(req, 'settled', {
+    supplierId: session.recommendation && session.recommendation.winner
+      ? session.recommendation.winner.supplierId : null,
+    outcome: 'paid',
+    terms: session.recommendation ? session.recommendation.winner : null,
+    detail: `Released ${amount} through the ${rail.mode} rail.`,
   });
 
   if (rail.mode === 'local') scheduleLocalSettlement(session.id, payout.id);
@@ -2494,7 +2661,41 @@ app.get('/api/summary', wrap(async (req, res) => {
 app.get('/api/audit', wrap(async (req, res) => {
   const session = sessionFor(req);
   guard(req, session, 'read');
-  res.json({ workspace: session.id, entries: await workspace.auditFor(session.id, 500) });
+  /* The outcome log shares this store, so it is filtered out here: the audit
+     screen answers "who did what", and a row saying a negotiation ended at
+     $1,175 is not that question. /api/history is where it belongs. */
+  const entries = (await workspace.auditFor(session.id, 500)).filter((e) => e.kind !== 'outcome');
+  res.json({ workspace: session.id, entries });
+}));
+
+/**
+ * What this company has actually bought, and from whom.
+ *
+ * The log exists so the next decision can be better than the last, and that is
+ * only true if something reads it. Three readers, and they want different
+ * things: a buyer wants to know what they have spent, a negotiating agent wants
+ * to know how a supplier has behaved, and a person deciding whether to trade
+ * with somebody wants both.
+ *
+ * Reported as empty when it is empty. A dashboard that shows zeros as though
+ * they were measurements is the version that gets believed.
+ */
+app.get('/api/history', wrap(async (req, res) => {
+  const session = sessionFor(req);
+  guard(req, session, 'read');
+  const rows = await workspace.auditFor(session.id, 1000);
+  const supplierId = req.query.supplier ? String(req.query.supplier) : null;
+
+  res.json({
+    workspace: session.id,
+    summary: outcomes.buyerSummary(rows),
+    supplier: supplierId ? outcomes.supplierHistory(rows, supplierId) : null,
+    suppliers: [...new Set(rows.filter((r) => r.kind === 'outcome' && r.supplierId).map((r) => r.supplierId))]
+      .map((id) => outcomes.supplierHistory(rows, id))
+      .filter(Boolean)
+      .sort((a, b) => b.runs - a.runs),
+    recent: rows.filter((r) => r.kind === 'outcome').slice(-40).reverse(),
+  });
 }));
 
 /*
