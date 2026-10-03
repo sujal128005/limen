@@ -15,9 +15,19 @@
  * with a server secret, and read back only out of the signature. A client can
  * hold a token. It cannot write one.
  *
- * The workspace is inside the signed payload as well. Without it a Sales token
- * issued for one workspace would authorise Sales actions in every other, since
- * the workspace is still just a header.
+ * The COMPANY is inside the signed payload as well. Without it a Sales token
+ * issued at one company would authorise Sales actions at every other, since the
+ * tenant is still just a header.
+ *
+ * It is the company and not the purchase, and the difference took a bug to
+ * learn. A token used to be pinned to one workspace, which was right while a
+ * company had exactly one purchase and became wrong the moment it could have
+ * five: a head who approves two tenders in an afternoon is one person at one
+ * desk, and making them type a code again between them is not a control, it is
+ * an incentive to pick a code worth nothing. What replaces it is stricter where
+ * it matters - the workspace must belong to the token's company, checked in
+ * workspace.js on the way in, so a purchase at another company is not reachable
+ * by knowing its id and holding a valid token here.
  *
  * This is not an identity provider and does not pretend to be. What it does
  * have is a code per role, because a door anyone can walk through is not a
@@ -165,11 +175,11 @@ function checkCode(role, code) {
  * records a person the company could actually ask about a decision rather than
  * whatever string was in the box.
  */
-function issue(role, workspace) {
+function issue(role, company) {
   if (!ROLES[role]) throw new Error(`Unknown role: ${role}`);
   const who = ROLES[role].signatory;
-  const payload = JSON.stringify({ role, name: who, ws: String(workspace || ''), iat: Date.now() });
-  return { token: `v1.${b64(payload)}.${sign(payload)}`, role, name: who, workspace };
+  const payload = JSON.stringify({ role, name: who, co: String(company || ''), iat: Date.now() });
+  return { token: `v1.${b64(payload)}.${sign(payload)}`, role, name: who, company };
 }
 
 /**
@@ -198,7 +208,13 @@ function verify(token) {
   try { claims = JSON.parse(payload); } catch (_) { return null; }
   if (!ROLES[claims.role]) return null;
 
-  return { role: claims.role, name: claims.name, workspace: claims.ws, issuedAt: claims.iat };
+  /*
+   * A token minted before the company claim existed has `ws` and no `co`, so it
+   * lands here as a token belonging to no company and fails the check below.
+   * That is the right outcome: it says sign in again, which is one click, and
+   * the alternative is honouring a claim this process can no longer interpret.
+   */
+  return { role: claims.role, name: claims.name, company: claims.co, issuedAt: claims.iat };
 }
 
 function can(actor, capability) {
@@ -208,10 +224,13 @@ function can(actor, capability) {
 /**
  * The guard. Throws a sentence a person can act on.
  *
- * `workspace` is compared against the token's own claim, so a token is only
- * good for the workspace it was issued against.
+ * `company` is compared against the token's own claim, so a token is only good
+ * at the company it was issued against. Which purchase inside that company is a
+ * separate question, settled before this is reached: workspace.js refuses to
+ * load a workspace belonging to anybody else, so by the time a handler calls
+ * this, the workspace on the request is already known to be this company's.
  */
-function assertCan(actor, capability, workspace) {
+function assertCan(actor, capability, company) {
   /*
    * Two different failures, and the difference matters to a browser.
    *
@@ -228,8 +247,8 @@ function assertCan(actor, capability, workspace) {
     e.status = 401;
     throw e;
   }
-  if (workspace !== undefined && actor.workspace !== workspace) {
-    const e = new Error('This sign-in belongs to a different workspace.');
+  if (company !== undefined && actor.company !== company) {
+    const e = new Error('This sign-in belongs to a different company.');
     e.status = 401;
     throw e;
   }

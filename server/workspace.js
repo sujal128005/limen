@@ -1,7 +1,7 @@
 'use strict';
 
 /*
- * Per-workspace session state, now durable.
+ * Per-workspace session state, now durable, and owned by a company.
  *
  * Requests, shortlists, approvals and payment records are keyed by a workspace
  * id the browser mints and sends as a header. That part has not changed. What
@@ -9,6 +9,26 @@
  * erased every purchase mid-approval, and the deployment sleeps after fifteen
  * minutes of quiet. State now goes through a store, and the Map is one of the
  * two adapters behind it rather than the only option.
+ *
+ * ONE WORKSPACE IS ONE PURCHASE. A COMPANY HAS MANY.
+ *
+ * That split is new and it fixes a modelling error with teeth. The buying
+ * company - its name, its categories, its blocked suppliers and above all the
+ * spending ceiling the head set - used to live inside the purchase. A company
+ * sourcing three things therefore had three policies, and the ceiling applied
+ * to whichever purchase it had been typed into. A limit that protects one of
+ * your five open purchases is not a limit.
+ *
+ * So the company is a row of its own, the workspace records which company owns
+ * it, and the profile on the session document is a per-request copy of the
+ * company's: overwritten from the company row on every load, so the copy can
+ * never win, and written back to the company row on save, so an edit made from
+ * any purchase is in force in all of them.
+ *
+ * The ownership check below is the other half. A workspace belonging to another
+ * company is not loaded at all - not refused at the handler, not filtered from
+ * a response, not loaded - so a missing permission check in some future route
+ * cannot leak across a tenant boundary. It fails closed because it never opens.
  *
  * Scope: this isolates off-chain data. Authentication is separate and lives in
  * identity.js; the workspace header says which drawer, the signed token says
@@ -28,10 +48,23 @@
  */
 
 const { createStore, ConflictError } = require('./store');
+/* Derived, never stored, so the list of purchases on screen cannot drift from
+   the purchases it names. authorization.js imports nothing, so this is not a
+   cycle. */
+const { purchaseState } = require('./authorization');
 
 const DEFAULT_WORKSPACE = 'demo';
 const VALID = /^[A-Za-z0-9_-]{8,64}$/;
 const MAX_WORKSPACES = Number(process.env.LIMEN_MAX_WORKSPACES || 500);
+/*
+ * How many purchases one company may have open at once.
+ *
+ * Not a product opinion - a bound. Workspaces are created on first sight of a
+ * header, so without this a caller could mint purchases under one company until
+ * the global cap evicted everybody else's. Twenty-five is well past what a
+ * buying desk runs in parallel and far short of what an eviction attack needs.
+ */
+const MAX_TENDERS = Number(process.env.LIMEN_MAX_TENDERS || 25);
 
 let store = createStore();
 
@@ -72,6 +105,28 @@ function workspaceIdFrom(req) {
   return DEFAULT_WORKSPACE; // curl, scripts and the test suite land here
 }
 
+/**
+ * Which company this request belongs to.
+ *
+ * Falls back to the workspace id, which is what makes this change invisible to
+ * every caller that has not been told about companies: a lone workspace becomes
+ * a company of one purchase and behaves exactly as it did. curl, the scripts
+ * and the whole test suite land there, and so does a browser that has not
+ * reloaded since the change.
+ */
+function companyIdFrom(req) {
+  const raw = req.get ? req.get('x-company') || '' : '';
+  if (VALID.test(raw)) return raw;
+  return workspaceIdFrom(req);
+}
+
+/** Raised when a workspace is addressed by somebody who does not own it. */
+function notFound() {
+  const e = new Error('No such purchase.');
+  e.status = 404;
+  return e;
+}
+
 /* ------------------------------------------------------------------- lock */
 
 /*
@@ -104,18 +159,76 @@ function withLock(id, fn) {
  */
 async function loadSession(req) {
   const id = workspaceIdFrom(req);
+  const companyId = companyIdFrom(req);
+
   let row = await store.load(id);
-  if (!row) {
+  if (row) {
+    /*
+     * The tenant check, before anything else looks at the state.
+     *
+     * "No such purchase", not "not yours": a caller holding a workspace id that
+     * belongs to somebody else learns that the id is wrong, which is all they
+     * are entitled to learn and is also true from where they stand.
+     */
+    if (row.companyId && row.companyId !== companyId) throw notFound();
+    if (!row.companyId) await store.assignCompany(id, companyId);
+  } else {
     // Cheap bound so a caller cannot grow storage without limit by inventing ids.
     if ((await store.count()) >= MAX_WORKSPACES) await store.prune(MAX_WORKSPACES - 1);
-    row = await store.create(id, blankSession());
+    const open = await store.listWorkspaces(companyId, MAX_TENDERS + 1);
+    if (open.length >= MAX_TENDERS) {
+      const e = new Error(
+        `This company already has ${open.length} purchases open, which is the limit. `
+        + 'Finish or discard one before starting another.'
+      );
+      e.status = 409;
+      throw e;
+    }
+    row = await store.create(id, blankSession(), companyId);
   }
+
   row.state.id = id;
+  await attachCompany(req, companyId, row.state);
   req.workspaceId = id;
+  req.companyId = companyId;
   req.session = row.state;
   req.sessionVersion = row.version;
   req.sessionSnapshot = JSON.stringify(row.state);
   return req.session;
+}
+
+/* ---------------------------------------------------------------- company */
+
+/**
+ * Put the company's profile on the session, and remember what it was.
+ *
+ * The assignment is unconditional when a company row exists, so the copy inside
+ * the workspace document is never the thing that decides: it is overwritten
+ * before any handler sees it. When no company row exists yet but the document
+ * carries a profile, that is a workspace from before companies and its profile
+ * is adopted rather than dropped - a company should not lose the policy it
+ * already set because the storage layout changed underneath it.
+ */
+async function attachCompany(req, companyId, state) {
+  const company = await store.loadCompany(companyId);
+  if (company) {
+    state.profile = company.profile || null;
+    req.companyVersion = company.version;
+  } else if (state.profile) {
+    // Legacy adoption. Written here rather than on the next save so that a
+    // second purchase opened a moment later already finds it.
+    try {
+      const { version } = await store.saveCompany(companyId, state.profile, 0);
+      req.companyVersion = version;
+    } catch (_) {
+      // Another request adopted it first. Theirs is the same data.
+      const again = await store.loadCompany(companyId);
+      if (again) { state.profile = again.profile || null; req.companyVersion = again.version; }
+    }
+  } else {
+    req.companyVersion = 0;
+  }
+  req.companyProfileSnapshot = JSON.stringify(state.profile === undefined ? null : state.profile);
 }
 
 /**
@@ -133,9 +246,13 @@ async function loadSession(req) {
  */
 async function peekSession(req) {
   const id = workspaceIdFrom(req);
+  const companyId = companyIdFrom(req);
   const row = await store.load(id);
   if (!row) return null;
+  if (row.companyId && row.companyId !== companyId) return null;
   row.state.id = id;
+  const company = await store.loadCompany(companyId);
+  if (company) row.state.profile = company.profile || null;
   return row.state;
 }
 
@@ -155,6 +272,27 @@ function sessionFor(req) {
  */
 async function saveSession(req) {
   if (!req.session) return false;
+
+  /*
+   * The company half goes first, and separately.
+   *
+   * Separately because it is a different row with a different version, and
+   * first because it is the one that matters: if the company write conflicts,
+   * the purchase document must not already be saved describing a policy that
+   * was never stored. The conflict reaches the caller as "reload", which is the
+   * correct answer for two desks editing one ceiling at the same moment.
+   */
+  const profileNow = JSON.stringify(
+    req.session.profile === undefined ? null : req.session.profile
+  );
+  if (req.companyId && profileNow !== req.companyProfileSnapshot) {
+    const { version } = await store.saveCompany(
+      req.companyId, req.session.profile || null, req.companyVersion
+    );
+    req.companyVersion = version;
+    req.companyProfileSnapshot = profileNow;
+  }
+
   const next = JSON.stringify(req.session);
   if (next === req.sessionSnapshot) return false;
   const { version } = await store.save(req.workspaceId, req.session, req.sessionVersion);
@@ -181,14 +319,19 @@ async function saveSession(req) {
  */
 async function resetSession(req) {
   const id = workspaceIdFrom(req);
+  const companyId = req.companyId || companyIdFrom(req);
   const prior = await store.load(id);
   const profile = prior && prior.state ? prior.state.profile : null;
 
   await store.remove(id);
   const fresh = blankSession();
+  /* Belt and braces: the company row is where the profile really lives now and
+     attachCompany below will put it back, but a reset must not be the one path
+     that can drop a policy if that row is somehow missing. */
   if (profile) fresh.profile = profile;
-  const row = await store.create(id, fresh);
+  const row = await store.create(id, fresh, companyId);
   row.state.id = id;
+  await attachCompany(req, companyId, row.state);
   req.session = row.state;
   req.sessionVersion = row.version;
   req.sessionSnapshot = JSON.stringify(row.state);
@@ -227,16 +370,106 @@ async function recordAudit(entry) {
   }
 }
 
+/**
+ * Every purchase this company has open, newest first.
+ *
+ * Projected here rather than in the store, and deliberately thin: an id, where
+ * it stands, what it is for and what it costs. The caller is a list on a
+ * screen, so it gets a list, not five whole purchase documents.
+ */
+async function tendersFor(companyId, currentId) {
+  const rows = await store.listWorkspaces(companyId, MAX_TENDERS);
+  return rows.map((row) => {
+    const st = row.state || {};
+    const brief = st.brief || {};
+    const rec = st.recommendation;
+    const winner = rec && rec.winner;
+    return {
+      id: row.id,
+      current: row.id === currentId,
+      state: purchaseState(st),
+      /* What it is for, in the words the brief already has. Null when nothing
+         has been typed yet, because a row that says "Untitled purchase" three
+         times tells a reader less than three empty rows do. */
+      title: brief.material
+        ? [
+          brief.quantityKg ? `${brief.quantityKg.toLocaleString('en-US')} kg` : null,
+          brief.grade,
+          brief.material,
+        ].filter(Boolean).join(' ')
+        : null,
+      supplier: winner ? winner.name || winner.supplier || null : null,
+      amount: winner && winner.total != null ? winner.total : null,
+      createdAt: st.createdAt || null,
+      updatedAt: row.updatedAt,
+    };
+  });
+}
+
+/**
+ * Open another purchase for this company.
+ *
+ * The id is minted here rather than by the browser, which is a small thing with
+ * one real consequence: a client cannot choose an id that collides with another
+ * company's workspace and so cannot probe for one. The bound is checked against
+ * the same limit loadSession uses, in the same place a race would show up - the
+ * create is a no-op on conflict, so two clicks produce one purchase.
+ */
+async function createTender(companyId) {
+  const open = await store.listWorkspaces(companyId, MAX_TENDERS + 1);
+  if (open.length >= MAX_TENDERS) {
+    const e = new Error(
+      `This company already has ${open.length} purchases open, which is the limit. `
+      + 'Finish or discard one before starting another.'
+    );
+    e.status = 409;
+    throw e;
+  }
+  if ((await store.count()) >= MAX_WORKSPACES) await store.prune(MAX_WORKSPACES - 1);
+  const id = 't' + require('crypto').randomBytes(16).toString('hex');
+  await store.create(id, blankSession(), companyId);
+  return id;
+}
+
+/**
+ * Discard a purchase that never became one.
+ *
+ * Deliberately narrow. A workspace with a deal on chain or a payment record is
+ * not discardable from here at any state, because the thing it is a record of
+ * happened: money moved, or was committed, and a button that makes the record
+ * go away is worse than no button. The audit trail survives either way -
+ * remove() does not touch it - so what this deletes is a draft, not a history.
+ */
+async function discardTender(companyId, id) {
+  const row = await store.load(id);
+  if (!row) throw notFound();
+  if ((row.companyId || null) !== companyId) throw notFound();
+  const st = row.state || {};
+  if (st.dealId || st.payment || (st.settlementFacts && st.settlementFacts.releaseTx)) {
+    const e = new Error(
+      'This purchase has a deal on chain, so it has a record that outlives the draft. '
+      + 'It cannot be discarded.'
+    );
+    e.status = 409;
+    throw e;
+  }
+  await store.remove(id);
+  return true;
+}
+
 module.exports = {
   sessionFor, loadSession, saveSession, resetSession, sessionByPayout, saveById, peekSession,
-  blankSession, workspaceIdFrom, withLock, recordAudit,
+  blankSession, workspaceIdFrom, companyIdFrom, withLock, recordAudit, tendersFor, createTender, discardTender,
   setStore, getStore, ConflictError,
-  DEFAULT_WORKSPACE, MAX_WORKSPACES,
+  DEFAULT_WORKSPACE, MAX_WORKSPACES, MAX_TENDERS,
   init: () => store.init(),
   count: () => store.count(),
   claimEvent: (...a) => store.claimEvent(...a),
   auditFor: (...a) => store.audit(...a),
   outcomesFor: (...a) => store.outcomes(...a),
+  /* Read by company, not by purchase. What a buyer learned about a supplier in
+     March is still true in April, and in April it is a different workspace. */
+  companyOutcomes: (...a) => store.companyOutcomes(...a),
   recordOutcome: async (row) => {
     /* Swallowed and logged, like an audit failure: a bookkeeping write
        must never fail the purchase it describes. Loudly, because a silent
@@ -245,6 +478,10 @@ module.exports = {
     try { await store.appendOutcome(row); }
     catch (e) { console.warn('[outcomes] could not record %s for %s: %s', row.event, row.workspaceId, e.message); }
   },
+  claimIdempotency: (...a) => store.claimIdempotency(...a),
+  recordIdempotency: (...a) => store.recordIdempotency(...a),
+  releaseIdempotency: (...a) => store.releaseIdempotency(...a),
+  expireIdempotency: (...a) => store.expireIdempotency(...a),
   messagesFor: (...a) => store.messages(...a),
   appendMessage: (...a) => store.appendMessage(...a),
 };

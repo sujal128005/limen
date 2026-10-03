@@ -69,6 +69,12 @@ function row(event, fields = {}) {
     kind: 'outcome',
     event,
     workspaceId: fields.workspaceId || null,
+    /* Which buyer this happened to, not just which purchase.
+       A company has many purchases and the thing it learns from them - what a
+       supplier asked, what it conceded, whether it walked - belongs to the
+       company. Keyed on the purchase alone, every new tender started from
+       scratch and the log taught nothing. */
+    companyId: fields.companyId || null,
     at: new Date().toISOString(),
     /* The shape of the ask, not its prose. Enough to compare two runs; not
        enough to reconstruct a tender somebody uploaded. */

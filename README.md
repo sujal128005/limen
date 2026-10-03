@@ -192,7 +192,7 @@ flowchart TD
 | `server/summary.js` | The boundary between phrasing a figure and computing one |
 | `server/checkout.js` | Razorpay Checkout, money into the payment float |
 | `server/payments.js` | Razorpay Payouts, money out to the supplier |
-| `server/workspace.js` | Server-side workspace isolation |
+| `server/workspace.js` | Company ownership, tenant isolation, one workspace per purchase |
 | `server/adversary/` | Attack registry, shadow-workspace runner, evidence capture, containment report |
 | `server/routes/adversary.js` | Adversary Console API |
 | `contracts/` | `ProcurementEscrow`, `SupplierRegistry`, `MockUSDC` |
@@ -266,6 +266,8 @@ The product plan calls this "learning from history", and the honest version star
 
 So `server/outcomes.js` is the log, and the log is the asset. Every run writes what was asked, what was offered, what was agreed or walked away from, and — when it gets that far — whether the goods arrived when promised. It is append-only and lives beside the audit trail, **not** inside the workspace, so a reset clears the run without erasing what the run taught.
 
+It is keyed on the **company**, not the purchase. That sounds like a detail and is not: keyed on the purchase, a buyer who started a second requirement started with no history at all, and the feature quietly reset itself every time somebody began something new. What a supplier conceded in March is still true in April, and in April it is a different purchase.
+
 `GET /api/history` reads it back three ways: what this company has spent, how a given supplier has behaved, and the recent record.
 
 **And it changes one decision.** A supplier that has settled below list before is opened against harder — `negotiate.js` moves the *opening offer* and nothing else. Three bounds, because the obvious version of this is dangerous: it only ever opens **lower**, it is **capped**, and it is **ignored below three runs**, since two data points are not a pattern and an agent that anchors on one lucky deal walks away from suppliers it should have bought from. Both invariants and the on-chain ceiling sit after it, so a wrong history costs a round rather than money. The transcript says why — *"opening harder: this supplier has settled 12.0% below list before"* — because "the model decided" is not an answer a procurement head accepts. A rate computed over two runs is labelled `anecdotal`; an empty log reports itself as empty rather than as a confident zero.
@@ -274,9 +276,17 @@ No supplier's reservation price reaches it. The log is read back into decisions 
 
 ---
 
-## The buying company
+## The buying company, and its purchases
 
-Everything else in a workspace is one purchase: a brief, a shortlist, a negotiation, an approval, all of it thrown away when somebody starts again. A company is not. Its name, what it buys, which suppliers it will not deal with and what it is willing to spend outlive every individual purchase, and the **Company** screen holds them.
+A workspace is **one purchase**: a brief, a shortlist, a negotiation, an approval, all of it thrown away when somebody starts again. A company is not, and a company has several purchases open at once. The chip in the top bar names the one you are looking at and lists the others with where each stands — with the head, in escrow, ready to pay — so "what is waiting on me" is answered without leaving the screen.
+
+**This used to be one thing and that was a hole, not an inconvenience.** The company lived inside the purchase, so a buyer sourcing three things had three policies and the ceiling the head set bound whichever purchase it happened to be typed into. A limit that protects one of your five open purchases is not a limit. The company is now a row of its own: the profile on a purchase is a copy of it, overwritten from the company on every request so the copy can never win, and written back on every change so an edit made anywhere is in force everywhere.
+
+**A retry is a read.** Any mutation may carry an `Idempotency-Key` header. The first request with a key records what it answered; every repeat of that key is handed the same answer back, with `Idempotent-Replay: true`, rather than running again. A key reused on a different route is refused rather than replayed, a request that fails releases its key so the retry can run, and the browser mints one at every click on an action that moves money. The state machine already refused a second approval — but it refused it with an error, so a client that merely lost the reply was told its action failed when it had succeeded. That is the failure this fixes.
+
+Two consequences worth stating. A **sign-in covers the company**, not the purchase, because a head who approves two tenders in an afternoon is one person at one desk and making them retype a code between them is an incentive to pick a code worth nothing. And a workspace belonging to another company is **not loaded at all** — not refused at the handler, not filtered out of a response — so a future route that forgets to check anything still cannot serve another tenant's purchase.
+
+Its name, what it buys, which suppliers it will not deal with and what it is willing to spend outlive every individual purchase, and the **Company** screen holds them.
 
 **The page is in two halves, and the split is the point.** This product rests on one sentence — *a company can change how its agent **behaves**, it cannot change what its agent is **allowed to do*** — and a settings page is exactly where that sentence gets quietly broken, because on a settings page a spending limit looks like just another field with a number in it.
 

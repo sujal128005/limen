@@ -20,8 +20,17 @@ const { ConflictError } = require('./index');
 const clone = (v) => (v === undefined ? v : JSON.parse(JSON.stringify(v)));
 
 function create() {
-  /** id -> { state, version, updatedAt } */
+  /** id -> { state, version, updatedAt, companyId } */
   const workspaces = new Map();
+  /*
+   * id -> { profile, version, updatedAt }
+   *
+   * The buying company, held once rather than once per purchase. A company has
+   * many tenders open at a time and one procurement policy; copying the policy
+   * into each tender meant the head's ceiling applied to whichever purchase it
+   * happened to be typed into and to none of the others.
+   */
+  const companies = new Map();
   /** payoutId -> workspaceId */
   const payouts = new Map();
   /** eventId -> { payoutId, type, at } */
@@ -33,6 +42,8 @@ function create() {
   const outcomes = [];
   const messages = [];
   let messageId = 0;
+  /** `${workspaceId}\u0000${key}` -> { fingerprint, status, body, at } */
+  const idem = new Map();
 
   return {
     kind: 'memory',
@@ -43,15 +54,18 @@ function create() {
     async load(id) {
       const row = workspaces.get(id);
       if (!row) return null;
-      return { state: clone(row.state), version: row.version };
+      return { state: clone(row.state), version: row.version, companyId: row.companyId || null };
     },
 
-    async create(id, state) {
+    async create(id, state, companyId = null) {
       if (workspaces.has(id)) {
         const row = workspaces.get(id);
         return { state: clone(row.state), version: row.version };
       }
-      workspaces.set(id, { state: clone(state), version: 1, updatedAt: Date.now() });
+      workspaces.set(id, {
+        state: clone(state), version: 1, updatedAt: Date.now(), createdAt: Date.now(),
+        companyId: companyId || null,
+      });
       return { state: clone(state), version: 1 };
     },
 
@@ -102,6 +116,106 @@ function create() {
       return true;
     },
 
+    /* ------------------------------------------------------------ company */
+
+    /*
+     * Fill in the owner of a workspace that has none, and only then.
+     *
+     * Rows created before companies existed have no owner. The first request
+     * that arrives holding the workspace id claims it. That is not a new
+     * exposure: knowing the workspace id has always been the whole credential
+     * for that workspace. What the guard buys is that a workspace which already
+     * has an owner can never be re-pointed at a different one by a header.
+     */
+    async assignCompany(id, companyId) {
+      const row = workspaces.get(id);
+      if (!row || row.companyId || !companyId) return false;
+      row.companyId = companyId;
+      return true;
+    },
+
+    async loadCompany(id) {
+      const row = companies.get(id);
+      if (!row) return null;
+      return { profile: clone(row.profile), version: row.version };
+    },
+
+    /*
+     * Versioned like a workspace, and for the same reason with more at stake:
+     * the profile holds the spending ceiling. Two desks editing it from two
+     * different purchases must not have one silently overwrite the other, so
+     * the second writer is told to reload rather than winning by arriving last.
+     */
+    async saveCompany(id, profileValue, version) {
+      const row = companies.get(id);
+      if (!row) {
+        if (version && version !== 0) throw new ConflictError('These company settings no longer exist.');
+        companies.set(id, { profile: clone(profileValue), version: 1, updatedAt: Date.now() });
+        return { version: 1 };
+      }
+      if (row.version !== version) {
+        throw new ConflictError(
+          'Another desk changed the company settings while you were editing them. Reload and try again.'
+        );
+      }
+      row.profile = clone(profileValue);
+      row.version += 1;
+      row.updatedAt = Date.now();
+      return { version: row.version };
+    },
+
+    /*
+     * The purchases this company has open. Newest first, bounded, and the
+     * caller projects - the store does not know what a tender looks like on a
+     * screen and should not learn.
+     */
+    async listWorkspaces(companyId, limit = 50) {
+      return [...workspaces.entries()]
+        .filter(([, row]) => (row.companyId || null) === companyId)
+        .sort((a, b) => (b[1].updatedAt || 0) - (a[1].updatedAt || 0))
+        .slice(0, limit)
+        .map(([id, row]) => ({
+          id,
+          state: clone(row.state),
+          version: row.version,
+          updatedAt: new Date(row.updatedAt || Date.now()).toISOString(),
+        }));
+    },
+
+    /* ------------------------------------------------------- idempotency */
+
+    async claimIdempotency(workspaceId, key, fingerprint) {
+      const k = `${workspaceId}\u0000${key}`;
+      const found = idem.get(k);
+      if (!found) {
+        idem.set(k, { fingerprint, status: null, body: null, at: Date.now() });
+        return { claimed: true };
+      }
+      return {
+        claimed: false,
+        fingerprint: found.fingerprint,
+        status: found.status,
+        body: clone(found.body),
+      };
+    },
+
+    async recordIdempotency(workspaceId, key, status, body) {
+      const k = `${workspaceId}\u0000${key}`;
+      const found = idem.get(k);
+      if (found) { found.status = status; found.body = clone(body); }
+    },
+
+    async releaseIdempotency(workspaceId, key) {
+      idem.delete(`${workspaceId}\u0000${key}`);
+    },
+
+    async expireIdempotency(olderThanMs) {
+      const cutoff = Date.now() - olderThanMs;
+      let n = 0;
+      for (const [k, v] of idem) if (v.at < cutoff) { idem.delete(k); n += 1; }
+      return n;
+    },
+
     async appendAudit(entry) {
       audit.push({ ...clone(entry), at: entry.at || new Date().toISOString() });
     },
@@ -113,6 +227,14 @@ function create() {
     async outcomes(workspaceId, limit = 500) {
       return outcomes
         .filter((o) => o.workspaceId === workspaceId)
+        .slice(-limit)
+        .map(clone);
+    },
+
+    /* What this buyer has learned, across every purchase it has run. */
+    async companyOutcomes(companyId, limit = 1000) {
+      return outcomes
+        .filter((o) => o.companyId === companyId)
         .slice(-limit)
         .map(clone);
     },
@@ -156,7 +278,18 @@ function create() {
         for (const list of [audit, outcomes, messages]) {
           for (let i = list.length - 1; i >= 0; i--) if (list[i].workspaceId === id) list.splice(i, 1);
         }
+        for (const k of [...idem.keys()]) if (k.startsWith(`${id}\u0000`)) idem.delete(k);
         removed += 1;
+      }
+      /*
+       * A company with no purchases left has nothing to apply its policy to,
+       * and companies is keyed by a value the caller supplies, so keeping the
+       * row forever is the unbounded map this whole function exists to
+       * prevent. A company that still owns a purchase keeps its policy.
+       */
+      const live = new Set([...workspaces.values()].map((r) => r.companyId).filter(Boolean));
+      for (const companyId of [...companies.keys()]) {
+        if (!live.has(companyId)) companies.delete(companyId);
       }
       return removed;
     },

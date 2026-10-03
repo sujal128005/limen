@@ -46,11 +46,19 @@ below, on behalf of a supplier that has not signed the transaction and is not a
 party to it. Both sets are checked in one `createDeal` call, so a deal exists
 only inside the band both sides authorised.
 
-One asymmetry worth holding onto: a buyer's ceiling is per workspace, because
-each workspace holds its own buyer key, while a supplier's floor is keyed on the
-supplier's wallet and a supplier has one wallet across the venue. A floor
-published anywhere is therefore in force everywhere, which is correct and is
-asserted in `roles.test.js`.
+One asymmetry worth holding onto: a buyer's ceiling is per company, because the
+company holds the buyer key, while a supplier's floor is keyed on the supplier's
+wallet and a supplier has one wallet across the venue. A floor published
+anywhere is therefore in force everywhere, which is correct and is asserted in
+`roles.test.js`.
+
+The buyer's half was per *workspace* until the company became a record of its
+own, and that was a real hole rather than a modelling nicety: a buyer with five
+purchases open had five policies, so the ceiling the head set bound whichever
+purchase it happened to be typed into and none of the others. It is now one row
+per company, read on every request and written through on every change, and
+`roles.test.js` asserts a limit set while looking at one purchase is in force in
+another.
 
 | Boundary ID | File / Function | Refusal mechanism | Trust boundary | Untrusted? | Tests |
 |---|---|---|---|---|---|
@@ -136,7 +144,7 @@ after it, so a wrong history costs a round, never money.
 | C-TOKEN-SIG | `identity.verify()` — HMAC-SHA256 checked in constant time | Returns `null`; routes throw HTTP 401 | Server | Yes | `roles.test.js` |
 | C-TOKEN-ALGO | `identity.verify()` — prefix `v1.` must be present and parts.length === 3 | Returns `null` | Server | Yes | — (no test for stripped/wrong algo) |
 | C-ROLE-MISMATCH | `identity.can()` → `assertCan()` | `throw` with HTTP 403-equivalent (no `.status` = 500 path → caught by wrap) | Server | Yes (with a valid token) | `roles.test.js` |
-| C-WORKSPACE-MISMATCH | `identity.assertCan()` line 231 | `throw new Error`, `e.status = 401` | Server | Yes (with a valid token for a different ws) | `roles.test.js` |
+| C-COMPANY-MISMATCH | `identity.assertCan()` — `actor.company !== company` | `throw new Error`, `e.status = 401` | Server | Yes (with a valid token at another company) | `roles.test.js` |
 | C-DOORLOCK | `doorlock.check()` called from `/api/session/login` | HTTP 429 body with wait time | Server | Yes | `doorlock.test.js` |
 | C-CODE-CHECK | `identity.checkCode()` — `crypto.timingSafeEqual` over SHA-256 | Returns `false`; route sends HTTP 401 | Server | Yes | `doorlock.test.js`, `roles.test.js` |
 
@@ -177,10 +185,23 @@ after it, so a wrong history costs a round, never money.
 
 | Boundary ID | File / Function | Refusal mechanism | Trust boundary | Untrusted? | Tests |
 |---|---|---|---|---|---|
-| H-WS-BOUND | `identity.assertCan()` line 231 — `actor.workspace !== workspace` | HTTP 401 | Server | Yes | `roles.test.js` |
+| H-TENANT | `workspace.loadSession()` — `row.companyId !== companyId` | HTTP 404 "No such purchase", **before the state is read** | Server | Yes | `roles.test.js` |
+| H-CO-BOUND | `identity.assertCan()` — `actor.company !== company` | HTTP 401 | Server | Yes | `roles.test.js` |
+| H-CO-ADOPT | `store.assignCompany()` — `WHERE company_id IS NULL` | Silent no-op on an owned workspace | Server | Yes | `store.test.js` |
 | H-WS-VALIDATE | `workspace.workspaceIdFrom()` — `/^[A-Za-z0-9_-]{8,64}$/` | Falls back to `demo` workspace silently | Server | Yes (semi-silent) | — |
 | H-WS-MAX | `workspace.loadSession()` — `count >= MAX_WORKSPACES` prunes oldest | Prune, not refusal | Server | Yes | — |
+| H-TENDER-MAX | `workspace.loadSession()` / `createTender()` — `>= MAX_TENDERS` per company | HTTP 409 naming the limit | Server | Yes | `roles.test.js` |
 | H-WS-VERSION | `store.save()` — optimistic concurrency version check | `ConflictError` → HTTP 409 | Server | No (two concurrent writes) | `store.test.js` |
+| H-CO-VERSION | `store.saveCompany()` — optimistic concurrency version check | `ConflictError` → HTTP 409 | Server | No (two desks editing one policy) | `store.test.js` |
+| H-IDEM-CLAIM | `store.claimIdempotency()` — primary key `(workspace_id, key)` | Second caller gets the recorded answer, or HTTP 409 while the first is in flight | Server | Yes | `store.test.js`, `roles.test.js` |
+| H-IDEM-FINGERPRINT | `replayOrClaim()` — key reused on another route | HTTP 422 naming the route it was used for | Server | Yes | `roles.test.js` |
+
+Note what H-TENANT is and is not. It is not a filter applied to a response and
+it is not a permission check inside a handler: the workspace is **not loaded at
+all** when it belongs to another company, so a future route that forgets to
+check anything still cannot serve another tenant's purchase. The token check
+(H-CO-BOUND) answers a different question — whether this desk may act — and
+neither substitutes for the other.
 
 ## I. Phrasing boundary (server/summary.js)
 

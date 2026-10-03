@@ -45,7 +45,7 @@ let server;
 
 /* ------------------------------------------------------------------ helpers */
 
-function call(method, path, { body, token, workspace } = {}) {
+function call(method, path, { body, token, workspace, company, key } = {}) {
   return new Promise((resolve, reject) => {
     const data = body === undefined ? null : Buffer.from(JSON.stringify(body));
     const req = http.request(
@@ -55,6 +55,8 @@ function call(method, path, { body, token, workspace } = {}) {
         headers: {
           'content-type': 'application/json',
           ...(workspace ? { 'x-workspace': workspace } : {}),
+          ...(company ? { 'x-company': company } : {}),
+          ...(key ? { 'idempotency-key': key } : {}),
           ...(token ? { authorization: `Bearer ${token}` } : {}),
           ...(data ? { 'content-length': data.length } : {}),
         },
@@ -66,7 +68,7 @@ function call(method, path, { body, token, workspace } = {}) {
           const raw = Buffer.concat(chunks).toString('utf8');
           let parsed = null;
           try { parsed = JSON.parse(raw); } catch (_) { parsed = { raw }; }
-          resolve({ status: res.statusCode, body: parsed });
+          resolve({ status: res.statusCode, body: parsed, headers: res.headers });
         });
       }
     );
@@ -81,9 +83,9 @@ function call(method, path, { body, token, workspace } = {}) {
    change to the codes has to be made deliberately in two places. */
 const CODES = { sales: '2481', head: '7390', finance: '5162' };
 
-async function login(role, workspace, code) {
+async function login(role, workspace, code, company) {
   const body = { role, code: code === undefined ? CODES[role] : code };
-  const r = await call('POST', '/api/session/login', { body, workspace });
+  const r = await call('POST', '/api/session/login', { body, workspace, company });
   if (!r.body.token) throw new Error(`login failed for ${role}: ${JSON.stringify(r.body)}`);
   return r.body.token;
 }
@@ -171,6 +173,9 @@ async function run() {
   // deployed rate limit exists to stop. Raised here so a throttled request does
   // not read as an authorization failure.
   process.env.LIMEN_RATE_LIMIT = '100000';
+  /* Lowered so the bound can be reached in a test without creating
+     twenty-five workspaces and pruning everybody else's out of the store. */
+  process.env.LIMEN_MAX_TENDERS = '3';
 
   const app = require('../server/index');
   await app.boot();
@@ -239,13 +244,58 @@ async function run() {
     ok(r.body.name && r.body.name !== 'Somebody Else', `got ${r.body.name}`);
   });
 
-  await test('a token is only good for the workspace it was issued for', async () => {
-    const a = 'wsA-' + Date.now().toString(36);
-    const b = 'wsB-' + Date.now().toString(36);
+  /*
+   * The token used to be pinned to one workspace. It is pinned to one COMPANY
+   * now, because a company has many purchases and a head who approves two of
+   * them in an afternoon is one person at one desk.
+   *
+   * That is only safe if the workspace is checked somewhere else, so both
+   * halves are asserted here: a token cannot cross a company, and a workspace
+   * cannot be reached from a company that does not own it. Either one alone
+   * would be a hole.
+   */
+  await test('a token is only good for the company it was issued at', async () => {
+    const a = 'coA-' + Date.now().toString(36);
+    const b = 'coB-' + Date.now().toString(36);
     const salesA = await login('sales', a);
-    const r = await call('POST', '/api/brief', { body: { text: REQUEST }, token: salesA, workspace: b });
-    ok(r.status >= 400, 'a token from another workspace must not act here');
-    ok(/different workspace/i.test(r.body.error || ''), r.body.error);
+    const r = await call('POST', '/api/brief', {
+      body: { text: REQUEST }, token: salesA, workspace: b, company: b,
+    });
+    ok(r.status >= 400, 'a token from another company must not act here');
+    ok(/different company/i.test(r.body.error || ''), r.body.error);
+  });
+
+  await test('one sign-in covers every purchase the company has open', async () => {
+    const co = 'coMany-' + Date.now().toString(36);
+    const first = 'wsOne-' + Date.now().toString(36);
+    const sales = await login('sales', first, undefined, co);
+
+    const opened = await call('POST', '/api/tenders', { token: sales, workspace: first, company: co });
+    eq(opened.status, 201, opened.body.error);
+    const second = opened.body.id;
+
+    // The same token, on a different purchase at the same company. This is the
+    // case that used to 401 and sent a buyer back to the door mid-afternoon.
+    const r = await call('POST', '/api/brief', {
+      body: { text: REQUEST }, token: sales, workspace: second, company: co,
+    });
+    eq(r.status, 200, r.body.error);
+  });
+
+  await test('a purchase at another company is not reachable by knowing its id', async () => {
+    const mine = 'coMine-' + Date.now().toString(36);
+    const theirs = 'coTheirs-' + Date.now().toString(36);
+
+    // Their purchase, created under their company.
+    const theirSales = await login('sales', theirs);
+    await call('POST', '/api/brief', { body: { text: REQUEST }, token: theirSales, workspace: theirs, company: theirs });
+
+    // I hold a valid token at my own company and I know their workspace id.
+    // Neither buys me anything: the workspace is not loaded at all.
+    const mySales = await login('sales', mine);
+    const r = await call('GET', '/api/run', { token: mySales, workspace: theirs, company: mine });
+    eq(r.status, 404, `expected the workspace not to exist for me, got ${r.status}`);
+    ok(!/brief/i.test(JSON.stringify(r.body.brief || '')), 'nothing of their purchase may come back');
   });
 
   group('The interface is told whose move it is');
@@ -922,7 +972,7 @@ async function run() {
    * everything else in this file does - a unit test of the reader proves the
    * reader works, not that the route reaches it with the right permission.
    */
-  function upload(bytes, { token, workspace, filename = 'tender.pdf' } = {}) {
+  function upload(bytes, { token, workspace, company, filename = 'tender.pdf' } = {}) {
     return new Promise((resolve, reject) => {
       const req = http.request(`${base}/api/brief/document`, {
         method: 'POST',
@@ -931,6 +981,7 @@ async function run() {
           'x-filename': filename,
           'content-length': bytes.length,
           ...(workspace ? { 'x-workspace': workspace } : {}),
+          ...(company ? { 'x-company': company } : {}),
           ...(token ? { authorization: `Bearer ${token}` } : {}),
         },
       }, (res) => {
@@ -1683,6 +1734,275 @@ async function run() {
     eq(again.body.reason, 'duplicate event');
     eq(await stateOf(c), 'SETTLED', 'and the state must be unchanged');
   });
+
+  /* ====================================================================
+   * MANY PURCHASES, ONE COMPANY
+   *
+   * The modelling error these cover is the one that made the spending
+   * ceiling optional in practice. A workspace held both the purchase and
+   * the company, so a buyer with three requirements had three policies,
+   * and the head's limit applied to whichever purchase it happened to be
+   * typed into. The tests that matter here are the ones that assert the
+   * policy crosses - a limit that protects one of five open purchases is
+   * not a limit, and nothing in the old suite would have noticed.
+   * ================================================================= */
+
+  group('A company has many purchases');
+
+  /** A company with a signed-in sales desk and one purchase open. */
+  async function newCompany(tag) {
+    const co = `co-${tag}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    const first = `ws-${tag}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    const sales = await login('sales', first, undefined, co);
+    const head = await login('head', first, undefined, co);
+    return { co, first, sales, head };
+  }
+  const at = (c, ws, token) => ({ workspace: ws, company: c.co, token });
+
+  await test('a second purchase is a separate purchase', async () => {
+    const c = await newCompany('two');
+    const opened = await call('POST', '/api/tenders', at(c, c.first, c.sales));
+    eq(opened.status, 201, opened.body.error);
+    const second = opened.body.id;
+    ok(second && second !== c.first, 'the new purchase gets an id of its own');
+
+    await call('POST', '/api/brief', { ...at(c, c.first, c.sales), body: { text: REQUEST } });
+
+    const other = await call('GET', '/api/run', at(c, second, c.sales));
+    eq(other.status, 200, other.body.error);
+    ok(!other.body.brief, 'what was typed into one purchase must not appear in the other');
+  });
+
+  await test('both purchases show up in the company list, with where each stands', async () => {
+    const c = await newCompany('list');
+    const second = (await call('POST', '/api/tenders', at(c, c.first, c.sales))).body.id;
+    await call('POST', '/api/brief', { ...at(c, c.first, c.sales), body: { text: REQUEST } });
+
+    const r = await call('GET', '/api/tenders', at(c, c.first, c.sales));
+    eq(r.status, 200, r.body.error);
+    eq(r.body.tenders.length, 2, JSON.stringify(r.body.tenders));
+
+    const mine = r.body.tenders.find((t) => t.id === c.first);
+    const theirs = r.body.tenders.find((t) => t.id === second);
+    ok(mine && theirs, 'both purchases are listed');
+    eq(mine.current, true, 'the one being looked at is marked');
+    eq(theirs.current, false);
+    ok(/PET/i.test(mine.title || ''), `expected the request in the title, got ${mine.title}`);
+    eq(theirs.title, null, 'an empty purchase has nothing to title it with');
+    eq(theirs.state, 'DRAFT');
+  });
+
+  /*
+   * THE ONE THAT MATTERS.
+   *
+   * The head sets a ceiling while looking at one purchase. If it does not
+   * apply to the others, it is decoration.
+   */
+  await test('the ceiling the head sets is in force in every purchase', async () => {
+    const c = await newCompany('ceiling');
+    const second = (await call('POST', '/api/tenders', at(c, c.first, c.sales))).body.id;
+
+    const set = await call('PATCH', '/api/profile/limits', {
+      ...at(c, c.first, c.head), body: { perDeal: 4000 },
+    });
+    eq(set.status, 200, set.body.error);
+    eq(set.body.profile.limits.perDeal, 4000);
+
+    const seen = await call('GET', '/api/profile', at(c, second, c.head));
+    eq(seen.status, 200, seen.body.error);
+    eq(seen.body.profile.limits.perDeal, 4000,
+      'a limit set on one purchase must be the limit on all of them');
+  });
+
+  await test('a blocked supplier is blocked in every purchase', async () => {
+    const c = await newCompany('block');
+    const second = (await call('POST', '/api/tenders', at(c, c.first, c.sales))).body.id;
+
+    const set = await call('PATCH', '/api/profile', {
+      ...at(c, c.first, c.sales), body: { blockedSuppliers: ['SUP-001'] },
+    });
+    eq(set.status, 200, set.body.error);
+
+    const seen = await call('GET', '/api/profile', at(c, second, c.sales));
+    ok((seen.body.profile.blockedSuppliers || []).includes('SUP-001'),
+      JSON.stringify(seen.body.profile.blockedSuppliers));
+  });
+
+  await test('resetting one purchase leaves the others and the policy alone', async () => {
+    const c = await newCompany('reset');
+    const second = (await call('POST', '/api/tenders', at(c, c.first, c.sales))).body.id;
+    await call('PATCH', '/api/profile/limits', { ...at(c, c.first, c.head), body: { perDeal: 3000 } });
+    await call('POST', '/api/brief', { ...at(c, second, c.sales), body: { text: REQUEST } });
+
+    const r = await call('POST', '/api/reset', at(c, c.first, c.sales));
+    eq(r.status, 200, r.body.error);
+
+    const other = await call('GET', '/api/run', at(c, second, c.sales));
+    ok(other.body.brief, 'the other purchase is untouched by a reset over here');
+
+    const p = await call('GET', '/api/profile', at(c, c.first, c.head));
+    eq(p.body.profile.limits.perDeal, 3000, 'a reset clears the run, not the company');
+  });
+
+  /*
+   * The log is how the agent gets better at negotiating, and it was keyed on
+   * the purchase. Keyed there it was worthless the moment a company could
+   * have more than one: every new tender started with no history and the
+   * whole feature quietly reset itself every time somebody began something.
+   */
+  await test('what the buyer learned in one purchase is there in the next', async () => {
+    const c = await newCompany('history');
+
+    await call('POST', '/api/brief', { ...at(c, c.first, c.sales), body: { text: REQUEST } });
+    await call('POST', '/api/candidates', at(c, c.first, c.sales));
+    await call('POST', '/api/negotiate', at(c, c.first, c.sales));
+    await call('POST', '/api/recommend', at(c, c.first, c.sales));
+
+    const here = await call('GET', '/api/history', at(c, c.first, c.sales));
+    eq(here.status, 200, here.body.error);
+    ok(here.body.suppliers.length > 0, 'the run it just finished is in the log');
+
+    const second = (await call('POST', '/api/tenders', at(c, c.first, c.sales))).body.id;
+    const there = await call('GET', '/api/history', at(c, second, c.sales));
+    eq(there.status, 200, there.body.error);
+    eq(there.body.suppliers.length, here.body.suppliers.length,
+      'a new purchase at the same company starts with what the company already knows');
+    eq(there.body.summary.runs, here.body.summary.runs);
+  });
+
+  await test('a draft can be discarded, and the one you are looking at cannot', async () => {
+    const c = await newCompany('discard');
+    const second = (await call('POST', '/api/tenders', at(c, c.first, c.sales))).body.id;
+
+    const self = await call('DELETE', `/api/tenders/${c.first}`, at(c, c.first, c.sales));
+    ok(self.status >= 400, 'discarding the purchase on screen would leave nowhere to stand');
+
+    const gone = await call('DELETE', `/api/tenders/${second}`, at(c, c.first, c.sales));
+    eq(gone.status, 200, gone.body.error);
+
+    const list = await call('GET', '/api/tenders', at(c, c.first, c.sales));
+    eq(list.body.tenders.length, 1, JSON.stringify(list.body.tenders));
+  });
+
+  await test('another company cannot discard, list or reach this one', async () => {
+    const mine = await newCompany('victim');
+    const theirs = await newCompany('attacker');
+
+    const del = await call('DELETE', `/api/tenders/${mine.first}`, at(theirs, theirs.first, theirs.sales));
+    ok(del.status >= 400, 'a purchase at another company is not deletable');
+
+    const list = await call('GET', '/api/tenders', at(theirs, theirs.first, theirs.sales));
+    ok(!list.body.tenders.some((t) => t.id === mine.first),
+      'and it does not appear in their list either');
+  });
+
+  await test('only the sourcing desk may open a purchase, and nobody anonymous may list them', async () => {
+    const c = await newCompany('caps');
+    const asHead = await call('POST', '/api/tenders', at(c, c.first, c.head));
+    ok(asHead.status >= 400, 'the head approves purchases, it does not start them');
+    ok(/Sales/i.test(asHead.body.error || ''), asHead.body.error);
+
+    const anon = await call('GET', '/api/tenders', { workspace: c.first, company: c.co });
+    eq(anon.status, 401, 'what else a company is buying is not an open question');
+  });
+
+  await test('a company cannot open purchases without limit', async () => {
+    /*
+     * Workspaces are created on first sight of a header, so without a
+     * per-company bound a caller could mint purchases under one company
+     * until the global cap evicted everybody else's. The limit is lowered
+     * to three for this suite (see run) so the test costs three rows
+     * rather than twenty-five.
+     */
+    const c = await newCompany('cap');
+    for (let i = 1; i < workspace.MAX_TENDERS; i++) {
+      const r = await call('POST', '/api/tenders', at(c, c.first, c.sales));
+      eq(r.status, 201, `open ${i + 1} of ${workspace.MAX_TENDERS}: ${r.body.error}`);
+    }
+    const over = await call('POST', '/api/tenders', at(c, c.first, c.sales));
+    eq(over.status, 409, JSON.stringify(over.body));
+    ok(/limit/i.test(over.body.error || ''), over.body.error);
+  });
+
+
+  /* ====================================================================
+   * A RETRY IS A READ
+   *
+   * A mutation that times out on the wire leaves the caller unable to tell
+   * whether it happened. The state machine already stops most of the damage
+   * - a second approve is refused because the purchase has moved on - but it
+   * answers with an error, so a client that merely lost the reply is told its
+   * action failed when it succeeded. The key turns the retry into a read.
+   * ================================================================= */
+
+  group('A retry is a read, not a second action');
+
+  await test('the same key replays the first answer instead of acting again', async () => {
+    const c = await newCompany('idem');
+    const k = 'k-' + Date.now().toString(36);
+
+    const first = await call('POST', '/api/tenders', { ...at(c, c.first, c.sales), key: k });
+    eq(first.status, 201, first.body.error);
+    ok(!first.headers['idempotent-replay'], 'the first time is not a replay');
+
+    const again = await call('POST', '/api/tenders', { ...at(c, c.first, c.sales), key: k });
+    eq(again.status, 201, 'the retry gets the answer the first one gave');
+    eq(again.body.id, first.body.id, 'and the same id, not a second purchase');
+    eq(again.headers['idempotent-replay'], 'true', 'and says so, so a client can tell');
+
+    const list = await call('GET', '/api/tenders', at(c, c.first, c.sales));
+    eq(list.body.tenders.length, 2, 'one purchase was opened, not two');
+  });
+
+  await test('without a key, two identical requests are two actions', async () => {
+    /* The point of opting in. Two deliberate presses of the same button are
+       two purchases, and inferring a key from the body would collapse them. */
+    const c = await newCompany('nokey');
+    await call('POST', '/api/tenders', at(c, c.first, c.sales));
+    await call('POST', '/api/tenders', at(c, c.first, c.sales));
+    const list = await call('GET', '/api/tenders', at(c, c.first, c.sales));
+    eq(list.body.tenders.length, 3, JSON.stringify(list.body.tenders.map((t) => t.id)));
+  });
+
+  await test('a key reused on a different route is refused, not replayed', async () => {
+    const c = await newCompany('idemx');
+    const k = 'x-' + Date.now().toString(36);
+    const first = await call('POST', '/api/tenders', { ...at(c, c.first, c.sales), key: k });
+    eq(first.status, 201, first.body.error);
+
+    const wrong = await call('POST', '/api/brief', {
+      ...at(c, c.first, c.sales), body: { text: REQUEST }, key: k,
+    });
+    eq(wrong.status, 422, JSON.stringify(wrong.body));
+    ok(/already used/i.test(wrong.body.error || ''), wrong.body.error);
+  });
+
+  await test('a failed request does not record its failure for the retry to inherit', async () => {
+    const c = await newCompany('idemfail');
+    const k = 'f-' + Date.now().toString(36);
+
+    // The head cannot open a purchase. That refusal must not be what a later
+    // retry of the same key is handed back.
+    const refused = await call('POST', '/api/tenders', { ...at(c, c.first, c.head), key: k });
+    ok(refused.status >= 400, 'precondition: the head is refused');
+
+    const retried = await call('POST', '/api/tenders', { ...at(c, c.first, c.sales), key: k });
+    eq(retried.status, 201, `the key was released, so this must run: ${retried.body.error}`);
+    ok(!retried.headers['idempotent-replay'], 'and it is not a replay of the refusal');
+  });
+
+  await test('the key is scoped to the purchase, not shared across the company', async () => {
+    const c = await newCompany('idemscope');
+    const second = (await call('POST', '/api/tenders', at(c, c.first, c.sales))).body.id;
+    const k = 's-' + Date.now().toString(36);
+
+    const a = await call('POST', '/api/brief', { ...at(c, c.first, c.sales), body: { text: REQUEST }, key: k });
+    eq(a.status, 200, a.body.error);
+    const b = await call('POST', '/api/brief', { ...at(c, second, c.sales), body: { text: REQUEST }, key: k });
+    eq(b.status, 200, 'the same key on another purchase is another request');
+    ok(!b.headers['idempotent-replay'], 'and must not replay the first purchase\'s answer');
+  });
+
 
   server.close();
 }

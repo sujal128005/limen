@@ -155,12 +155,80 @@ const supplierWallets = {}; // SUP-X -> address
  *
  * It turns failures into one clean line. Stack traces and internal paths never
  * reach a client.
+ *
+ * And it makes a retry a read, when the caller supplies a key. See below.
  */
+
+/*
+ * How long a recorded answer is worth replaying.
+ *
+ * Long enough to cover any retry a client or a proxy will make, short enough
+ * that the table is not a permanent record of every mutation ever made. A key
+ * reused after this window is a new request, which is the correct reading: a
+ * retry does not arrive a day later.
+ */
+const IDEMPOTENCY_TTL_MS = Number(process.env.LIMEN_IDEMPOTENCY_TTL_MS || 24 * 60 * 60 * 1000);
+const MUTATION = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
+
+/*
+ * Make a retry a read.
+ *
+ * A mutation that times out on the wire leaves the caller unable to tell
+ * whether it happened. Retrying is the only thing they can do, and it is also
+ * the thing that approves a purchase twice. Most routes here are already
+ * protected by the state machine - a second approve is refused because the
+ * purchase is no longer at HEAD_APPROVAL - but that protection answers with an
+ * error, so a client that merely lost the reply is told its action failed when
+ * it succeeded. That is the failure this fixes.
+ *
+ * Opt-in by header, because a key the client did not choose is a key the client
+ * cannot reuse, and an inferred one (the body, say) would collapse two
+ * deliberate identical actions into one.
+ *
+ * Returns the recorded answer to replay, or null to run the handler.
+ */
+async function replayOrClaim(req) {
+  const key = req.get ? String(req.get('idempotency-key') || '').trim() : '';
+  if (!key || !MUTATION.has(req.method)) return null;
+  if (key.length > 200) {
+    const e = new Error('The idempotency key is too long. Use something short and unique, like a UUID.');
+    e.status = 400;
+    throw e;
+  }
+
+  const fingerprint = `${req.method} ${req.path}`;
+  const found = await workspace.claimIdempotency(req.workspaceId, key, fingerprint);
+  if (found.claimed) { req.idempotencyKey = key; return null; }
+
+  if (found.fingerprint !== fingerprint) {
+    // Replaying here would hand back an answer to a different question.
+    const e = new Error(
+      `This idempotency key was already used for ${found.fingerprint}. `
+      + 'Use a new key for a different request.'
+    );
+    e.status = 422;
+    throw e;
+  }
+  if (found.status == null) {
+    const e = new Error('The first request with this key is still running. Try again in a moment.');
+    e.status = 409;
+    throw e;
+  }
+  return found;
+}
+
 const wrap = (fn) => async (req, res) => {
   const id = workspace.workspaceIdFrom(req);
   try {
     await workspace.withLock(id, async () => {
       await workspace.loadSession(req);
+
+      const replay = await replayOrClaim(req);
+      if (replay) {
+        res.setHeader('idempotent-replay', 'true');
+        res.status(replay.status).json(replay.body);
+        return;
+      }
 
       // Buffer the reply so the save happens first. Handlers still call
       // res.json exactly as before; they simply no longer send it themselves.
@@ -175,8 +243,32 @@ const wrap = (fn) => async (req, res) => {
         res.json = send;
       }
       if (declared) send(body);
+      /*
+       * Recorded after the save, so a replayed answer can never describe state
+       * the store never received. A claim that is never recorded is released
+       * below rather than left in flight forever.
+       */
+      if (req.idempotencyKey) {
+        await workspace.recordIdempotency(
+          req.workspaceId, req.idempotencyKey, res.statusCode || 200, declared ? body : null
+        );
+        req.idempotencyKey = null;
+      }
     });
   } catch (e) {
+    /*
+     * A failed request releases its claim rather than recording the failure.
+     *
+     * Recording it would make a retry replay the error forever, which is the
+     * wrong answer for exactly the case the header exists for: a request that
+     * failed because the network or the database wobbled is one the caller
+     * should be able to send again.
+     */
+    if (req.idempotencyKey) {
+      const k = req.idempotencyKey;
+      req.idempotencyKey = null;
+      try { await workspace.releaseIdempotency(req.workspaceId, k); } catch (_) { /* best effort */ }
+    }
     // Client-side mistakes (wrong order, wrong role, empty workspace) are normal
     // 4xx traffic, not server faults. One line keeps the console readable.
     console.warn('[api] %s %s -> %s', req.method, req.path, e.shortMessage || e.message);
@@ -199,11 +291,21 @@ const wrap = (fn) => async (req, res) => {
 /*
  * The one guard every restricted route calls.
  *
- * It takes the session rather than the workspace string so the token's own
- * workspace claim is compared against the drawer of state being acted on. A
- * Sales token minted for one workspace is not a Sales token everywhere.
+ * The token's claim is compared against the COMPANY on the request, not the
+ * workspace. A Sales token minted at one company is not a Sales token anywhere
+ * else - and which of that company's purchases it is being used on is already
+ * settled, because workspace.js refuses to load a workspace owned by somebody
+ * else before any handler runs. Two checks, each doing one job: this one says
+ * whether the desk may act, that one says whether the drawer is theirs.
+ *
+ * It still takes the session, because a caller that has not loaded one has no
+ * business reaching a guard, and this is where that shows up as a crash rather
+ * than as a quiet pass.
  */
-const guard = (req, session, capability) => identity.assertCan(req.actor, capability, session.id);
+const guard = (req, session, capability) => {
+  if (!session) throw new Error('Workspace was not loaded for this request.');
+  return identity.assertCan(req.actor, capability, req.companyId);
+};
 
 /*
  * One line per act, appended where it happened.
@@ -341,16 +443,88 @@ app.post('/api/session/login', wrap(async (req, res) => {
     );
   }
   doorlock.succeed(key);
-  const issued = identity.issue(role, session.id);
+  /*
+   * Minted against the company, so one sign-in covers every purchase that
+   * company has open. See identity.js for why this is not the loosening it
+   * looks like.
+   */
+  const issued = identity.issue(role, req.companyId);
   res.json({
     token: issued.token,
     role: issued.role,
     name: issued.name,
     title: identity.ROLES[role].title,
     workspace: session.id,
+    company: req.companyId,
     label: identity.ROLES[role].label,
     can: identity.ROLES[role].can.filter((c) => c !== 'read'),
   });
+}));
+
+// --------------------------------------------------------------- tenders
+/*
+ * The purchases this company has open.
+ *
+ * A company had exactly one for most of this project's life, and the interface
+ * was honest about it: resetting the run was how you started the next thing.
+ * That is fine for a demonstration and indefensible for a buying desk, which
+ * has five requirements in flight on a normal Tuesday and no interest in
+ * finishing them one at a time.
+ *
+ * Guarded on read rather than left open, because this is the only route that
+ * answers a question about the company rather than about one purchase: "what
+ * else is this company buying" is not something an unauthenticated caller
+ * holding one workspace id should be able to ask.
+ */
+app.get('/api/tenders', wrap(async (req, res) => {
+  const session = sessionFor(req);
+  guard(req, session, 'read');
+  const tenders = await workspace.tendersFor(req.companyId, session.id);
+  res.json({
+    company: req.companyId,
+    current: session.id,
+    max: workspace.MAX_TENDERS,
+    tenders,
+  });
+}));
+
+/*
+ * Open another one.
+ *
+ * Sales opens purchases; that is what `run` means. The response is an id and
+ * nothing else: the client switches to it by sending it as the workspace
+ * header, which is the same mechanism as before and keeps this route from
+ * needing any notion of a "current" purchase on the server.
+ *
+ * The sign-in survives the switch, because the token is minted against the
+ * company. That is the whole reason the token moved.
+ */
+app.post('/api/tenders', wrap(async (req, res) => {
+  const session = sessionFor(req);
+  guard(req, session, 'run');
+  const id = await workspace.createTender(req.companyId);
+  await audit(req, 'tender-open', null, { tender: id });
+  res.status(201).json({ id, company: req.companyId });
+}));
+
+/*
+ * Discard a draft.
+ *
+ * Refused outright once a deal exists - see discardTender for why - and the
+ * refusal is a 409 with a sentence, not a silent no-op. The audit trail is not
+ * touched: what disappears is a draft, and the record that the draft existed
+ * stays where records go.
+ */
+app.delete('/api/tenders/:id', wrap(async (req, res) => {
+  const session = sessionFor(req);
+  guard(req, session, 'run');
+  const id = String(req.params.id || '');
+  if (id === session.id) {
+    throw new Error('This is the purchase you are looking at. Switch to another one first, or reset it.');
+  }
+  await workspace.discardTender(req.companyId, id);
+  await audit(req, 'tender-discard', null, { tender: id });
+  res.json({ ok: true, id });
 }));
 
 // ---------------------------------------------------------------- status
@@ -529,6 +703,7 @@ async function logOutcome(req, event, fields) {
     const session = req.session || {};
     await workspace.recordOutcome(outcomes.row(event, {
       workspaceId: session.id,
+      companyId: req.companyId,
       brief: session.brief,
       ...fields,
     }));
@@ -673,7 +848,7 @@ app.post('/api/brief', wrap(async (req, res) => {
       brief.budgetPerUnit = +(brief.budgetTotal / brief.quantityKg).toFixed(4);
     }
   }
-  assertWithinCompanyLimits(session, brief);
+  assertWithinCompanyLimits(req, brief);
   startNewRun(session, brief);
   res.json(brief);
 }));
@@ -693,14 +868,15 @@ app.post('/api/brief', wrap(async (req, res) => {
  * that a person finds out at the start rather than at the funding step, and the
  * message names which limit and whose decision it is to raise.
  */
-function assertWithinCompanyLimits(session, brief) {
+function assertWithinCompanyLimits(req, brief) {
+  const session = sessionFor(req);
   const check = profile.checkBrief(session.profile, brief);
   if (check.ok) return;
   /* Logged before it is thrown. A company that keeps hitting its own ceiling is
      telling its head something, and a refusal that left no trace would mean
      nobody found out until somebody complained. */
   workspace.recordOutcome(outcomes.row('refused', {
-    workspaceId: session.id, brief,
+    workspaceId: session.id, companyId: req.companyId, brief,
     outcome: check.scope, detail: check.reason,
   })).catch(() => {});
   const e = new Error(check.reason);
@@ -812,7 +988,7 @@ app.post(
 
     /* The same gate as the typed path. A tender is not a way round the
        company's own limits just because it arrived as a file. */
-    assertWithinCompanyLimits(session, brief);
+    assertWithinCompanyLimits(req, brief);
     startNewRun(session, brief);
 
     /*
@@ -1065,7 +1241,7 @@ app.post('/api/negotiate', wrap(async (req, res) => {
    * history can do is open at a price a supplier refuses - which costs a round,
    * not money.
    */
-  const rows = await workspace.outcomesFor(session.id, 500);
+  const rows = await workspace.companyOutcomes(req.companyId, 500);
   const historyBy = {};
   for (const c of shortlist) {
     const h = outcomes.supplierHistory(rows, c.supplierId);
@@ -2725,7 +2901,7 @@ app.get('/api/audit', wrap(async (req, res) => {
 app.get('/api/history', wrap(async (req, res) => {
   const session = sessionFor(req);
   guard(req, session, 'read');
-  const rows = await workspace.outcomesFor(session.id, 1000);
+  const rows = await workspace.companyOutcomes(req.companyId, 1000);
   const supplierId = req.query.supplier ? String(req.query.supplier) : null;
 
   res.json({
@@ -3351,6 +3527,20 @@ async function boot() {
    */
   await workspace.init();
   console.log(`  store: ${workspace.getStore().kind}${workspace.getStore().kind === 'memory' ? ' (state is lost on restart, set DATABASE_URL to persist)' : ''}`);
+
+  /*
+   * Sweep expired idempotency records.
+   *
+   * unref'd, so it never holds the process open - a test that boots the server
+   * and finishes should exit, not hang on a timer that fires once an hour. The
+   * failure is swallowed and logged because a cleanup that cannot run is a
+   * table that grows, not a product that stops.
+   */
+  const sweep = setInterval(() => {
+    workspace.expireIdempotency(IDEMPOTENCY_TTL_MS)
+      .catch((e) => console.warn('[idempotency] sweep failed: %s', e.message));
+  }, 60 * 60 * 1000);
+  if (sweep.unref) sweep.unref();
 
   /*
    * The catalogue, before the chain.
