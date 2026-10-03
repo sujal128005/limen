@@ -1035,6 +1035,72 @@ table.grid tbody tr:nth-child(n+6) { animation-delay: 170ms; }
 }
 .hint { font-size: 13px; color: var(--ink-3); }
 
+/* ------------------------------------------------- the tender, read ------
+   A buyer can hand over the tender document instead of retyping it. Two
+   pieces: the drop state on the composer, and the panel showing what was read.
+
+   The panel is paper, not a card with a coloured header. It is evidence the
+   person is checking against a document on their desk, and it should read the
+   way the rest of the run's evidence reads. Only one thing is coloured: a
+   figure the labelled clause corrected, in amber, because that is the one line
+   worth stopping on. */
+
+/* A real input, reachable by keyboard, invisible on the page. The button beside
+   it is what people see and click. */
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+
+.composer { position: relative; }
+.composer.is-over { border-color: var(--pine); box-shadow: var(--e2), 0 0 0 3px var(--pine-wash); }
+.composer-drop {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  background: var(--pine-wash); color: var(--pine); font-weight: 650; font-size: 14px;
+  letter-spacing: -.01em; border-radius: var(--r-md); pointer-events: none;
+}
+
+.docread {
+  margin-top: 14px; background: var(--surface); border: 1px solid var(--hair-strong);
+  border-radius: var(--r-md); box-shadow: var(--e1); overflow: hidden;
+}
+.docread-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  padding: 14px 16px; border-bottom: 1px solid var(--hair); background: var(--surface-2);
+}
+.docread-file { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-top: 3px; }
+.docread-file strong { font-size: 14.5px; letter-spacing: -.01em; }
+.docread-warn {
+  padding: 10px 16px; font-size: 13px; color: var(--amber);
+  background: var(--amber-wash); border-bottom: 1px solid var(--amber-line);
+}
+.docread-rows { margin: 0; padding: 4px 0; }
+.docread-row {
+  display: grid; grid-template-columns: 148px 1fr; gap: 14px;
+  padding: 11px 16px; border-bottom: 1px solid var(--hair);
+}
+.docread-row:last-child { border-bottom: 0; }
+.docread-row dt { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-4); padding-top: 2px; }
+.docread-row dd { margin: 0; display: grid; gap: 4px; }
+.docread-value { font-size: 15px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.docread-quote { font-size: 13px; line-height: 1.5; color: var(--ink-3); font-style: italic; }
+.docread-note { font-size: 12.5px; line-height: 1.45; color: var(--ink-4); }
+.docread-row.is-corrected { background: var(--amber-wash); }
+.docread-row.is-corrected .docread-note { color: var(--amber); }
+.docread-missing {
+  padding: 12px 16px; font-size: 13px; line-height: 1.5; color: var(--ink-2);
+  background: var(--sunk); border-top: 1px solid var(--hair);
+}
+.docread-foot {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 12px 12px 12px 16px; border-top: 1px solid var(--hair); background: var(--surface-2);
+}
+
+@media (max-width: 640px) {
+  .docread-row { grid-template-columns: 1fr; gap: 4px; }
+  .docread-foot .hint { order: 2; }
+}
+
 /* ========================================================== the orb ======
    Four counter-rotating lobes behind a circular mask. Rotation is constant;
    scale tracks --lvl, which is written from the live microphone analyser every

@@ -243,6 +243,59 @@ const api = {
   post(p, body, opts) {
     return request(p, { method: 'POST', body: body || {}, ...opts });
   },
+
+  /*
+   * Upload a tender document.
+   *
+   * Sent as raw bytes rather than through request() above, which serialises
+   * everything as JSON. Base64 inside a JSON body would inflate a ten-megabyte
+   * tender by a third and force the server's 32kb JSON limit open for every
+   * other route; multipart would mean a parser on the server for a format with
+   * a long history of boundary bugs. Raw bytes with the name in a header needs
+   * neither.
+   *
+   * The timeout is its own value because reading six pages of PDF is slower
+   * than any other write this client makes, and borrowing the write budget
+   * would mean a large tender aborting at the point it was nearly done.
+   */
+  async upload(p, file, { timeout = 120000 } = {}) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeout);
+    try {
+      const r = await fetch(p, {
+        method: 'POST',
+        signal: ctrl.signal,
+        headers: {
+          ...headers(),
+          'content-type': 'application/octet-stream',
+          'x-filename': encodeURIComponent(file.name || 'document').replace(/%20/g, ' '),
+        },
+        body: await file.arrayBuffer(),
+      });
+      const ct = r.headers.get('content-type') || '';
+      if (!ct.includes('application/json')) {
+        throw new ApiError(r.ok ? 'The server replied in a format this build does not understand.'
+          : `The server returned ${r.status}.`, { status: r.status });
+      }
+      const j = await r.json();
+      if (!r.ok) {
+        if (r.status === 401) onSessionLost();
+        if (r.status === 413) {
+          throw new ApiError('That file is too large to upload. Send the tender on its own rather than a bundle.', { status: 413 });
+        }
+        throw new ApiError(j.error || `Request failed with ${r.status}.`, { status: r.status });
+      }
+      return j;
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
+      if (e.name === 'AbortError') {
+        throw new ApiError('Reading that document took too long and was stopped. Nothing was started.', { timeout: true });
+      }
+      throw new ApiError('Could not reach the server. Check that it is still running.', { offline: true });
+    } finally {
+      clearTimeout(timer);
+    }
+  },
 };
 
 async function fetchPdfBlob(path) {
@@ -2358,6 +2411,9 @@ function Desk() {
   const [error, setError] = useState(null);
 
   const [brief, setBrief] = useState(null);
+  /* What the brief was read out of, when it was read out of a file rather than
+     typed. Null for a typed run, which is why the evidence panel can key off it. */
+  const [sourceDoc, setSourceDoc] = useState(null);
   const [candidates, setCandidates] = useState(null);
   const [shortlist, setShortlist] = useState([]);
   const [negotiations, setNegotiations] = useState(null);
@@ -3015,9 +3071,52 @@ function Desk() {
   /* The agent runs its own work end to end, then deliberately stops before any
      money moves. Everything up to the recommendation is autonomous; the escrow
      step requires a human. */
-  async function runSourcing() {
+  /*
+   * Read a tender document and stop.
+   *
+   * Deliberately does NOT go on to source. Every other input to this product is
+   * something the person typed and can see; a brief pulled out of six pages of
+   * someone else's prose is a reading, and a reading can be wrong in ways that
+   * look entirely reasonable - the sample tender has three different numbers
+   * followed by the word "days" and only one of them is the delivery deadline.
+   *
+   * The budget in that brief becomes the ceiling the contract enforces. Nobody
+   * should discover what was extracted by watching what the agent spent.
+   */
+  async function readDocument(file) {
+    if (!file) return;
     setError(null);
-    setBrief(null); setCandidates(null); setNegotiations(null); setRevealed({});
+    setBrief(null); setSourceDoc(null); setCandidates(null); setNegotiations(null); setRevealed({});
+    setRec(null); setDeal(null); setDelivery(null); setRelease(null); setOverLimit(null); setEscalation(null);
+    setSummaryDoc(null); setSettlementDoc(null); setSignature(null);
+    setBusy('document'); setStage('request');
+    try {
+      const r = await api.upload('/api/brief/document', file);
+      setBrief(r.brief);
+      setSourceDoc(r.document);
+      if (!r.brief.complete) {
+        setError(
+          `Read ${file.name}, but it does not state ${r.brief.missing.join(', ')}. `
+          + 'Add the missing detail in the box above and run, or upload a document that states it.'
+        );
+      }
+      scrollToAnchor('brief');
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /**
+   * @param {{useExistingBrief?: boolean}} [opts] continue from a brief already
+   *        read out of a document, instead of parsing the text box again.
+   */
+  async function runSourcing(opts) {
+    const useExistingBrief = !!(opts && opts.useExistingBrief);
+    setError(null);
+    if (!useExistingBrief) { setBrief(null); setSourceDoc(null); }
+    setCandidates(null); setNegotiations(null); setRevealed({});
     setRec(null); setDeal(null); setDelivery(null); setRelease(null); setOverLimit(null); setEscalation(null);
     setSummaryDoc(null); setSettlementDoc(null); setSignature(null);
     try {
@@ -3032,7 +3131,10 @@ function Desk() {
       await sleep(560);
 
       setBusy('brief'); setStage('brief');
-      const b = await api.post('/api/brief', { text });
+      /* A brief already read from a document is not re-parsed from the text
+         box: the box holds whatever was last typed, and parsing it here would
+         quietly replace the document's figures with that. */
+      const b = useExistingBrief ? brief : await api.post('/api/brief', { text });
       setBrief(b);
       if (!b.complete) {
         setError(`Incomplete request. Missing ${b.missing.join(', ')}. Add the missing detail and run again.`);
@@ -3162,7 +3264,7 @@ function Desk() {
 
   async function resetAll() {
     await api.post('/api/reset');
-    setStage('request'); setBrief(null); setCandidates(null); setNegotiations(null);
+    setStage('request'); setBrief(null); setSourceDoc(null); setCandidates(null); setNegotiations(null);
     setRevealed({}); setRec(null); setDeal(null); setDelivery(null); setRelease(null);
     setOverLimit(null); setEscalation(null); setSummaryDoc(null); setSettlementDoc(null);
     setSignature(null); setError(null);
@@ -3464,8 +3566,16 @@ function Desk() {
 
             {mayI(session, 'run') && (!purchase || CAN_START_OVER.includes(purchase.state)) && (
               <RequestPanel
-                text={text} setText={setText} onRun={runSourcing}
-                busy={busy} disabled={!status?.ready} hasRun={!!brief} onReset={resetAll}
+                text={text} setText={setText}
+                onRun={() => runSourcing()}
+                onRunExtracted={() => runSourcing({ useExistingBrief: true })}
+                onFile={readDocument}
+                sourceDoc={sourceDoc} brief={brief}
+                busy={busy} disabled={!status?.ready} onReset={resetAll}
+                /* A document that has been READ is not a run that has happened.
+                   Keying this on the brief made the button say "Run again"
+                   before anything had run once. */
+                hasRun={!!candidates}
               />
             )}
 
@@ -4747,19 +4857,129 @@ function Working({ title, sub }) {
 
 /* -------------------------------------------------------------- request */
 
-function RequestPanel({ text, setText, onRun, busy, disabled, hasRun, onReset }) {
+const ACCEPTED_DOCS = '.pdf,.docx,.txt,.md,application/pdf,text/plain';
+
+/**
+ * What the agent read out of the document, and where each figure came from.
+ *
+ * This panel is the reason uploading does not simply run the agent. A figure
+ * lifted out of six pages of someone else's prose is a reading, and a reading
+ * can be wrong in ways that look entirely reasonable: the sample tender carries
+ * three numbers followed by "days" and only one of them is the delivery
+ * deadline. The buyer sees the clause behind every figure before anything runs,
+ * because the budget on this screen becomes the ceiling the contract enforces.
+ */
+function DocumentEvidence({ doc, brief, onRun, onClear, busy, disabled }) {
+  if (!doc || !brief) return null;
+
+  const ROWS = [
+    { key: 'material', label: 'Material', show: (b) => b.material },
+    { key: 'grade', label: 'Grade', show: (b) => b.grade },
+    { key: 'quantityKg', label: 'Quantity', show: (b) => (b.quantityKg ? `${b.quantityKg.toLocaleString()} kg` : null) },
+    { key: 'budgetTotal', label: 'Budget ceiling', show: (b) => (b.budgetTotal ? `$${b.budgetTotal.toLocaleString()}` : null) },
+    { key: 'deadlineDays', label: 'Delivery', show: (b) => (b.deadlineDays ? `within ${b.deadlineDays} days` : null) },
+    { key: 'certifications', label: 'Certification', show: (b) => (b.certifications?.length ? b.certifications.join(', ') : null) },
+    { key: 'minQuality', label: 'Quality floor', show: (b) => b.minQuality },
+  ];
+  const src = brief.sources || {};
+  const found = ROWS.filter((r) => r.show(brief) != null);
+
+  return (
+    <div className="docread">
+      <div className="docread-head">
+        <div>
+          <div className="eyebrow">Read from your document</div>
+          <div className="docread-file">
+            <strong>{doc.filename}</strong>
+            <span className="hint">
+              {doc.kind.toUpperCase()}
+              {doc.pages ? ` · ${doc.pages} page${doc.pages === 1 ? '' : 's'}` : ''}
+              {` · ${(doc.bytes / 1024).toFixed(0)} KB`}
+            </span>
+          </div>
+        </div>
+        <button className="btn btn-quiet" onClick={onClear} disabled={!!busy}>Remove</button>
+      </div>
+
+      {doc.warnings?.map((w) => (
+        <div key={w} className="docread-warn">{w}</div>
+      ))}
+
+      <dl className="docread-rows">
+        {found.map((r) => {
+          const s = src[r.key] || {};
+          return (
+            <div key={r.key} className={`docread-row${s.insteadOf != null ? ' is-corrected' : ''}`}>
+              <dt>{r.label}</dt>
+              <dd>
+                <span className="docread-value mono">{r.show(brief)}</span>
+                {s.quote && <span className="docread-quote">&ldquo;{s.quote}&rdquo;</span>}
+                {s.insteadOf != null && (
+                  <span className="docread-note">
+                    An earlier line in the document would have read {s.insteadOf}. This clause is the one about {r.label.toLowerCase()}.
+                  </span>
+                )}
+                {!s.quote && <span className="docread-note">Matched from the document&rsquo;s wording.</span>}
+              </dd>
+            </div>
+          );
+        })}
+      </dl>
+
+      {brief.missing?.length > 0 && (
+        <div className="docread-missing">
+          Not stated in this document: <strong>{brief.missing.join(', ')}</strong>.
+          Nothing has been guessed. Add it above, or upload a document that states it.
+        </div>
+      )}
+
+      <div className="docread-foot">
+        <span className="hint">
+          Check these against the document before running. The budget becomes the ceiling the contract enforces.
+        </span>
+        <span className="spacer" />
+        <button
+          className={`btn btn-primary btn-lg ${busy ? 'loading' : ''}`}
+          onClick={onRun}
+          disabled={!!busy || disabled || !brief.complete}
+        >
+          {busy ? 'Running' : 'These are right — run sourcing'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function RequestPanel({
+  text, setText, onRun, onRunExtracted, onFile, sourceDoc, brief, busy, disabled, hasRun, onReset,
+}) {
+  const fileRef = useRef(null);
+  const [over, setOver] = useState(false);
+
+  const take = (file) => { if (file) onFile(file); };
+
   return (
     <section className="section">
       <div className="view-head">
         <div className="eyebrow">Step 01 &middot; Request</div>
         <h2>What are you sourcing?</h2>
         <p className="sub">
-          Plain language. Quantity, budget, delivery window and any certification you need.
-          The budget you state becomes the ceiling the contract enforces later.
+          Describe it in plain language, or hand over the tender document itself.
+          Either way the budget becomes the ceiling the contract enforces later.
         </p>
       </div>
 
-      <div className="composer">
+      <div
+        className={`composer${over ? ' is-over' : ''}`}
+        onDragOver={(e) => { e.preventDefault(); if (!busy) setOver(true); }}
+        onDragLeave={() => setOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setOver(false);
+          if (busy) return;
+          take(e.dataTransfer?.files?.[0]);
+        }}
+      >
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -4768,7 +4988,24 @@ function RequestPanel({ text, setText, onRun, busy, disabled, hasRun, onReset })
           spellCheck={false}
         />
         <div className="composer-foot">
-          <span className="hint">Nothing moves on-chain until you approve.</span>
+          {/* The file input is the real control; the button is its label. A
+              styled <label> would do, but keeping focus on a real button is
+              what makes this reachable from the keyboard like everything else. */}
+          <input
+            ref={fileRef}
+            type="file"
+            accept={ACCEPTED_DOCS}
+            className="visually-hidden"
+            onChange={(e) => { take(e.target.files?.[0]); e.target.value = ''; }}
+          />
+          <button
+            className={`btn btn-quiet ${busy === 'document' ? 'loading' : ''}`}
+            onClick={() => fileRef.current?.click()}
+            disabled={!!busy || disabled}
+          >
+            {busy === 'document' ? 'Reading' : 'Upload a tender'}
+          </button>
+          <span className="hint">PDF, Word or text. Nothing moves on-chain until you approve.</span>
           <span className="spacer" />
           {/* Disabled while a run is in flight. runSourcing writes state across
               several awaits, so resetting mid-run lets those later writes land
@@ -4777,14 +5014,20 @@ function RequestPanel({ text, setText, onRun, busy, disabled, hasRun, onReset })
             <button className="btn btn-quiet" onClick={onReset} disabled={!!busy}>Reset run</button>
           )}
           <button
-            className={`btn btn-primary btn-lg ${busy ? 'loading' : ''}`}
+            className={`btn btn-primary btn-lg ${busy && busy !== 'document' ? 'loading' : ''}`}
             onClick={onRun}
             disabled={!!busy || disabled || !text.trim()}
           >
-            {busy ? 'Running' : hasRun ? 'Run again' : 'Run sourcing'}
+            {busy && busy !== 'document' ? 'Running' : hasRun ? 'Run again' : 'Run sourcing'}
           </button>
         </div>
+        {over && <div className="composer-drop" aria-hidden="true">Drop the tender to read it</div>}
       </div>
+
+      <DocumentEvidence
+        doc={sourceDoc} brief={brief} busy={busy} disabled={disabled}
+        onRun={onRunExtracted} onClear={onReset}
+      />
 
       {!hasRun && (
         <div className="scenarios">

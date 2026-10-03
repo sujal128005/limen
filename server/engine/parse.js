@@ -56,6 +56,8 @@ const CERTS = [
   { match: /\bas9100\b/i, name: 'AS9100' },
 ];
 
+const { readTender } = require('./tender');
+
 const NUM = String.raw`(\d[\d,]*(?:\.\d+)?)`;
 const toNum = (s) => parseFloat(String(s).replace(/,/g, ''));
 
@@ -216,10 +218,115 @@ async function llmParse(text) {
   }
 }
 
+/* ------------------------------------------------------- documents -------- */
+
+/*
+ * The same brief, read out of a document instead of a sentence.
+ *
+ * parseRequest stays exactly as it is. It is correct for what a person types,
+ * and every test that pins its behaviour stays pinned. What a six-page tender
+ * needs on top is labelled extraction, which lives in ./tender.js and is
+ * applied over the top here.
+ *
+ * The order matters and it is the opposite of the LLM pass above. There, the
+ * deterministic parser wins and the model only fills gaps. Here, the LABELLED
+ * value wins and the free-text parse only fills gaps - because in a document
+ * the free-text parse is the weaker reader, not the stronger one. It scans for
+ * the first number wearing the right units, and in a tender the first number
+ * wearing the right units is usually the offer validity, the payment terms or
+ * the earnest money deposit.
+ *
+ * Material, grade and certifications are left to parseRequest, which matches
+ * them by vocabulary anywhere in the text and does it well. Only the four
+ * numeric fields - where a plausible wrong number is sitting in the same
+ * document wearing the same units - need the labelled reader.
+ */
+function parseDocument(text) {
+  const brief = parseRequest(text);
+  const { values, evidence } = readTender(text);
+
+  const sources = {};
+  for (const k of ['material', 'grade', 'certifications', 'minQuality']) {
+    if (brief[k] != null && (!Array.isArray(brief[k]) || brief[k].length)) sources[k] = { from: 'text' };
+  }
+
+  for (const key of ['quantityKg', 'budgetTotal', 'deadlineDays', 'minQuality']) {
+    if (values[key] == null) {
+      if (brief[key] != null) sources[key] = { from: 'text' };
+      continue;
+    }
+    const before = brief[key];
+    brief[key] = values[key];
+    sources[key] = {
+      from: 'clause',
+      quote: evidence[key].quote,
+      confidence: evidence[key].confidence,
+      /*
+       * Kept on purpose when the two readers disagree. This is the field that
+       * says "the first number in the document said 30 and the delivery clause
+       * said 14", which is the single most useful line a person reviewing an
+       * extracted brief can be shown.
+       */
+      ...(before != null && before !== values[key] ? { insteadOf: before } : {}),
+    };
+  }
+
+  /* Derived figures are recomputed, never carried over: budgetPerUnit from the
+     free-text pass would still be the old budget divided by the old quantity. */
+  brief.budgetPerUnit = brief.budgetTotal && brief.quantityKg
+    ? +(brief.budgetTotal / brief.quantityKg).toFixed(4)
+    : null;
+
+  brief.hardConstraints = [];
+  if (brief.material) brief.hardConstraints.push({ key: 'material', label: `Material is ${brief.material}`, value: brief.material });
+  if (brief.grade) brief.hardConstraints.push({ key: 'grade', label: `Grade is ${brief.grade}`, value: brief.grade });
+  if (brief.quantityKg) brief.hardConstraints.push({ key: 'quantity', label: `Quantity ${brief.quantityKg.toLocaleString()} kg`, value: brief.quantityKg });
+  if (brief.budgetTotal) brief.hardConstraints.push({ key: 'budget', label: `Total spend at or below $${brief.budgetTotal.toLocaleString()}`, value: brief.budgetTotal });
+  if (brief.deadlineDays) brief.hardConstraints.push({ key: 'deadline', label: `Delivered within ${brief.deadlineDays} days`, value: brief.deadlineDays });
+  for (const c of brief.certifications) brief.hardConstraints.push({ key: 'certification', label: `Certified ${c}`, value: c });
+  if (brief.minQuality) brief.hardConstraints.push({ key: 'quality', label: `Quality score at or above ${brief.minQuality}`, value: brief.minQuality });
+
+  brief.missing = [];
+  if (!brief.material) brief.missing.push('material');
+  if (!brief.quantityKg) brief.missing.push('quantity');
+  if (!brief.budgetTotal) brief.missing.push('budget');
+  if (!brief.deadlineDays) brief.missing.push('deadline');
+  brief.complete = brief.missing.length === 0;
+
+  /*
+   * `raw` does NOT become the document.
+   *
+   * parseRequest sets raw to the text it was given, which is right when that
+   * text is the sentence a person typed. For a document it would be six pages
+   * of somebody else's prose, and that travels: into the stored workspace, into
+   * every brief response, and into the text box, which the client refills from
+   * brief.raw on reload - so a buyer returning to a run would find their
+   * request box containing an entire tender.
+   *
+   * It is also the one place an uploaded document's sentences would ride along
+   * inside an object the rest of the product passes around. Nothing currently
+   * feeds raw to a model - counsel.buildSnapshot projects a whitelist and does
+   * not include it - but "nothing currently does" is a property of today's
+   * code, and the document path is the widest untrusted-input surface in this
+   * product. The prose stops here instead.
+   *
+   * The document itself is not lost: the route keeps an excerpt and the SHA-256
+   * of the bytes on the session, which is where evidence belongs.
+   */
+  brief.raw = `Read from an uploaded document (${brief.quantityKg ? `${brief.quantityKg.toLocaleString()} kg` : 'quantity not stated'}`
+    + `${brief.material ? ` ${brief.material}` : ''}`
+    + `${brief.budgetTotal ? `, budget $${brief.budgetTotal.toLocaleString()}` : ''}`
+    + `${brief.deadlineDays ? `, within ${brief.deadlineDays} days` : ''})`;
+
+  brief.fromDocument = true;
+  brief.sources = sources;
+  return brief;
+}
+
 const EXTRACT_PROMPT = `Extract a procurement brief as strict JSON with keys:
 material, grade, quantityKg, budgetTotal, deadlineDays, certifications (array), minQuality.
 Use null for anything not stated. Reply with JSON only.
 
 Request: `;
 
-module.exports = { parseRequest, llmParse };
+module.exports = { parseRequest, parseDocument, llmParse };

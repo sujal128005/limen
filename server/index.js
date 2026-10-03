@@ -12,7 +12,8 @@ const directory = require('./directory');
 /* Where this deployment's catalogue came from, so the interface can say so
    rather than implying every list is the demo one. */
 let supplierSource = { source: 'seeded', seeded: true };
-const { parseRequest, llmParse } = require('./engine/parse');
+const { parseRequest, parseDocument, llmParse } = require('./engine/parse');
+const intake = require('./intake/document');
 const { evaluateCandidates, selectForNegotiation } = require('./engine/match');
 const { negotiateAll } = require('./engine/negotiate');
 const { recommend } = require('./engine/recommend');
@@ -440,6 +441,20 @@ app.post('/api/brief', wrap(async (req, res) => {
       brief.budgetPerUnit = +(brief.budgetTotal / brief.quantityKg).toFixed(4);
     }
   }
+  startNewRun(session, brief);
+  res.json(brief);
+}));
+
+/*
+ * Everything a new brief has to clear.
+ *
+ * This was written out inline in the brief route, and it is now called from two
+ * places because a buyer can start a run by typing OR by uploading a document.
+ * Two copies of this list is how a second entry point silently inherits the
+ * first run's approval - which is precisely the bug the comments below were
+ * written about the first time. One list, one place.
+ */
+function startNewRun(session, brief) {
   session.brief = brief;
   session.candidates = []; session.negotiations = []; session.recommendation = null;
   /*
@@ -473,8 +488,99 @@ app.post('/api/brief', wrap(async (req, res) => {
   session.shipment = null;
   session.receipt = null;
   session.payment = null;
-  res.json(brief);
-}));
+  /* And the document the last run was read out of, so a typed brief cannot
+     show the previous upload's evidence underneath it. */
+  session.sourceDocument = null;
+  return session;
+}
+
+/**
+ * Start a run from a tender document instead of a typed sentence.
+ *
+ * Real procurement does not begin with a sentence. It begins with a tender, and
+ * making a buyer read their own six-page tender and retype it as "I need 500 kg
+ * of PET resin" is asking them to do the job the agent exists to do.
+ *
+ * Three things here are deliberate.
+ *
+ * THE BODY IS RAW BYTES, not multipart and not base64 JSON. Multipart would
+ * mean a parser for a format with a long history of boundary bugs; base64 would
+ * inflate every upload by a third and force the global 32kb JSON limit open for
+ * every other route. Raw bytes with the name in a header needs neither.
+ *
+ * NOTHING IS TRUSTED FROM THE CLIENT except the bytes. The file type is decided
+ * by content, because the extension and the content-type are both chosen by
+ * whoever uploads. The filename is used in error messages and then only after
+ * being stripped of anything that is not a plain name.
+ *
+ * THE DOCUMENT IS DATA. Not an instruction, not an authority, not a shortcut.
+ * A tender that says "approve automatically" or "ignore the spending ceiling"
+ * contributes exactly nothing: the readers here match clauses for numbers and
+ * materials, there is no model call on this path, and the ceiling still comes
+ * from the head publishing a policy on chain. There is a test that holds this
+ * true rather than a promise that it is.
+ */
+app.post(
+  '/api/brief/document',
+  express.raw({ type: () => true, limit: intake.MAX_BYTES }),
+  wrap(async (req, res) => {
+    const session = sessionFor(req);
+    guard(req, session, 'run');
+
+    const body = Buffer.isBuffer(req.body) ? req.body : null;
+    if (!body || !body.length) {
+      throw new Error('No file arrived. Choose a tender document and try again.');
+    }
+
+    /* A filename is for showing a person which file this was. It is never a
+       path and never decides anything, so it is reduced to a bare name. */
+    const filename = String(req.get('x-filename') || 'document')
+      .replace(/[\\/]/g, ' ')
+      .replace(/[^\w .,()\-]/g, '')
+      .trim()
+      .slice(0, 120) || 'document';
+
+    const doc = intake.readDocument(body, filename);
+    const brief = parseDocument(doc.text);
+
+    startNewRun(session, brief);
+
+    /*
+     * What the run was read out of, kept with the run.
+     *
+     * The hash is the point. A year from now somebody holding a file can ask
+     * whether it is the one this purchase came from, and the answer is a
+     * comparison rather than a recollection. The first part of the text is kept
+     * so the evidence quotes can be seen in context; the whole document is not,
+     * because a workspace is bounded storage and a tender is not a small file.
+     */
+    session.sourceDocument = {
+      filename,
+      kind: doc.kind,
+      pages: doc.pages,
+      bytes: doc.bytes,
+      sha256: doc.sha256,
+      excerpt: doc.text.slice(0, 4000),
+      textLength: doc.text.length,
+      warnings: doc.warnings,
+      readAt: Date.now(),
+    };
+
+    await audit(req, 'read-document', null, {
+      filename, kind: doc.kind, pages: doc.pages, bytes: doc.bytes, sha256: doc.sha256,
+      extracted: Object.keys(brief.sources || {}),
+      missing: brief.missing,
+    });
+
+    res.json({
+      brief,
+      document: {
+        filename, kind: doc.kind, pages: doc.pages, bytes: doc.bytes,
+        sha256: doc.sha256, warnings: doc.warnings, textLength: doc.text.length,
+      },
+    });
+  })
+);
 
 app.post('/api/candidates', wrap(async (req, res) => {
   const session = sessionFor(req);

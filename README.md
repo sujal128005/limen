@@ -227,6 +227,33 @@ node scripts/llm-check.js --models   # list available models
 
 ---
 
+## Starting from a tender document
+
+Real procurement does not begin with a sentence. It begins with a tender, so a buyer can drop the file in instead of retyping it. PDF, Word (`.docx`) and plain text. There is a six-page sample at `docs/samples/sample-tender-pet-resin.pdf`.
+
+**The reading is labelled, not first-match, and that is the whole point.** Page one of that sample reads:
+
+```
+c. Offer validity: 30 days from the bid closing date.
+d. Delivery: Material shall be delivered within 14 days ...
+```
+
+and page two adds "Payment: Within 30 days of final acceptance" and "liquidated damages of 1% per week". Scanning for the first number followed by "days" reads that document as a **thirty day** deadline. The agent then sources happily from a supplier quoting eighteen days, the buyer's line stops, and nothing ever failed — the wrong number was plausible and it was sitting right there in the document.
+
+So `server/engine/tender.js` finds the clause that is *about* delivery and reads the number out of that. Each field carries cues for what it is and traps for what wears the same units: offer validity, payment terms and penalties for a deadline; earnest money, tender fees and eligibility turnover for a budget. `lakh` and `crore` are read as the figures they are, because reading "Rs. 12 lakh" as twelve would be a four-order-of-magnitude error in the number that becomes an on-chain spending ceiling.
+
+**Every figure carries the line it came from.** Uploading does not start the agent. It shows what was read, with the clause behind each value, and the buyer presses run. Where the labelled clause disagrees with first-match, the screen says so — *"An earlier line in the document would have read 30. This clause is the one about delivery."*
+
+**Nothing is guessed.** A field the document does not state is reported missing, not inferred.
+
+**A document is data.** There is no model call on this path and no branch that reads a sentence as authority. A tender saying "approve automatically" or "ignore the spending ceiling" contributes a budget of nothing and an instruction to nobody; the ceiling still comes from the head publishing a policy on chain. `test/document.test.js` holds that true rather than asserting it.
+
+The bytes are hashed on arrival and the hash is kept with the run and in the audit trail, so a year later "is this the document that purchase came from" is a comparison rather than a recollection.
+
+PDF text extraction is `server/intake/pdftext.js` — written here rather than pulled in, because the alternatives were a 34 MB dependency and a wrapper around an old build of one. It handles filter chains (the sample is ASCII85 then Flate), font encodings, `/Differences` and ToUnicode CMaps. It does **not** do OCR: a scan has no text layer, and it says so plainly instead of returning an empty string the parser would read as a tender with no budget in it.
+
+---
+
 ## Smart contracts
 
 ### `ProcurementEscrow`

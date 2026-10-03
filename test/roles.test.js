@@ -916,6 +916,121 @@ async function run() {
     ok(dealsBefore === null || dealsBefore === undefined || true, 'sanity');
   });
 
+  group('A tender document, over HTTP');
+
+  /*
+   * The route takes raw bytes rather than JSON, so it needs its own caller. The
+   * shape matters: these go over HTTP with a real token for the same reason
+   * everything else in this file does - a unit test of the reader proves the
+   * reader works, not that the route reaches it with the right permission.
+   */
+  function upload(bytes, { token, workspace, filename = 'tender.pdf' } = {}) {
+    return new Promise((resolve, reject) => {
+      const req = http.request(`${base}/api/brief/document`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/octet-stream',
+          'x-filename': filename,
+          'content-length': bytes.length,
+          ...(workspace ? { 'x-workspace': workspace } : {}),
+          ...(token ? { authorization: `Bearer ${token}` } : {}),
+        },
+      }, (res) => {
+        const chunks = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () => {
+          const raw = Buffer.concat(chunks).toString('utf8');
+          let parsed = null;
+          try { parsed = JSON.parse(raw); } catch (_) { parsed = { raw }; }
+          resolve({ status: res.statusCode, body: parsed });
+        });
+      });
+      req.on('error', reject);
+      req.write(bytes);
+      req.end();
+    });
+  }
+
+  const TENDER = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'docs', 'samples', 'sample-tender-pet-resin.pdf')
+  );
+
+  await test('a buyer can start a run from a tender document', async () => {
+    const c = await freshRun('doc-read');
+    const r = await upload(TENDER, { token: c.sales, workspace: c.ws, filename: 'Nexa tender.pdf' });
+    eq(r.status, 200, JSON.stringify(r.body).slice(0, 300));
+    eq(r.body.document.kind, 'pdf');
+    eq(r.body.document.pages, 6);
+    eq(r.body.document.sha256.length, 64, 'the bytes are hashed, so the run can say which file it read');
+    const b = r.body.brief;
+    eq(b.quantityKg, 500);
+    eq(b.budgetTotal, 1200);
+    eq(b.deadlineDays, 14, 'the delivery clause, not the offer validity that precedes it');
+    ok(b.complete, `complete, missing ${b.missing}`);
+  });
+
+  await test('the run continues from the document without re-reading the text box', async () => {
+    const c = await freshRun('doc-run');
+    const up = await upload(TENDER, { token: c.sales, workspace: c.ws });
+    eq(up.status, 200);
+    for (const p of ['/api/candidates', '/api/negotiate', '/api/recommend']) {
+      const r = await call('POST', p, { token: c.sales, workspace: c.ws });
+      eq(r.status, 200, `${p}: ${JSON.stringify(r.body).slice(0, 200)}`);
+    }
+    const run = (await call('GET', '/api/run', { token: c.sales, workspace: c.ws })).body;
+    const w = run.recommendation && run.recommendation.winner;
+    ok(w, 'a winner came out of a document-started run');
+    ok(w.leadTimeDays <= 14, `the winner must meet the document's real 14-day deadline, got ${w.leadTimeDays}`);
+    ok(w.total <= 1200, `and its budget, got ${w.total}`);
+  });
+
+  await test('a new document starts a new run, approval and all', async () => {
+    /*
+     * The reset list lived inline in the typed-brief route. A second entry
+     * point is exactly how a list like that gets half-copied, and the symptom
+     * is a purchase nobody has looked at arriving at the finance desk already
+     * sanctioned.
+     */
+    const c = await upToFunded('doc-reset');
+    eq(await stateOf(c), 'FUNDED', 'precondition: approved and funded');
+    const r = await upload(TENDER, { token: c.sales, workspace: c.ws });
+    eq(r.status, 200, JSON.stringify(r.body).slice(0, 200));
+    const purchase = (await call('GET', '/api/purchase', { token: c.sales, workspace: c.ws })).body;
+    ok(purchase.state !== 'FUNDED', `the previous approval must not survive, state is ${purchase.state}`);
+    const status = (await call('GET', '/api/status', { token: c.sales, workspace: c.ws })).body;
+    ok(!status.dealId, 'and no deal id carries over');
+  });
+
+  await test('a document the server cannot read is refused in words a person can act on', async () => {
+    const c = await freshRun('doc-bad');
+    const r = await upload(Buffer.from('%PDF-1.4\nnot really a pdf at all\n'), { token: c.sales, workspace: c.ws });
+    ok(r.status >= 400, `expected a refusal, got ${r.status}`);
+    const msg = JSON.stringify(r.body);
+    ok(/scan|photograph|paste/i.test(msg), msg);
+    // And the workspace is untouched: a refused upload must not have cleared
+    // the run that was already there.
+    const run = (await call('GET', '/api/run', { token: c.sales, workspace: c.ws })).body;
+    ok(run.brief, 'the existing brief survived a failed upload');
+  });
+
+  await test('uploading a tender is the sourcing desk\'s job, not finance\'s', async () => {
+    const c = await freshRun('doc-role');
+    const r = await upload(TENDER, { token: c.finance, workspace: c.ws });
+    ok(r.status >= 400, `finance must not be able to start a run, got ${r.status}`);
+    ok(/cannot do this|permission/i.test(JSON.stringify(r.body)), JSON.stringify(r.body));
+  });
+
+  await test('the document that started a run is recorded in the audit trail', async () => {
+    const c = await freshRun('doc-audit');
+    const up = await upload(TENDER, { token: c.sales, workspace: c.ws, filename: 'Nexa tender.pdf' });
+    eq(up.status, 200);
+    const audit = (await call('GET', '/api/audit', { token: c.sales, workspace: c.ws })).body;
+    const entries = audit.entries || audit;
+    const row = (Array.isArray(entries) ? entries : []).find((e) => e.action === 'read-document');
+    ok(row, `a read-document entry must exist: ${JSON.stringify(entries).slice(0, 300)}`);
+    ok(JSON.stringify(row).includes(up.body.document.sha256), 'carrying the hash of the file that was read');
+  });
+
   group('The seller\'s floor, over HTTP');
 
   /** A supplier in the seed directory that nobody has published a floor for. */
