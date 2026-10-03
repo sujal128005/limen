@@ -266,7 +266,9 @@ The product plan calls this "learning from history", and the honest version star
 
 So `server/outcomes.js` is the log, and the log is the asset. Every run writes what was asked, what was offered, what was agreed or walked away from, and — when it gets that far — whether the goods arrived when promised. It is append-only and lives beside the audit trail, **not** inside the workspace, so a reset clears the run without erasing what the run taught.
 
-`GET /api/history` reads it back three ways: what this company has spent, how a given supplier has behaved, and the recent record. A rate computed over two runs is labelled `anecdotal`; an empty log reports itself as empty rather than as a confident zero.
+`GET /api/history` reads it back three ways: what this company has spent, how a given supplier has behaved, and the recent record.
+
+**And it changes one decision.** A supplier that has settled below list before is opened against harder — `negotiate.js` moves the *opening offer* and nothing else. Three bounds, because the obvious version of this is dangerous: it only ever opens **lower**, it is **capped**, and it is **ignored below three runs**, since two data points are not a pattern and an agent that anchors on one lucky deal walks away from suppliers it should have bought from. Both invariants and the on-chain ceiling sit after it, so a wrong history costs a round rather than money. The transcript says why — *"opening harder: this supplier has settled 12.0% below list before"* — because "the model decided" is not an answer a procurement head accepts. A rate computed over two runs is labelled `anecdotal`; an empty log reports itself as empty rather than as a confident zero.
 
 No supplier's reservation price reaches it. The log is read back into decisions that affect suppliers, so a secret leaking into it would leak into every future negotiation against them — there is a test holding that.
 
@@ -515,7 +517,12 @@ Every run happens inside a disposable shadow workspace, seeded from a snapshot o
 
 ### Current result
 
-**24/24 contained, 1 skipped**, against a local in-process chain.
+**29/29 contained, 1 skipped**, against a local in-process chain.
+
+The count grew from 24 because five modules landed — the company profile, document intake, the
+correction path, verification and trust — and shipping a new surface without the attack against it
+is how a containment score stays flat while the thing it measures doubles. At that point the number
+has stopped being a measurement.
 
 That number is worth the paragraph underneath it. The first time this harness was run against a live server it reported **15/21 contained, with six breaches and four skips**. Triaging those six found:
 
@@ -647,7 +654,7 @@ npm start                # in one terminal
 npm run sweep            # in another: 154 checks against the live HTTP API
 npm run verify:ui        # and 70 checks in a real browser
 npm run verify:tier4     # and 20 more, including contrast in both themes
-npm run adversary        # 25 attacks against every enforcement boundary, isolated in a shadow workspace
+npm run adversary        # 30 attacks against every enforcement boundary, isolated in a shadow workspace
 
 node scripts/e2e.js      # one full purchase, end to end
 node scripts/llm-check.js
