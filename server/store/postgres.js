@@ -25,6 +25,22 @@
 
 const { ConflictError } = require('./index');
 
+/*
+ * THE OUTCOME LOG HAS ITS OWN TABLE, and the reason is a bug worth remembering.
+ *
+ * It was written into the audit table first. That table's action column is NOT
+ * NULL and an outcome row has no action, so every insert threw, the recorder
+ * swallowed the error by design - a bookkeeping write must not fail the
+ * purchase it describes - and the whole learning-from-history feature did
+ * nothing on Postgres. The memory adapter accepts any shape, so the suite was
+ * green the entire time.
+ *
+ * Two things are baked in as a result. The columns below are the ones an
+ * outcome actually has, so a mismatch is a schema error at deploy rather than a
+ * shrug at runtime. And it is a separate table because audit and outcomes
+ * answer different questions - "who did what" and "what did it cost" - so
+ * sharing a bounded read meant one could crowd the other out entirely.
+ */
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS workspaces (
   id          text PRIMARY KEY,
@@ -44,6 +60,18 @@ CREATE TABLE IF NOT EXISTS webhook_events (
   payout_id   text,
   type        text,
   received_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS outcomes (
+  id           bigserial PRIMARY KEY,
+  workspace_id text NOT NULL,
+  event        text NOT NULL,
+  supplier_id  text,
+  ask          jsonb,
+  terms        jsonb,
+  outcome      text,
+  detail       text,
+  at           timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS audit (
@@ -86,6 +114,7 @@ CREATE TABLE IF NOT EXISTS messages (
    the table it indexes, and splitting them costs nothing. */
 const INDEXES = [
   'CREATE INDEX IF NOT EXISTS audit_workspace_idx ON audit (workspace_id, id)',
+  'CREATE INDEX IF NOT EXISTS outcomes_workspace_idx ON outcomes (workspace_id, id)',
   'CREATE INDEX IF NOT EXISTS messages_workspace_idx ON messages (workspace_id, id)',
   'CREATE INDEX IF NOT EXISTS workspaces_updated_idx ON workspaces (updated_at)',
 ];
@@ -242,6 +271,50 @@ function create({ url, pg, ssl } = {}) {
       );
     },
 
+    async appendOutcome(row) {
+      await q(
+        `INSERT INTO outcomes (workspace_id, event, supplier_id, ask, terms, outcome, detail, at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8::timestamptz, now()))`,
+        [
+          row.workspaceId,
+          row.event,
+          row.supplierId || null,
+          row.ask ? JSON.stringify(row.ask) : null,
+          row.terms ? JSON.stringify(row.terms) : null,
+          row.outcome || null,
+          row.detail || null,
+          row.at || null,
+        ]
+      );
+    },
+
+    /*
+     * Newest first in the query, oldest first in the answer.
+     *
+     * The limit has to bite on the RECENT end - a workspace with ten thousand
+     * rows wants its last hundred, not its first hundred - and the caller wants
+     * them in the order they happened. Doing it in one direction and reversing
+     * is the only way to get both, and the memory adapter does exactly the same
+     * thing so the two cannot disagree.
+     */
+    async outcomes(workspaceId, limit = 500) {
+      const r = await q(
+        'SELECT * FROM outcomes WHERE workspace_id = $1 ORDER BY id DESC LIMIT $2',
+        [workspaceId, limit]
+      );
+      return r.rows.reverse().map((row) => ({
+        kind: 'outcome',
+        workspaceId: row.workspace_id,
+        event: row.event,
+        supplierId: row.supplier_id,
+        ask: typeof row.ask === 'string' ? JSON.parse(row.ask) : row.ask,
+        terms: typeof row.terms === 'string' ? JSON.parse(row.terms) : row.terms,
+        outcome: row.outcome,
+        detail: row.detail,
+        at: row.at instanceof Date ? row.at.toISOString() : row.at,
+      }));
+    },
+
     async appendMessage(m) {
       const r = await q(
         `INSERT INTO messages (workspace_id, reference, author_name, author_role, recipient, kind, body)
@@ -270,12 +343,22 @@ function create({ url, pg, ssl } = {}) {
       }));
     },
 
+    /*
+     * ORDER BY id DESC, then reversed.
+     *
+     * This read ASC and returned the OLDEST rows, while the memory adapter's
+     * slice(-limit) returned the NEWEST. The two adapters disagreed, which
+     * breaks the promise at the top of store/index.js that a test passing
+     * against memory means something about production - and the deployed
+     * behaviour was the wrong one: a long-lived workspace showed its first
+     * hundred events forever and never the ones that just happened.
+     */
     async audit(workspaceId, limit = 200) {
       const r = await q(
-        'SELECT * FROM audit WHERE workspace_id = $1 ORDER BY id ASC LIMIT $2',
+        'SELECT * FROM audit WHERE workspace_id = $1 ORDER BY id DESC LIMIT $2',
         [workspaceId, limit]
       );
-      return r.rows.map((row) => ({
+      return r.rows.reverse().map((row) => ({
         workspaceId: row.workspace_id,
         actorName: row.actor_name,
         actorRole: row.actor_role,
@@ -304,7 +387,18 @@ function create({ url, pg, ssl } = {}) {
       const ids = doomed.rows.map((r) => r.id);
       if (!ids.length) return 0;
       const holes = ids.map((_, i) => `$${i + 1}`).join(', ');
+      /*
+       * Everything keyed to the workspace goes with it. Pruning only the
+       * workspace left audit, outcome and message rows behind, orphaned and
+       * unreachable: nothing could read them again and nothing would ever
+       * delete them. That is a table that grows forever on a deployment that
+       * bounds everything else, and the outcome log made it grow several rows
+       * per sourcing run rather than a handful per purchase.
+       */
       await q(`DELETE FROM payouts WHERE workspace_id IN (${holes})`, ids);
+      await q(`DELETE FROM audit WHERE workspace_id IN (${holes})`, ids);
+      await q(`DELETE FROM outcomes WHERE workspace_id IN (${holes})`, ids);
+      await q(`DELETE FROM messages WHERE workspace_id IN (${holes})`, ids);
       await q(`DELETE FROM workspaces WHERE id IN (${holes})`, ids);
       return ids.length;
     },

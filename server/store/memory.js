@@ -27,6 +27,10 @@ function create() {
   /** eventId -> { payoutId, type, at } */
   const events = new Map();
   const audit = [];
+  /* Its own list, matching the Postgres adapter's own table. Sharing audit
+     meant one could crowd the other out of a bounded read, and meant the two
+     adapters stored different shapes for the same call. */
+  const outcomes = [];
   const messages = [];
   let messageId = 0;
 
@@ -102,6 +106,17 @@ function create() {
       audit.push({ ...clone(entry), at: entry.at || new Date().toISOString() });
     },
 
+    async appendOutcome(row) {
+      outcomes.push({ ...clone(row), kind: 'outcome', at: row.at || new Date().toISOString() });
+    },
+
+    async outcomes(workspaceId, limit = 500) {
+      return outcomes
+        .filter((o) => o.workspaceId === workspaceId)
+        .slice(-limit)
+        .map(clone);
+    },
+
     async appendMessage(m) {
       const row = {
         ...clone(m),
@@ -136,6 +151,11 @@ function create() {
       while (workspaces.size > max && ordered.length) {
         const [id] = ordered.shift();
         await this.remove(id);
+        /* The children go too, matching the Postgres adapter. Rows keyed to a
+           workspace nobody can load again are unreachable and immortal. */
+        for (const list of [audit, outcomes, messages]) {
+          for (let i = list.length - 1; i >= 0; i--) if (list[i].workspaceId === id) list.splice(i, 1);
+        }
         removed += 1;
       }
       return removed;
