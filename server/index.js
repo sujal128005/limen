@@ -443,9 +443,20 @@ async function registryFor(supplierId) {
  */
 app.get('/api/suppliers', wrap(async (req, res) => {
   const session = sessionFor(req);
+  /*
+   * Read in parallel, not one at a time.
+   *
+   * This looped fifteen suppliers awaiting a registry call each: fifteen
+   * sequential round trips. Against the in-process chain that is microseconds
+   * and invisible; against a real RPC endpoint it is fifteen times the network
+   * latency on every load of the directory, which is the difference between a
+   * page and a wait.
+   */
+  const registries = await Promise.all(SUPPLIERS.map((s) => registryFor(s.id)));
   const out = [];
-  for (const s of SUPPLIERS) {
-    const { wallet, onChain } = await registryFor(s.id);
+  for (let i = 0; i < SUPPLIERS.length; i++) {
+    const s = SUPPLIERS[i];
+    const { wallet, onChain } = registries[i];
     const checked = verification.verifySupplier(s);
     out.push({
       id: s.id, name: s.name, country: s.country, city: s.city,
@@ -516,7 +527,7 @@ const profileOf = (session) => session.profile || profile.blankProfile();
 async function logOutcome(req, event, fields) {
   try {
     const session = req.session || {};
-    await workspace.recordAudit(outcomes.row(event, {
+    await workspace.recordOutcome(outcomes.row(event, {
       workspaceId: session.id,
       brief: session.brief,
       ...fields,
@@ -688,7 +699,7 @@ function assertWithinCompanyLimits(session, brief) {
   /* Logged before it is thrown. A company that keeps hitting its own ceiling is
      telling its head something, and a refusal that left no trace would mean
      nobody found out until somebody complained. */
-  workspace.recordAudit(outcomes.row('refused', {
+  workspace.recordOutcome(outcomes.row('refused', {
     workspaceId: session.id, brief,
     outcome: check.scope, detail: check.reason,
   })).catch(() => {});
@@ -1008,13 +1019,14 @@ app.post('/api/candidates', wrap(async (req, res) => {
    * company. It RANKS and never screens: a score that could exclude a supplier
    * would be a veto nobody on the receiving end could see.
    */
-  for (const r of rows) {
+  /* Same reason as the directory: one round trip per candidate, in parallel. */
+  const chainRows = await Promise.all(rows.map((r) => registryFor(r.supplierId)));
+  rows.forEach((r, i) => {
     const full = findSupplier(r.supplierId);
-    const { onChain } = await registryFor(r.supplierId);
     const checked = verification.verifySupplier(full);
     r.verification = checked ? { status: checked.status, meaning: checked.meaning } : null;
-    r.trust = trust.scoreSupplier(full, checked, onChain);
-  }
+    r.trust = trust.scoreSupplier(full, checked, chainRows[i].onChain);
+  });
 
   session.candidates = rows;
   session.excludedByPolicy = excluded;
@@ -1053,7 +1065,7 @@ app.post('/api/negotiate', wrap(async (req, res) => {
    * history can do is open at a price a supplier refuses - which costs a round,
    * not money.
    */
-  const rows = await workspace.auditFor(session.id, 1000);
+  const rows = await workspace.outcomesFor(session.id, 500);
   const historyBy = {};
   for (const c of shortlist) {
     const h = outcomes.supplierHistory(rows, c.supplierId);
@@ -2686,10 +2698,15 @@ app.get('/api/summary', wrap(async (req, res) => {
 app.get('/api/audit', wrap(async (req, res) => {
   const session = sessionFor(req);
   guard(req, session, 'read');
-  /* The outcome log shares this store, so it is filtered out here: the audit
-     screen answers "who did what", and a row saying a negotiation ended at
-     $1,175 is not that question. /api/history is where it belongs. */
-  const entries = (await workspace.auditFor(session.id, 500)).filter((e) => e.kind !== 'outcome');
+  /*
+   * No filtering here any more, because outcomes live in their own store.
+   *
+   * They used to share this one and be filtered out after the read, which
+   * meant a workspace whose last 500 rows were all outcomes showed an EMPTY
+   * audit trail - the compliance artefact, blank, with nothing to indicate
+   * anything had been dropped.
+   */
+  const entries = await workspace.auditFor(session.id, 500);
   res.json({ workspace: session.id, entries });
 }));
 
@@ -2708,7 +2725,7 @@ app.get('/api/audit', wrap(async (req, res) => {
 app.get('/api/history', wrap(async (req, res) => {
   const session = sessionFor(req);
   guard(req, session, 'read');
-  const rows = await workspace.auditFor(session.id, 1000);
+  const rows = await workspace.outcomesFor(session.id, 1000);
   const supplierId = req.query.supplier ? String(req.query.supplier) : null;
 
   res.json({

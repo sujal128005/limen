@@ -117,6 +117,70 @@ async function checks(label, store) {
     ok(rows[1].at, 'every entry is timestamped');
   });
 
+  await test(`${label}: the audit window keeps the NEWEST rows, not the oldest`, async () => {
+    /*
+     * The two adapters disagreed here and nobody noticed, because only one of
+     * them was ever tested. Memory sliced the tail; Postgres ordered ASC and
+     * returned the head. So a long-lived deployment showed its first hundred
+     * events forever and never the ones that had just happened - and the suite
+     * was green, because the suite ran against memory.
+     *
+     * store/index.js promises both adapters implement the same semantics. This
+     * is the test that makes the promise checkable.
+     */
+    for (let i = 0; i < 12; i++) {
+      await store.appendAudit({ workspaceId: 'win', action: `step-${i}`, actorRole: 'sales' });
+    }
+    const rows = await store.audit('win', 5);
+    eq(rows.length, 5);
+    eq(rows[0].action, 'step-7', 'the window must start at the newest five');
+    eq(rows[4].action, 'step-11', 'and end at the latest event');
+  });
+
+  await test(`${label}: an outcome round-trips with every field it carries`, async () => {
+    /*
+     * The test that would have caught a silent production failure.
+     *
+     * Outcomes were written into the audit table, whose action column is NOT
+     * NULL and whose columns do not include event, ask or terms. Every insert
+     * threw on Postgres, recordOutcome swallowed it by design, and the whole
+     * learning-from-history feature did nothing in production - while the
+     * memory adapter, which accepts any shape, kept the suite green.
+     *
+     * Asserting the FIELDS rather than "it did not throw" is the point: a
+     * store that accepts a row and drops half of it passes the weaker test.
+     */
+    await store.appendOutcome({
+      workspaceId: 'ws1', event: 'negotiated', supplierId: 'SUP-C',
+      ask: { material: 'PET resin', budgetTotal: 1200 },
+      terms: { supplierId: 'SUP-C', total: 1175, listTotal: 1300, rounds: 3 },
+      outcome: 'agreed', detail: null, at: new Date().toISOString(),
+    });
+    await store.appendOutcome({ workspaceId: 'elsewhere', event: 'sourced' });
+
+    const rows = await store.outcomes('ws1');
+    eq(rows.length, 1, 'another workspace must not appear');
+    const r = rows[0];
+    eq(r.event, 'negotiated');
+    eq(r.supplierId, 'SUP-C');
+    eq(r.outcome, 'agreed');
+    eq(r.ask.material, 'PET resin', 'the ask survived the round trip');
+    eq(r.terms.total, 1175, 'and so did the terms');
+    eq(r.kind, 'outcome', 'tagged so a caller can tell it apart');
+    ok(r.at, 'and timestamped');
+  });
+
+  await test(`${label}: outcomes are a separate store, so neither crowds the other`, async () => {
+    // They shared the audit table, and the audit screen filtered outcomes out
+    // after a bounded read - so a workspace whose last 500 rows were outcomes
+    // showed an empty audit trail. Blank, with nothing saying why.
+    for (let i = 0; i < 30; i++) await store.appendOutcome({ workspaceId: 'mix', event: 'negotiated' });
+    await store.appendAudit({ workspaceId: 'mix', action: 'approve', actorRole: 'head' });
+    const a = await store.audit('mix', 10);
+    eq(a.length, 1, 'the audit trail is unaffected by outcome volume');
+    eq(a[0].action, 'approve');
+  });
+
   await test(`${label}: workspaces are counted and pruned oldest first`, async () => {
     for (const id of ['p1', 'p2', 'p3']) {
       await store.create(id, { id });
@@ -139,6 +203,44 @@ async function checks(label, store) {
     await store.remove('gone');
     eq(await store.load('gone'), null);
   });
+
+  await test(`${label}: pruning a workspace takes its audit and outcomes with it`, async () => {
+    /*
+     * Pruning deleted the workspace row and left its children behind:
+     * unreachable, because nothing can load that workspace again, and
+     * immortal, because nothing else would ever delete them. A table that
+     * grows forever on a deployment that bounds everything else.
+     *
+     * remove() deliberately does NOT do this. resetSession calls it, and the
+     * audit trail and the outcome log are both supposed to outlive a reset -
+     * that is the whole reason they do not live inside the workspace document.
+     * Only pruning, which is eviction rather than a user action, takes them.
+     *
+     * Runs last in this suite because prune evicts everything older, and a
+     * test that quietly shrinks the store underneath its neighbours is how a
+     * suite starts failing in an order-dependent way.
+     */
+    await store.create('doomed', { id: 'doomed' });
+    await store.appendAudit({ workspaceId: 'doomed', action: 'submit', actorRole: 'sales' });
+    await store.appendOutcome({ workspaceId: 'doomed', event: 'sourced' });
+    eq((await store.audit('doomed')).length, 1, 'precondition: the rows are there');
+    eq((await store.outcomes('doomed')).length, 1, 'precondition: and the outcomes');
+
+    // A reset must not touch them.
+    await store.remove('doomed');
+    eq((await store.audit('doomed')).length, 1, 'a reset leaves the audit trail alone');
+    eq((await store.outcomes('doomed')).length, 1, 'and the outcome log');
+
+    // Eviction must.
+    await store.create('doomed', { id: 'doomed' });
+    await store.create('keeper', { id: 'keeper' });
+    await store.save('keeper', { id: 'keeper', touched: true }, 1);
+    await store.prune(1);
+
+    eq((await store.audit('doomed')).length, 0, 'eviction takes the audit rows with it');
+    eq((await store.outcomes('doomed')).length, 0, 'and the outcomes');
+  });
+
 
   await store.close();
 }

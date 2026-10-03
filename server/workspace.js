@@ -236,6 +236,15 @@ module.exports = {
   count: () => store.count(),
   claimEvent: (...a) => store.claimEvent(...a),
   auditFor: (...a) => store.audit(...a),
+  outcomesFor: (...a) => store.outcomes(...a),
+  recordOutcome: async (row) => {
+    /* Swallowed and logged, like an audit failure: a bookkeeping write
+       must never fail the purchase it describes. Loudly, because a silent
+       gap in a log that feeds decisions is how a feature becomes a no-op
+       in production while every test stays green. */
+    try { await store.appendOutcome(row); }
+    catch (e) { console.warn('[outcomes] could not record %s for %s: %s', row.event, row.workspaceId, e.message); }
+  },
   messagesFor: (...a) => store.messages(...a),
   appendMessage: (...a) => store.appendMessage(...a),
 };
