@@ -238,6 +238,103 @@ async function run() {
     }
   });
 
+  group('What the log changes, and what it must not');
+
+  const settler = () => {
+    const b = parseRequest(REQ);
+    const list = selectForNegotiation(evaluateCandidates(b));
+    const c = list.find((x) => negotiate(x, b).outcome === 'agreed');
+    return { b, c };
+  };
+  const firstOffer = (r) => {
+    const o = r.transcript.find((t) => t.actor === 'agent' && t.type === 'offer');
+    return o ? o.unitPrice : null;
+  };
+
+  await test('HISTORY: a supplier that has conceded before is opened against harder', () => {
+    const { b, c } = settler();
+    const cold = negotiate(c, b);
+    const warm = negotiate(c, b, { history: { runs: 4, agreed: 3, walkedAway: 1, avgConcession: 0.12 } });
+    ok(firstOffer(warm) < firstOffer(cold),
+      `a known supplier should get a harder opening: ${firstOffer(cold)} vs ${firstOffer(warm)}`);
+    ok(warm.total <= cold.total, 'and the buyer should not pay more for the knowledge');
+  });
+
+  await test('HISTORY: it says so in the transcript, in words a buyer can argue with', () => {
+    // "The model decided" is not an answer a procurement head accepts. The
+    // whole reason this is a deterministic rule rather than a learned one is so
+    // the reason can be stated and disputed.
+    const { b, c } = settler();
+    const warm = negotiate(c, b, { history: { runs: 4, agreed: 3, walkedAway: 1, avgConcession: 0.12 } });
+    const recall = warm.transcript.find((t) => t.type === 'recall');
+    ok(recall, 'the opening move must explain itself');
+    ok(/12\.0% below list/.test(recall.message), recall.message);
+    ok(/4 previous runs/.test(recall.rationale), recall.rationale);
+    ok(/never the ceiling/i.test(recall.rationale), 'and state what it does not touch');
+  });
+
+  await test('HISTORY: two runs is not a pattern and is ignored', () => {
+    /*
+     * The failure mode this guards against is subtle and expensive: an agent
+     * that anchors aggressively on one lucky previous deal walks away from
+     * suppliers it should have bought from, and the buyer never learns why
+     * because the run just says "no agreement".
+     */
+    const { b, c } = settler();
+    const cold = negotiate(c, b);
+    const thin = negotiate(c, b, { history: { runs: 2, agreed: 2, walkedAway: 0, avgConcession: 0.3 } });
+    eq(firstOffer(thin), firstOffer(cold), 'below three runs, the history must change nothing');
+    ok(!thin.transcript.some((t) => t.type === 'recall'), 'and must not claim it did');
+  });
+
+  await test('HISTORY: it can only ever open LOWER, never higher', () => {
+    // Moving the opening up would be the log quietly spending more of the
+    // buyer's budget than the deterministic opener would have.
+    const { b, c } = settler();
+    const cold = firstOffer(negotiate(c, b));
+    for (const avgConcession of [0.001, 0.05, 0.2, 0.6, 0.95]) {
+      const warm = firstOffer(negotiate(c, b, { runs: 9, agreed: 9, walkedAway: 0, avgConcession })
+        ? negotiate(c, b, { history: { runs: 9, agreed: 9, walkedAway: 0, avgConcession } })
+        : null);
+      ok(warm <= cold + 1e-9, `avgConcession ${avgConcession} pushed the opening up: ${warm} > ${cold}`);
+    }
+  });
+
+  await test('HISTORY: an extreme history cannot breach the authorised ceiling', () => {
+    const { b, c } = settler();
+    const warm = negotiate(c, b, { history: { runs: 50, agreed: 50, walkedAway: 0, avgConcession: 0.99 } });
+    for (const o of warm.transcript.filter((t) => t.actor === 'agent' && t.type === 'offer')) {
+      ok(o.unitPrice <= b.budgetPerUnit + 1e-9, `offer ${o.unitPrice} above ceiling ${b.budgetPerUnit}`);
+    }
+  });
+
+  await test('HISTORY: it cannot talk the agent below the supplier floor either', () => {
+    /*
+     * The mirror, and the one that matters for the seller side. Both invariants
+     * sit after the opening, so a history can change where the bargaining
+     * starts and never where it is allowed to end.
+     */
+    const { b, c } = settler();
+    const warm = negotiate(c, b, { history: { runs: 50, agreed: 50, walkedAway: 0, avgConcession: 0.99 } });
+    if (warm.outcome === 'agreed') {
+      const { SUPPLIERS } = require('../server/data/suppliers');
+      const target = SUPPLIERS.find((x) => x.id === c.supplierId);
+      const product = target.products.find((p) => p.sku === c.sku);
+      ok(warm.unitPrice >= product.private.floorUnitPrice - 1e-9,
+        `settled ${warm.unitPrice} below the floor ${product.private.floorUnitPrice}`);
+    } else {
+      ok(true, 'walking away is also a correct outcome here');
+    }
+  });
+
+  await test('HISTORY: no history behaves exactly as before it existed', () => {
+    // The reference demo depends on these figures, and a first run in a fresh
+    // workspace has no history by definition.
+    const { b, c } = settler();
+    eq(JSON.stringify(negotiate(c, b)), JSON.stringify(negotiate(c, b, {})));
+    eq(JSON.stringify(negotiate(c, b)), JSON.stringify(negotiate(c, b, { history: null })));
+  });
+
   group('Counsel - capability boundary');
 
   const counsel = require('../server/counsel');

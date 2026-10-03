@@ -1043,7 +1043,24 @@ app.post('/api/negotiate', wrap(async (req, res) => {
   guard(req, session, 'run');
   if (!session.candidates.length) throw new Error('No candidates evaluated yet.');
   const shortlist = selectForNegotiation(session.candidates);
-  const results = negotiateAll(shortlist, session.brief);
+
+  /*
+   * What the log already knows about these suppliers, handed to the engine.
+   *
+   * This is the only place the outcome log feeds back into a decision, and it
+   * moves exactly one thing: how hard the agent opens. The ceiling, the
+   * acceptance rule and both invariants are untouched, so the worst a wrong
+   * history can do is open at a price a supplier refuses - which costs a round,
+   * not money.
+   */
+  const rows = await workspace.auditFor(session.id, 1000);
+  const historyBy = {};
+  for (const c of shortlist) {
+    const h = outcomes.supplierHistory(rows, c.supplierId);
+    if (h) historyBy[c.supplierId] = h;
+  }
+
+  const results = negotiateAll(shortlist, session.brief, historyBy);
   session.negotiations = results;
 
   /* One row per counterparty, including the ones that walked away. A log that

@@ -7,6 +7,11 @@ server.
 **First run: 15/21 contained, 6 breaches, 4 skipped.**
 **After triage: 24/24 contained, 1 skipped.**
 
+> This document is the record of that one run and its figures are left as they were.
+> The suite has since grown to **30 attacks** as new surfaces landed — the company profile,
+> document intake, the correction path, verification and trust. `npm run adversary` reports
+> the current number; rewriting the one above would turn a record into a claim.
+
 The gap between those two lines is the point of this document. Six breaches were
 reported. One was a real defect in the product. One was a real defect with a
 false alarm sitting on top of it. Four were the harness testing something other

@@ -84,6 +84,51 @@ against; it is not built.
 | B-ALREADY-REG | `SupplierRegistry.registerSupplier` line 66 | Solidity custom error `AlreadyRegistered()` | Smart contract | Restricted (owner only) | — |
 | B-NOT-REG | `SupplierRegistry.{recordSettlement,recordDispute}` line 90, 113 | Solidity custom error `NotRegistered()` | Smart contract | No (settler only) | — |
 
+## B'. The company profile (server/profile.js)
+
+The settings page is where this product's central claim is easiest to break,
+because on a settings page a spending limit looks like just another field with a
+number in it. Behaviour and authority are therefore separate objects on separate
+routes with separate capabilities — not one object with a check in front of it.
+
+| Boundary ID | File / Function | Refusal mechanism | Trust boundary | Untrusted? | Tests |
+|---|---|---|---|---|---|
+| P-LIMIT-ROUTE | `PATCH /api/profile/limits` — `guard(publishPolicy)` | HTTP 4xx naming the desk that holds it | Server | Yes | `roles.test.js`, adversary **H1** |
+| P-LIMIT-SMUGGLE | `PATCH /api/profile` — a `limits` key is refused, not dropped | HTTP 403 | Server | Yes | `roles.test.js`, adversary **H1** |
+| P-LIMIT-STRUCT | `profile.applyBehaviour` never reads the authority fields | Structural: the key is not in the loop | Server | Yes — structural rather than a check | `profile.test.js` |
+| P-AUTO-CAP | `profile.applyLimits` — `autoApproveBelow` ≤ a fraction of `perDeal` | Clamped and reported | Server | Yes, **including the head** | `profile.test.js`, adversary **H2** |
+| P-CEILING | `assertWithinCompanyLimits`, on both brief routes | HTTP 400 before any supplier is screened | Server | Yes | `roles.test.js`, adversary **H3** |
+| P-BLOCKLIST | `profile.applyBlocklist` | Excluded **and reported** with a reason | Server | Yes | `profile.test.js`, `roles.test.js` |
+| P-VERIFY-GATE | `profile.excludedBy` — `requireVerifiedSuppliers` | Excluded and reported | Server | Head-settable only | `roles.test.js` |
+| P-NO-SCORE | `server/profile.js` contains no reference to trust | Structural: screening cannot consult a score | Server | Yes — static | `verification.test.js`, adversary **H5** |
+
+**Note on P-AUTO-CAP.** The head is capped too, and that is the point.
+Separation of duties the duty-holder can switch off is not separation of duties.
+
+## B''. Document intake and verification
+
+| Boundary ID | File / Function | Refusal mechanism | Trust boundary | Untrusted? | Tests |
+|---|---|---|---|---|---|
+| D-SIZE | `intake/document.js` — bounded before parsing | Thrown, HTTP 4xx | Server | Yes | `document.test.js` |
+| D-TYPE | Type decided by content, never by filename or content-type | Named refusal | Server | Yes | `document.test.js` |
+| D-NO-TEXT | `pdftext.js` — a scan is refused, never returned as `""` | Named refusal | Server | Yes | `document.test.js` |
+| D-DATA-NOT-INSTRUCTION | No model call on the document path; no field in a brief can carry an instruction | Structural | Server | Yes | `document.test.js` |
+| D-CORRECTION | `engine/correction.js` — a correction is checked against the document | Four verdicts; only `confirmed` applies | Server | Yes | `document.test.js`, `roles.test.js` |
+| D-OVERRIDE | An unconfirmed figure is marked `from: 'override'` with what the document said | Recorded, not blocked | Server | Yes | `roles.test.js` |
+| V-CHECKDIGIT | `verification.gstinCheckDigit` — real mod-36 arithmetic | `failed` status | Server | Yes | `verification.test.js`, adversary **H4** |
+| V-NOT-CHECKED | Registry status is always a `not-checked` line | Structural: the line is always emitted | Server | Yes | `verification.test.js`, adversary **H4** |
+
+**Known limitation, not a finding.** `verified` means the registration number is
+well formed and its check digit is correct. It does **not** mean the number is
+active or belongs to the company presenting it — that needs GSTN or the MCA, and
+Limen is not connected to either. Every check carries its own status for exactly
+this reason, and a badge that blurred the two would be the most damaging
+dishonesty in the product.
+
+**Known limitation, not a finding.** The outcome log feeds the negotiation's
+*opening offer* and nothing else. Both invariants and the on-chain ceiling sit
+after it, so a wrong history costs a round, never money.
+
 ## C. Server identity / token (server/identity.js)
 
 | Boundary ID | File / Function | Refusal mechanism | Trust boundary | Untrusted? | Tests |
