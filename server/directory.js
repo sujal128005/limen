@@ -229,6 +229,20 @@ function withSimulatedFloor(supplier) {
     yearsActive: supplier.yearsActive != null ? Number(supplier.yearsActive) : null,
     city: supplier.city != null ? supplier.city : null,
 
+    /*
+     * Registration numbers, carried through untouched and NEVER invented.
+     *
+     * Everything else in this normaliser has a sensible fallback. These
+     * deliberately do not: a supplier that did not state a GSTIN has not stated
+     * one, and the verification agent reports that as the absence of evidence
+     * rather than evidence against them. Manufacturing a plausible-looking
+     * number here would be the single most dishonest line in the product.
+     */
+    registeredId: supplier.registeredId != null ? String(supplier.registeredId) : null,
+    gstin: supplier.gstin != null ? String(supplier.gstin) : null,
+    cin: supplier.cin != null ? String(supplier.cin) : null,
+    pan: supplier.pan != null ? String(supplier.pan) : null,
+
     products: supplier.products.map((p) => normaliseProduct(p, margin)),
   };
 }

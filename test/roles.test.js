@@ -1166,6 +1166,116 @@ async function run() {
     eq(await stateOf(c), 'HEAD_APPROVAL');
   });
 
+  group('Verification, trust and history, over HTTP');
+
+  await test('the directory carries verification and trust, kept apart', async () => {
+    const c = await freshRun('ver-dir');
+    const r = await call('GET', '/api/suppliers', { token: c.sales, workspace: c.ws });
+    eq(r.status, 200);
+    const indian = r.body.find((s) => s.id === 'SUP-D');
+    eq(indian.verification.status, 'verified', JSON.stringify(indian.verification).slice(0, 200));
+    ok(indian.trust && indian.trust.score > 0, 'and a trust score');
+    ok(/NOT been confirmed as active/i.test(indian.verification.meaning), indian.verification.meaning);
+
+    const foreign = r.body.find((s) => s.id === 'SUP-A');
+    eq(foreign.verification.status, 'unverified', 'no number supplied is unverified, never failed');
+    ok(foreign.trust.score > 40, 'and that does not crush their score');
+  });
+
+  await test('a supplier record never leaks its reservation price', async () => {
+    // The one figure on a supplier that a buyer must never see, on the one
+    // route that returns a supplier whole.
+    const c = await freshRun('ver-one');
+    const r = await call('GET', '/api/suppliers/SUP-C', { token: c.sales, workspace: c.ws });
+    eq(r.status, 200);
+    const text = JSON.stringify(r.body);
+    ok(!/floorUnitPrice|minMarginPct|concessionRate/.test(text), 'private block must be stripped');
+    ok(/PET resin/.test(text), 'while the catalogue itself still comes through');
+  });
+
+  await test('requiring verified suppliers is the head\'s decision, not the desk\'s', async () => {
+    const c = await freshRun('ver-gate-role');
+    const bySales = await call('PATCH', '/api/profile', {
+      body: { limits: { requireVerifiedSuppliers: false } }, token: c.sales, workspace: c.ws,
+    });
+    ok(bySales.status >= 400, 'sales must not reach it');
+    /*
+     * Turning this ON only narrows what the agent may buy. Turning it OFF
+     * widens it, and the desk that wants a deal to go through is exactly the
+     * desk that would be tempted at five o'clock. A control belongs to whoever
+     * loses from relaxing it.
+     */
+    const byHead = await call('PATCH', '/api/profile/limits', {
+      body: { requireVerifiedSuppliers: true }, token: c.head, workspace: c.ws,
+    });
+    eq(byHead.status, 200);
+    eq(byHead.body.profile.limits.requireVerifiedSuppliers, true);
+  });
+
+  await test('with the requirement on, only checkable suppliers reach the buyer', async () => {
+    const c = await freshRun('ver-gate');
+    await call('PATCH', '/api/profile/limits', {
+      body: { requireVerifiedSuppliers: true }, token: c.head, workspace: c.ws,
+    });
+    await call('POST', '/api/brief', { body: { text: REQUEST }, token: c.sales, workspace: c.ws });
+    const r = await call('POST', '/api/candidates', { token: c.sales, workspace: c.ws });
+    eq(r.status, 200);
+    ok(r.body.excludedByPolicy.length, 'suppliers without a checkable number are excluded');
+    ok(r.body.excludedByPolicy.every((x) => x.rule === 'verification'), JSON.stringify(r.body.excludedByPolicy));
+    ok(r.body.candidates.every((x) => x.verification && x.verification.status === 'verified'),
+      'and everyone left is verified');
+    // Reported, never silent. A supplier removed for want of a registration
+    // number has a remediable problem and deserves to know it exists.
+    ok(/registration number/i.test(JSON.stringify(r.body.excludedByPolicy)), 'with a reason they could act on');
+  });
+
+  await test('trust ranks the shortlist without changing who is on it', async () => {
+    const c = await freshRun('ver-rank');
+    const r = await call('POST', '/api/candidates', { token: c.sales, workspace: c.ws });
+    eq(r.status, 200);
+    const eligible = r.body.candidates.filter((x) => x.eligible !== false).map((x) => x.supplierId);
+    for (const id of r.body.shortlist) {
+      ok(eligible.includes(id), `${id} is on the shortlist and must have been eligible on its own merits`);
+    }
+    for (const cand of r.body.candidates) ok(cand.trust, `${cand.supplierId} should carry a trust score`);
+  });
+
+  await test('the history log records a run end to end, and survives a reset', async () => {
+    const c = await upToPaymentReady('ver-hist');
+    await call('POST', '/api/purchase/release', { token: c.finance, workspace: c.ws });
+
+    const h = await call('GET', '/api/history', { token: c.sales, workspace: c.ws });
+    eq(h.status, 200);
+    ok(h.body.summary.hasHistory, JSON.stringify(h.body.summary));
+    ok(h.body.summary.settled >= 1, `a settled purchase should be recorded: ${JSON.stringify(h.body.summary)}`);
+    ok(h.body.summary.spend > 0, 'with what it cost');
+    ok(h.body.suppliers.length, 'and something per supplier');
+
+    const events = h.body.recent.map((r) => r.event);
+    for (const e of ['sourced', 'negotiated', 'delivered', 'settled']) {
+      ok(events.includes(e), `the log should carry "${e}": ${events.join(',')}`);
+    }
+
+    /*
+     * The property the log exists for. A reset clears the run; it must not
+     * clear what the run taught, or the whole thing is run state with a longer
+     * name.
+     */
+    await call('POST', '/api/reset', { token: c.sales, workspace: c.ws });
+    const after = await call('GET', '/api/history', { token: c.sales, workspace: c.ws });
+    ok(after.body.summary.hasHistory, 'history must outlive the run it describes');
+    eq(after.body.summary.settled, h.body.summary.settled);
+  });
+
+  await test('the outcome log stays out of the audit screen', async () => {
+    // Two different questions. The audit trail answers "who did what"; a row
+    // saying a negotiation ended at $1,175 is not that.
+    const c = await freshRun('ver-audit-split');
+    const a = await call('GET', '/api/audit', { token: c.sales, workspace: c.ws });
+    ok((a.body.entries || []).every((e) => e.kind !== 'outcome'), 'no outcome rows on the audit screen');
+    ok((a.body.entries || []).length, 'while the audit trail itself is still populated');
+  });
+
   group('A tender document, over HTTP');
 
 

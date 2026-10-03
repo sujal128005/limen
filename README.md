@@ -227,6 +227,51 @@ node scripts/llm-check.js --models   # list available models
 
 ---
 
+## Is this a real company?
+
+The question a buyer asks the moment an agent names a supplier they have never heard of, and the one where it is easiest to produce a reassuring answer that is not true.
+
+**What `server/verification.js` can actually prove.** A GSTIN carries a PAN inside it, a state code, and a mod-36 check digit over the first fourteen characters. Those are published algorithms, they run offline with no API key, and they are real arithmetic: change one character of `27AAPFU0939F1ZV` and the check fails. A number that passes was issued to somebody. The same holds for the structure of a PAN and a CIN.
+
+**What it cannot prove, and says so by name.** Whether the number is currently registered, whether it belongs to the company presenting it, whether that company is trading. That needs GSTN or the MCA registry, which needs credentials this product does not have — so it is reported as **not checked**, as its own line, rather than folded into a green tick. A badge that quietly means "the format looked fine" is worse than no badge, because a buyer reads a badge as *somebody checked*.
+
+A supplier with no registration number is `unverified`, never `failed`: that is the absence of evidence for them, not evidence against them. A supplier that supplies a number which was never issued is `failed`, and that is the strongest negative signal available here.
+
+The head — not the sourcing desk — can require verified suppliers. Turning the requirement **on** narrows what the agent may buy, which is safe; turning it **off** widens it, and the desk that wants a deal to go through is the one that would be tempted. Every exclusion is reported with a reason the supplier could act on.
+
+---
+
+## Trust, and what a score is worth
+
+Four components, and they are deliberately not equally good:
+
+| | Provenance | |
+|---|---|---|
+| **Settled trade** | **Earned** | Written by `ProcurementEscrow` on real fund movement and by nothing else. It cannot be bought, self-reported, or reset by moving to another marketplace. |
+| **Registered identity** | Computed | A check digit is arithmetic. Capped below full marks, because the part it cannot establish is exactly the part that would earn the rest. |
+| **Delivered on time** | Earned, or claimed | The observed figure *replaces* the supplier's own claim rather than averaging with it — averaging would launder a claim into a measurement. |
+| **What they disclose** | Claimed | Certifications and capacity as stated. Worth something; worth much less than the rest. |
+
+Two scores of 71 built on different things are different objects, so the score is never shown without its **basis** — *"mostly earned"* or *"almost entirely what the supplier says about itself"*. Disputes cost far more than settlements earn, and the settlement curve saturates so volume cannot buy immunity.
+
+**Trust ranks. It never disqualifies.** A score that could exclude a supplier would be a veto nobody on the receiving end could see, so screening consults the blocklist and the verification requirement and no score at all — asserted by a test that greps `server/profile.js` for any mention of it.
+
+A supplier nobody has traded with scores *neutral*, not zero. Scoring a newcomer at zero is how a marketplace closes to everyone who was not already in it.
+
+---
+
+## Learning from history
+
+The product plan calls this "learning from history", and the honest version starts somewhere less exciting than a model: **there is no history**. A policy trained on fifteen invented suppliers has learned our own simulator, and the first judge who knows machine learning will ask what the training data was.
+
+So `server/outcomes.js` is the log, and the log is the asset. Every run writes what was asked, what was offered, what was agreed or walked away from, and — when it gets that far — whether the goods arrived when promised. It is append-only and lives beside the audit trail, **not** inside the workspace, so a reset clears the run without erasing what the run taught.
+
+`GET /api/history` reads it back three ways: what this company has spent, how a given supplier has behaved, and the recent record. A rate computed over two runs is labelled `anecdotal`; an empty log reports itself as empty rather than as a confident zero.
+
+No supplier's reservation price reaches it. The log is read back into decisions that affect suppliers, so a secret leaking into it would leak into every future negotiation against them — there is a test holding that.
+
+---
+
 ## The buying company
 
 Everything else in a workspace is one purchase: a brief, a shortlist, a negotiation, an approval, all of it thrown away when somebody starts again. A company is not. Its name, what it buys, which suppliers it will not deal with and what it is willing to spend outlive every individual purchase, and the **Company** screen holds them.
