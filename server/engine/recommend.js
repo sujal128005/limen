@@ -1,9 +1,27 @@
 'use strict';
 const r2 = (n) => Math.round(n * 100) / 100;
 
-// Ranks the agreed deals and explains the winner with facts a buyer can check.
-// No confidence score: an underived percentage tells the buyer nothing.
-function recommend(negotiations, candidates, brief) {
+/*
+ * Ranks the agreed deals and explains the winner with facts a buyer can check.
+ * No confidence score: an underived percentage tells the buyer nothing.
+ *
+ * WHOSE PRIORITIES WIN. Three sources can have an opinion about what matters,
+ * and the order between them is the only interesting decision here:
+ *
+ *   1. What THIS REQUEST said. "I need this fastest" is the most specific thing
+ *      anybody has stated, and the most recent, so it wins outright.
+ *   2. What the COMPANY set on its profile. A standing preference: we generally
+ *      care about price. Used when the request expressed none.
+ *   3. The product's default, when neither said anything.
+ *
+ * Specific beats standing, and standing beats default. Averaging them would
+ * mean a buyer who typed "urgent" still got a price-weighted ranking because
+ * somebody set a slider last quarter, which is the settings page quietly
+ * overruling the person actually asking.
+ *
+ * @param {object} [opts.weights] the company's standing preference, or null.
+ */
+function recommend(negotiations, candidates, brief, opts = {}) {
   const agreed = negotiations.filter((n) => n.outcome === 'agreed');
   const failed = negotiations.filter((n) => n.outcome !== 'agreed');
   if (!agreed.length) {
@@ -16,7 +34,16 @@ function recommend(negotiations, candidates, brief) {
   }
 
   const byId = Object.fromEntries(candidates.map((c) => [c.supplierId, c]));
-  const w = Object.fromEntries((brief.softPreferences || []).map((p) => [p.key, p.weight]));
+  /*
+   * `stated` is true only when the parser found a preference in the words of
+   * the request itself. parse.js falls back to a default set when it finds
+   * none, and that fallback must not be mistaken for the buyer having asked
+   * for something - otherwise the company's own weights could never apply.
+   */
+  const stated = !!(brief.softPreferences && brief.softPreferences.stated);
+  const fromRequest = Object.fromEntries((brief.softPreferences || []).map((p) => [p.key, p.weight]));
+  const w = (!stated && opts.weights) ? { ...opts.weights } : fromRequest;
+  const weightSource = (!stated && opts.weights) ? 'company' : (stated ? 'request' : 'default');
   const span = (vals) => { const lo = Math.min(...vals), hi = Math.max(...vals); return { lo, hi, d: hi - lo || 1 }; };
 
   const priceS = span(agreed.map((a) => a.total));
@@ -38,6 +65,10 @@ function recommend(negotiations, candidates, brief) {
   }).sort((a, b) => b.score - a.score);
 
   const winner = scored[0];
+  /* Carried out so the interface can say whose priorities ordered this list.
+     A ranking that changed because of a setting nobody remembers is worse than
+     one that cannot be explained at all. */
+  const ranking = { weights: w, source: weightSource };
   const c = winner.candidate;
   const cheapestEligible = Math.min(...candidates.filter((x) => x.eligible).map((x) => x.listTotal));
 
@@ -94,6 +125,7 @@ function recommend(negotiations, candidates, brief) {
       expedited: winner.expedited,
     },
     reasons,
+    ranking,
     runnersUp: scored.slice(1).map((s) => ({ name: s.name, total: s.total, leadTimeDays: s.leadTimeDays, score: s.score })),
     rejected: failed.map((f) => ({ name: f.name, reason: f.failureReason, detail: f.failureDetail })),
     excludedNote: cheaperButIneligible.length

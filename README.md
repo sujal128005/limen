@@ -282,12 +282,18 @@ Everything else in a workspace is one purchase: a brief, a shortlist, a negotiat
 
 | | Who owns it | What it is |
 |---|---|---|
-| **Behaviour** | Sourcing desk | Company details, categories, preferred and blocked suppliers, how the agent weighs price against speed. Getting these wrong produces a worse purchase. It cannot produce an unauthorised one. |
+| **Behaviour** | Sourcing desk | Company details, categories, preferred and blocked suppliers and regions, saved request templates, how the agent weighs price against speed, how fast it concedes, and the most it will pay to rush an order. Getting these wrong produces a worse purchase. It cannot produce an unauthorised one. |
 | **Authority** | Head, and only the head | What may be spent on one purchase, what may be spent in a category, and the threshold below which no person is asked. Getting these wrong produces money leaving the company that nobody approved. |
 
 They are separate objects, written through separate functions, guarded by separate capabilities and reached by separate routes. A `limits` key sent to the behaviour route is refused rather than ignored, and the refusal names the desk that holds it.
 
 **A limit here is not the limit.** The profile's ceiling stops a run at the brief — before a single supplier is looked at, which matters once the counterparties are real companies rather than rows in a table. What the escrow will actually accept is whatever the head last published on chain, in contract state this server cannot write. The screen shows both figures side by side, and says which one wins when they differ.
+
+**The sliders actually move something.** `rankingWeights` sat on this page reading nothing for a while, which is worse than a missing control — the person believes they have steered the agent. Three sources can have an opinion about what matters and the order between them is the whole decision: **what this request said** beats **what the company set** beats **the product default**. A buyer who typed *"need it fastest"* must not get a price-weighted ranking because somebody moved a slider last quarter.
+
+Closing that revealed a second bug: *"Budget is $1,200 total"* was being read as *"I prioritise price"*. It states a constraint already captured as `budgetTotal`, and treating it as a preference meant almost every request looked like it had expressed one — so a company's own weights could never apply to anything.
+
+**Conceding slower wins better prices and loses more deals.** `concessionPace` is a real trade-off a company should get to make, and the tests pin both halves of it. It moves the agent toward its own ceiling and can never pass it, whatever anybody configures.
 
 **Blocking and preferring are not symmetric.** A blocked supplier is removed in screening; a preferred one is moved up a shortlist it already earned a place on. A preference that could promote a supplier past a hard requirement would be a way to buy uncertified material by liking the vendor. Every exclusion is named on the run, because a blocklist is the easiest way in this product to hide a cheaper supplier from a buyer, and an exclusion nobody can see is indistinguishable from the engine deciding on its own.
 

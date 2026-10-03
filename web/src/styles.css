@@ -5325,3 +5325,88 @@ h1, h2, h3 { text-wrap: balance; }
 }
 .panel-head h3 { margin: 0; font-size: 15px; letter-spacing: -.01em; }
 
+/* ---- the agent's standing preferences. Sliders rather than numbers because
+   what matters is their ratio to each other, and a ratio is a thing you set by
+   feel. The figure beside each one is there so a save can be checked. */
+.coweights { display: grid; gap: 8px; }
+.coweight { display: grid; grid-template-columns: 92px 1fr 36px; align-items: center; gap: 10px; }
+.coweight-k { font-size: 12.5px; color: var(--ink-3); text-transform: capitalize; }
+.coweight-v { font-size: 12.5px; color: var(--ink-4); text-align: right; font-variant-numeric: tabular-nums; }
+.coweight input[type="range"] { width: 100%; accent-color: var(--pine); }
+
+/* ------------------------------------------------ the supplier, opened ----
+   A drawer rather than a page, because this is a detour from a list and the
+   list should still be behind it. Depth is earned here: it genuinely floats. */
+.drawer-scrim {
+  /* Above the sticky bar and the floating control, below the modals at 95.
+     At 60 the app header sat on top of the drawer's own title, which is the
+     kind of thing that only shows up when you actually open it. */
+  position: fixed; inset: 0; z-index: 93; background: var(--scrim);
+  display: flex; justify-content: flex-end;
+  animation: fadein var(--t-panel) var(--ease);
+}
+.drawer {
+  width: min(680px, 94vw); height: 100%; overflow-y: auto;
+  background: var(--surface); border-left: 1px solid var(--hair-strong); box-shadow: var(--e4);
+  animation: slidein var(--t-panel) var(--ease);
+}
+@keyframes fadein { from { opacity: 0 } to { opacity: 1 } }
+@keyframes slidein { from { transform: translateX(24px) } to { transform: none } }
+@media (prefers-reduced-motion: reduce) {
+  .drawer-scrim, .drawer { animation: none; }
+}
+.drawer-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+  padding: 20px; border-bottom: 1px solid var(--hair); background: var(--surface-2);
+}
+.drawer-head h2 { margin: 2px 0 2px; font-size: 22px; letter-spacing: -.02em; }
+.drawer-head .sub { margin: 0; }
+.drawer-section { padding: 18px 20px; border-bottom: 1px solid var(--hair); }
+.drawer-section h3 { margin: 0 0 6px; font-size: 15px; letter-spacing: -.01em; }
+.drawer-section .sub { margin: 0 0 12px; }
+
+/* ---- the score, taken apart. The provenance chip is the point of the row:
+   a component that was earned and one that was claimed are different kinds of
+   evidence and must not read as the same thing. */
+.parts { margin: 0; display: grid; gap: 10px; }
+.part { padding: 11px 12px; border-radius: var(--r-sm); background: var(--sunk); border: 1px solid var(--hair); }
+.part.is-earned { background: var(--pine-wash); border-color: var(--pine-line); }
+.part dt { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13.5px; font-weight: 600; color: var(--ink); }
+.part dd { margin: 5px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--ink-2); }
+.part-w { margin-left: auto; font-size: 11.5px; color: var(--ink-4); font-variant-numeric: tabular-nums; }
+.chip-dim { color: var(--ink-4); background: var(--sunk); border-color: var(--hair-strong); }
+
+/* ---- every check, including the ones that did not run. The not-checked rows
+   are deliberately not greyed into invisibility: they are the half a badge
+   would otherwise swallow. */
+.checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.check { padding: 10px 12px; border-radius: var(--r-sm); background: var(--surface-2); border: 1px solid var(--hair); }
+.check.is-fail { background: var(--crimson-wash); border-color: var(--crimson-line); }
+.check.is-not-checked { border-style: dashed; }
+.check-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.check-label { font-size: 13px; font-weight: 600; color: var(--ink); }
+.check-id { font-size: 11.5px; color: var(--ink-4); margin-left: auto; }
+.check-detail { margin-top: 4px; font-size: 12.5px; line-height: 1.5; color: var(--ink-2); }
+
+.kv { margin: 0; display: grid; gap: 6px; }
+.kv > div { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+.kv dt { font-size: 12.5px; color: var(--ink-3); }
+.kv dd { margin: 0; font-size: 13.5px; font-variant-numeric: tabular-nums; color: var(--ink); }
+
+tr.clickable { cursor: pointer; }
+tr.clickable:hover { background: var(--sunk); }
+tr.clickable:focus-visible { outline: 2px solid var(--pine); outline-offset: -2px; }
+
+/* ---- saved requests. Chips rather than a dropdown: there are never many, and
+   a thing you click once should not cost two clicks. */
+.templates { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.tmpl {
+  font: inherit; font-size: 12.5px; padding: 6px 12px; border-radius: var(--r-pill);
+  color: var(--ink-2); background: var(--surface); border: 1px solid var(--hair-strong);
+  cursor: pointer; transition: border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+  max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tmpl:hover:not(:disabled) { border-color: var(--pine); color: var(--pine); }
+.tmpl:disabled { opacity: .55; cursor: default; }
+.tmpl-add { border-style: dashed; color: var(--ink-4); }
+

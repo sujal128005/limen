@@ -238,6 +238,86 @@ async function run() {
     }
   });
 
+  group('Whose priorities order the list');
+
+  await test('WEIGHTS: the company\'s standing preference orders the shortlist', () => {
+    /*
+     * The bug this closes: rankingWeights sat on the settings page and no code
+     * read it. A control that changes nothing is worse than a missing one,
+     * because the person believes they have steered something and the evidence
+     * that they have not is invisible.
+     */
+    const b = parseRequest('500 kg of bottle-grade PET resin at up to $1,800 total, within 20 days, FDA food-contact certified.');
+    const rows = evaluateCandidates(b);
+    const negs = negotiateAll(selectForNegotiation(rows), b);
+    const fast = recommend(negs, rows, b, { weights: { price: 0.02, reputation: 0.02, speed: 0.94, quality: 0.02 } });
+    const cheap = recommend(negs, rows, b, { weights: { price: 0.94, reputation: 0.02, speed: 0.02, quality: 0.02 } });
+    eq(fast.ranking.source, 'company');
+    ok(fast.winner.supplierId !== cheap.winner.supplierId,
+      `different weights must be able to pick different suppliers: ${fast.winner.name} vs ${cheap.winner.name}`);
+    ok(fast.winner.leadTimeDays <= cheap.winner.leadTimeDays, 'speed-weighted picks the faster one');
+    ok(cheap.winner.total <= fast.winner.total, 'price-weighted picks the cheaper one');
+  });
+
+  await test('WEIGHTS: a request that states its own priority overrides the company', () => {
+    // Specific beats standing. A buyer who typed "fastest" must not get a
+    // price-weighted ranking because somebody moved a slider last quarter.
+    const b = parseRequest('500 kg of bottle-grade PET resin at up to $1,800 total, within 20 days, FDA food-contact certified. Need it fastest.');
+    const rows = evaluateCandidates(b);
+    const negs = negotiateAll(selectForNegotiation(rows), b);
+    const r = recommend(negs, rows, b, { weights: { price: 0.97, reputation: 0.01, speed: 0.01, quality: 0.01 } });
+    eq(r.ranking.source, 'request');
+  });
+
+  await test('WEIGHTS: stating a budget is not stating a preference for cheapness', () => {
+    /*
+     * "Budget is $1,200 total" states a constraint that is already captured as
+     * budgetTotal. Reading it as a soft preference double-counted the same
+     * words and, worse, meant almost every request looked like it had expressed
+     * a priority - so a company's own weights could never apply to anything.
+     */
+    const b = parseRequest('I need 500 kg of PET resin. Budget is $1,200 total. Delivery within 14 days.');
+    eq(b.softPreferences.stated, false, 'a stated budget is a constraint, not a preference');
+    const keen = parseRequest('I need 500 kg of PET resin, cheapest you can find, budget $1,200.');
+    eq(keen.softPreferences.stated, true, 'asking for the cheapest is');
+  });
+
+  await test('BEHAVIOUR: conceding slower wins better prices and loses more deals', () => {
+    // The real trade-off, and the reason this is a setting rather than a
+    // constant: a company that would rather pay a little more than restart a
+    // tender should be able to say so.
+    const b = parseRequest('500 kg of bottle-grade PET resin at up to $1,280 total within 25 days, FDA food-contact certified.');
+    const sl = selectForNegotiation(evaluateCandidates(b));
+    const at = (pace) => sl.map((c) => negotiate(c, b, { concessionPace: pace }));
+    const patient = at(0.2).filter((r) => r.outcome === 'agreed');
+    const quick = at(0.9).filter((r) => r.outcome === 'agreed');
+    ok(patient.length <= quick.length, 'patience costs deals');
+    const best = (rs) => Math.min(...rs.map((r) => r.total));
+    if (patient.length) ok(best(patient) <= best(quick), 'and buys a better price on the ones it keeps');
+  });
+
+  await test('BEHAVIOUR: no pace setting can push an offer past the ceiling', () => {
+    const b = parseRequest('500 kg of bottle-grade PET resin at up to $1,280 total within 25 days.');
+    const sl = selectForNegotiation(evaluateCandidates(b));
+    for (const pace of [0.1, 0.5, 0.9, 5, -3]) {
+      for (const r of sl.map((c) => negotiate(c, b, { concessionPace: pace }))) {
+        for (const o of r.transcript.filter((t) => t.actor === 'agent' && t.type === 'offer')) {
+          ok(o.unitPrice <= b.budgetPerUnit + 1e-9, `pace ${pace} produced ${o.unitPrice} above ${b.budgetPerUnit}`);
+        }
+      }
+    }
+  });
+
+  await test('BEHAVIOUR: a rush charge above what the company allows ends the negotiation', () => {
+    const b = parseRequest('500 kg of bottle-grade PET resin at up to $1,800 total, delivered within 8 days, FDA food-contact certified.');
+    const sl = selectForNegotiation(evaluateCandidates(b));
+    const capped = sl.map((c) => negotiate(c, b, { maxExpeditePct: 0.01 }));
+    const refused = capped.filter((r) => r.failureReason === 'expedite');
+    ok(refused.length, 'a 1% cap must refuse the surcharges in the seeded catalogue');
+    ok(/settings change/i.test(refused[0].transcript.find((t) => t.type === 'walk_away').rationale),
+      'and say that raising it is a decision, not something the agent makes mid-negotiation');
+  });
+
   group('What the log changes, and what it must not');
 
   const settler = () => {
