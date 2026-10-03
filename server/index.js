@@ -14,6 +14,8 @@ const directory = require('./directory');
 let supplierSource = { source: 'seeded', seeded: true };
 const { parseRequest, parseDocument, llmParse } = require('./engine/parse');
 const intake = require('./intake/document');
+const correction = require('./engine/correction');
+const parse = require('./engine/parse');
 const { evaluateCandidates, selectForNegotiation } = require('./engine/match');
 const { negotiateAll } = require('./engine/negotiate');
 const { recommend } = require('./engine/recommend');
@@ -581,6 +583,140 @@ app.post(
     });
   })
 );
+
+/**
+ * "That's wrong - it should be 7 days."
+ *
+ * The reader will sometimes be wrong, and the person who knows the purchase has
+ * to be able to say so. What this route refuses to do is take their word for it.
+ *
+ * A correction is treated as a CLAIM ABOUT THE DOCUMENT and checked against the
+ * document, deterministically, with no model anywhere in the path. Only a claim
+ * the file actually supports changes a figure on its own. Everything else comes
+ * back with the clause the agent used, the clause the person was probably
+ * looking at, and nothing changed.
+ *
+ * Why so strict about a text box: the budget in this brief becomes the ceiling
+ * the contract enforces. A path where that figure moves because somebody typed
+ * at it has replaced a document with a text box and called it verification -
+ * and it is the same hole an injected instruction would walk through.
+ *
+ * The override exists because a buyer owns their requirement and a document can
+ * be wrong. It is a second, deliberate request, and what it changes is not only
+ * the number but the record: that figure is marked as stated by a person rather
+ * than found in the document, and the mark travels to the approval screen and
+ * the audit trail. The head sanctioning the purchase can see which figures came
+ * from the tender and which did not.
+ */
+app.post('/api/brief/correct', wrap(async (req, res) => {
+  const session = sessionFor(req);
+  guard(req, session, 'run');
+
+  const brief = session.brief;
+  if (!brief) throw new Error('There is no brief to correct. Run a request first.');
+  if (!session.sourceDocument) {
+    throw new Error(
+      'This run was typed, not read from a document, so there is nothing to check a correction against. '
+      + 'Edit the request and run again.'
+    );
+  }
+  /*
+   * Refused once a human has sanctioned the terms. The approval is bound to the
+   * figures it was given, and quietly moving one underneath it would turn a
+   * sanctioned purchase into a different purchase with the same signature on it.
+   */
+  if (session.headApproval || session.dealId) {
+    throw new Error(
+      'This purchase has already been approved, so its figures are fixed. '
+      + 'Reset the run to start again from the document.'
+    );
+  }
+
+  const text = String(req.body.text || '').slice(0, 600);
+  if (!text.trim()) throw new Error('Say what is wrong, for example "delivery should be 7 days".');
+
+  /*
+   * Checked against the excerpt that was stored with the run, not against a
+   * freshly uploaded file. The point is to re-read THE DOCUMENT THIS RUN CAME
+   * FROM; re-reading something else would make the check meaningless, and the
+   * hash on the session says which file that was.
+   */
+  const result = correction.checkCorrection(text, session.sourceDocument.excerpt, brief);
+
+  if (!result.understood) {
+    return res.json({ ...result, applied: false, brief });
+  }
+
+  const override = req.body.override === true;
+  const willApply = result.applied || (override && result.canOverride);
+
+  if (willApply) {
+    const field = result.claim.field;
+    const before = brief[field] ?? null;
+    brief[field] = result.claim.value;
+    brief.sources = brief.sources || {};
+    brief.sources[field] = result.applied
+      ? { from: 'clause', quote: result.quote, confidence: 'labelled', correctedBy: req.actor ? req.actor.role : 'unknown' }
+      : {
+        /*
+         * The honest label. Not "clause", because no clause says this; not
+         * "text", because nobody typed a request. A figure a person asserted
+         * over the document is its own thing and is named as one, so the
+         * approval screen can show it differently rather than letting it blend
+         * in with the figures the tender actually states.
+         */
+        from: 'override',
+        statedBy: req.actor ? req.actor.role : 'unknown',
+        quote: null,
+        documentSaid: result.documentValue ?? before,
+        documentQuote: result.currentQuote || null,
+        verdict: result.verdict,
+      };
+    parse.recomputeBrief(brief);
+
+    /*
+     * The shortlist below this was computed against the old figures, so it goes.
+     * Leaving it would show a supplier screened in under a deadline that no
+     * longer exists, which is worse than showing nothing.
+     */
+    session.candidates = []; session.negotiations = []; session.recommendation = null;
+    session.settlementFacts = null; session.signature = null;
+    session.submittedAt = null; session.submittedBy = null;
+    session.sentToHeadAt = null; session.sentToHeadBy = null;
+
+    brief.corrections = brief.corrections || [];
+    brief.corrections.push({
+      field, from: before, to: result.claim.value,
+      verdict: result.verdict, override: !result.applied,
+      by: req.actor ? req.actor.role : 'unknown', at: Date.now(),
+    });
+  }
+
+  await audit(req, willApply ? (result.applied ? 'correction-confirmed' : 'correction-override') : 'correction-refused', null, {
+    said: text,
+    field: result.claim.field,
+    claimed: result.claim.value,
+    verdict: result.verdict,
+    applied: willApply,
+    documentSha256: session.sourceDocument.sha256,
+  });
+
+  const overridden = willApply && !result.applied;
+  res.json({
+    ...result,
+    applied: willApply,
+    overridden,
+    /* The check's own message says "nothing has been changed", which stops
+       being true the moment an override goes through. Saying both - what the
+       document says, and that it was overruled anyway - is the whole point of
+       having the override be a separate act. */
+    message: overridden
+      ? `${result.fact} Set to ${result.claim.formatted} on your say-so, and recorded as stated by you `
+        + 'rather than found in the document. The approver will see that.'
+      : result.message,
+    brief,
+  });
+}));
 
 app.post('/api/candidates', wrap(async (req, res) => {
   const session = sessionFor(req);

@@ -1087,6 +1087,51 @@ table.grid tbody tr:nth-child(n+6) { animation-delay: 170ms; }
 .docread-note { font-size: 12.5px; line-height: 1.45; color: var(--ink-4); }
 .docread-row.is-corrected { background: var(--amber-wash); }
 .docread-row.is-corrected .docread-note { color: var(--amber); }
+.docread-row.is-overridden { background: var(--slate-wash); }
+.docread-row.is-overridden .docread-value::after {
+  content: 'set by hand';
+  margin-left: 10px; font-size: 10.5px; font-weight: 650; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--ink-4); vertical-align: 2px;
+}
+
+/* ---- saying the agent got it wrong.
+   Quiet by default. The verdict is the content, and the two quotes under it
+   usually settle the question without anybody needing to be believed. Amber
+   when the document disagrees, pine when it confirms - the same two meanings
+   those colours carry everywhere else in this product. */
+.fixit { padding: 14px 16px; border-top: 1px solid var(--hair); }
+.fixit-label { display: block; font-size: 13px; font-weight: 600; color: var(--ink-2); margin-bottom: 8px; }
+.fixit-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.fixit-row input {
+  flex: 1 1 280px; min-width: 0; padding: 9px 12px; font: inherit; font-size: 14px;
+  color: var(--ink); background: var(--surface); border: 1px solid var(--hair-strong);
+  border-radius: var(--r-sm); transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+.fixit-row input:focus { outline: none; border-color: var(--pine); box-shadow: 0 0 0 3px var(--pine-wash); }
+.fixit-row input::placeholder { color: var(--ink-4); }
+.fixit-hint { margin: 8px 0 0; }
+
+.fixit-result {
+  margin-top: 12px; padding: 12px 14px; border-radius: var(--r-sm);
+  border: 1px solid var(--hair-strong); background: var(--sunk);
+}
+.fixit-result.is-ok { background: var(--pine-wash); border-color: var(--pine-line); }
+.fixit-result.is-warn { background: var(--amber-wash); border-color: var(--amber-line); }
+.fixit-msg { font-size: 13.5px; line-height: 1.55; color: var(--ink); }
+.fixit-result.is-ok .fixit-msg { color: var(--pine); }
+.fixit-result.is-warn .fixit-msg { color: var(--amber); }
+.fixit-compare { display: grid; gap: 8px; margin-top: 10px; }
+.fixit-compare > div { display: grid; gap: 2px; }
+.fixit-tag {
+  font-size: 10.5px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-4);
+}
+.fixit-quote { font-size: 13px; line-height: 1.5; color: var(--ink-2); font-style: italic; }
+.fixit-override {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--hair-strong);
+}
+.fixit-override .hint { flex: 1 1 260px; }
+
 .docread-missing {
   padding: 12px 16px; font-size: 13px; line-height: 1.5; color: var(--ink-2);
   background: var(--sunk); border-top: 1px solid var(--hair);

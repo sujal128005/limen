@@ -30,6 +30,7 @@ const { extractPdfText } = require('../server/intake/pdftext');
 const { readDocument } = require('../server/intake/document');
 const { readTender } = require('../server/engine/tender');
 const { parseDocument, parseRequest } = require('../server/engine/parse');
+const { checkCorrection, readClaim } = require('../server/engine/correction');
 
 const SAMPLE = path.join(__dirname, '..', 'docs', 'samples', 'sample-tender-pet-resin.pdf');
 
@@ -359,6 +360,117 @@ async function run() {
     const typed = parseRequest('100 kg kraft paper, budget $800, within 5 days');
     const extra = Object.keys(b).filter((k) => !(k in typed));
     eq(extra.sort().join(','), 'fromDocument,sources', 'a document brief adds evidence and nothing else');
+  });
+
+  /* ---------------------------------------- saying the agent got it wrong */
+
+  group('A correction is a claim about the document');
+
+  const docText = extractPdfText(sampleBytes).text;
+  const sampleBrief = () => parseDocument(docText);
+
+  await test('CORRECT: a sentence that names no figure is not guessed at', () => {
+    for (const vague of ['this is wrong', 'the delivery looks off', 'fix it', '']) {
+      const r = checkCorrection(vague, docText, sampleBrief());
+      eq(r.understood, false, `"${vague}" must not be understood`);
+      eq(r.applied, undefined, 'and nothing applied');
+    }
+  });
+
+  await test('CORRECT: a claim the document supports is confirmed, with the new clause', () => {
+    const doc = [
+      'Scope: Supply of 500 kg of bottle-grade PET resin.',
+      'Delivery: Material shall be delivered within 21 days from the Purchase Order.',
+      'Note: for the first consignment the lead time is 9 days by prior agreement.',
+      'Budget ceiling: USD 1,200 total.',
+    ].join('\n');
+    const brief = parseDocument(doc);
+    eq(brief.deadlineDays, 21, 'precondition');
+    const r = checkCorrection('delivery should be 9 days', doc, brief);
+    eq(r.verdict, 'confirmed');
+    eq(r.applied, true);
+    ok(/9 days by prior agreement/.test(r.quote), r.quote);
+  });
+
+  await test('CORRECT: the trap verdict shows the line the person is looking at', () => {
+    /*
+     * The most valuable of the four, and the least obvious.
+     *
+     * Somebody reads page one, sees "Offer validity: 30 days", and corrects the
+     * delivery deadline to 30 - confidently, because they are looking straight
+     * at the number. A system that took their word would quietly adopt the
+     * wrong deadline on the strength of a person being sure.
+     *
+     * The number IS in the document, so "not found" would be both unhelpful and
+     * untrue. Showing the two lines side by side is what settles it without
+     * anybody having to be believed.
+     */
+    const r = checkCorrection('delivery should be 30 days', docText, sampleBrief());
+    eq(r.verdict, 'trap');
+    eq(r.applied, false);
+    ok(/Offer validity/i.test(r.trapQuote), r.trapQuote);
+    ok(/Delivery/i.test(r.currentQuote), r.currentQuote);
+  });
+
+  await test('CORRECT: a claim the document contradicts changes nothing', () => {
+    const brief = sampleBrief();
+    const r = checkCorrection('delivery should be 7 days', docText, brief);
+    eq(r.verdict, 'contradicted');
+    eq(r.applied, false);
+    eq(brief.deadlineDays, 14, 'the brief is untouched by a check');
+    ok(/Delivery/i.test(r.currentQuote), r.currentQuote);
+  });
+
+  await test('CORRECT: a figure the document never mentions changes nothing', () => {
+    const r = checkCorrection('quality score should be 90', docText, sampleBrief());
+    eq(r.verdict, 'absent');
+    eq(r.applied, false);
+  });
+
+  await test('CORRECT: a correction to a budget needs a currency, a deadline does not', () => {
+    // "1500" alone could be a budget, a quantity or a batch number. Units are
+    // what make a bare figure readable, and money has none, so it needs a mark.
+    eq(readClaim('the budget is 1500'), null, 'a bare number is not a budget claim');
+    eq(readClaim('the budget is $1,500').field, 'budgetTotal');
+    eq(readClaim('the budget is Rs 1,500').field, 'budgetTotal');
+    eq(readClaim('delivery in 9 days').field, 'deadlineDays');
+    eq(readClaim('900 kg').field, 'quantityKg');
+  });
+
+  await test('CORRECT: units are converted the way the document reader converts them', () => {
+    eq(readClaim('delivery should be 3 weeks').value, 21);
+    eq(readClaim('quantity is 2 tonnes').value, 2000);
+    eq(readClaim('budget of 3 lakh').value, 300000);
+  });
+
+  await test('CORRECT: an explicitly named field beats one implied by units', () => {
+    // "the budget covers 20 days of storage" names a budget and carries day
+    // units. Reading it as a deadline would change the wrong figure.
+    const c = readClaim('the budget should be $4,000, it covers 20 days of storage');
+    eq(c.field, 'budgetTotal', `got ${c && c.field}`);
+    eq(c.value, 4000);
+  });
+
+  await test('CORRECT: a value already in the brief is reported, not reapplied', () => {
+    const r = checkCorrection('delivery is 14 days', docText, sampleBrief());
+    eq(r.verdict, 'unchanged');
+    eq(r.applied, false);
+  });
+
+  await test('CORRECT: no model is reachable from the correction path', () => {
+    /*
+     * "The agent must not hallucinate" is not achieved by asking a model to be
+     * careful. It is achieved by not having a model in the path, and that is a
+     * property of the import graph rather than of anybody's intentions.
+     */
+    const code = fs.readFileSync(path.join(__dirname, '..', 'server', 'engine', 'correction.js'), 'utf8');
+    ok(!/\bfetch\s*\(/.test(code), 'no network call');
+    const requires = (code.match(/require\s*\(\s*['"]([^'"]+)['"]/g) || [])
+      .map((r) => r.replace(/.*['"]([^'"]+)['"].*/, '$1'));
+    for (const dep of requires) {
+      ok(!/grok|llm|openai|anthropic|chain|ethers/i.test(dep), `must not import ${dep}`);
+    }
+    eq(requires.join(','), './tender', 'one import, and it is the document reader');
   });
 
   await chain0();
