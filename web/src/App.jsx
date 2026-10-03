@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 /* eslint-disable react-hooks/exhaustive-deps */
 
 /* ---------------------------------------------------------------- helpers */
@@ -2179,7 +2180,153 @@ function TrustBadge({ trust, verification }) {
   );
 }
 
+/*
+ * One supplier, with the working shown.
+ *
+ * The directory gives a buyer a score and a badge. This is where they find out
+ * what either of them is made of - including, and especially, the checks that
+ * did NOT run. A verification feature that only displayed its passes would be
+ * the dishonest version of itself: a reader takes a tick to mean somebody
+ * checked, and the lines below are the only place that assumption gets
+ * corrected.
+ */
+function SupplierDetail({ data, loading, error, onClose }) {
+  if (!data && !loading) return null;
+  const v = data && data.verification;
+  const t = data && data.trust;
+
+  const statusChip = (st) => (
+    st === 'pass' ? <span className="chip chip-ok">pass</span>
+      : st === 'fail' ? <span className="chip chip-bad">fail</span>
+        : st === 'note' ? <span className="chip">note</span>
+          : <span className="chip chip-dim">not checked</span>
+  );
+
+  /*
+   * Portalled to the body, not rendered in place.
+   *
+   * `position: fixed` is measured against the nearest transformed ancestor
+   * rather than the viewport, and this app has one. In place, the drawer came
+   * out floating in the middle of the table instead of flush against the right
+   * edge - correct CSS, wrong containing block. The portal removes the
+   * question entirely rather than hunting for whichever ancestor it was.
+   */
+  return createPortal((
+    <div className="drawer-scrim" onClick={onClose} role="presentation">
+      <aside className="drawer" onClick={(e) => e.stopPropagation()} aria-label="Supplier detail">
+        {loading && !data ? <Working title="Reading the supplier" sub="Registry, chain and checks." /> : null}
+        {error && <div className="banner err"><span>{error}</span></div>}
+
+        {data && (<>
+          <div className="drawer-head">
+            <div>
+              <div className="eyebrow">{data.id}</div>
+              <h2>{data.name}</h2>
+              <p className="sub">{data.city}, {data.country}</p>
+            </div>
+            <button className="btn btn-quiet" onClick={onClose}>Close</button>
+          </div>
+
+          {/* ---- trust, decomposed */}
+          {t && (
+            <div className="drawer-section">
+              <h3>Trust {t.score} <span className="hint">· {t.basis}</span></h3>
+              <p className="sub">
+                {t.earnedWeight}% of this score rests on things that were earned rather than claimed.
+                {' '}{t.note}
+              </p>
+              <dl className="parts">
+                {t.parts.map((p) => (
+                  <div key={p.key} className={`part is-${p.provenance}`}>
+                    <dt>
+                      {p.label}
+                      <span className={`chip chip-${p.provenance === 'earned' ? 'ok' : 'dim'}`}>{p.provenance}</span>
+                      <span className="part-w">{Math.round(p.weight * 100)}% of the score</span>
+                    </dt>
+                    <dd>{p.detail}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          )}
+
+          {/* ---- verification, every line */}
+          {v && (
+            <div className="drawer-section">
+              <h3>Registration</h3>
+              <p className="sub">{v.meaning}</p>
+              <ul className="checks">
+                {v.checks.map((c, i) => (
+                  <li key={`${c.id}-${i}`} className={`check is-${c.status}`}>
+                    <div className="check-top">
+                      <span className="check-label">{c.label}</span>
+                      {statusChip(c.status)}
+                      {c.identifier && <span className="mono check-id">{c.identifier}</span>}
+                    </div>
+                    <div className="check-detail">{c.detail}</div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* ---- what the chain holds */}
+          <div className="drawer-section">
+            <h3>On chain</h3>
+            {data.onChain ? (
+              <dl className="kv">
+                <div><dt>Settled deals</dt><dd className="mono">{data.onChain.settledCount}</dd></div>
+                <div><dt>Disputed</dt><dd className="mono">{data.onChain.disputes}</dd></div>
+                <div><dt>Late deliveries</dt><dd className="mono">{data.onChain.lateDeliveries}</dd></div>
+                <div><dt>Settled volume</dt><dd className="mono">{usd0(data.onChain.settledVolume)}</dd></div>
+                <div><dt>Wallet</dt><dd className="mono">{short(data.wallet)}</dd></div>
+              </dl>
+            ) : <p className="sub">The chain could not be read, so nothing is claimed about this supplier's history.</p>}
+          </div>
+
+          {/* ---- catalogue */}
+          <div className="drawer-section">
+            <h3>Listings</h3>
+            <div className="tablewrap">
+              <table className="dtable">
+                <thead><tr><th>SKU</th><th>Material</th><th className="num">List</th><th className="num">MOQ</th><th className="num">Lead</th></tr></thead>
+                <tbody>
+                  {(data.products || []).map((pr) => (
+                    <tr key={pr.sku}>
+                      <td className="mono">{pr.sku}</td>
+                      <td>{pr.material}{pr.grade ? `, ${pr.grade}` : ''}</td>
+                      <td className="num">{pr.listUnitPrice != null ? `$${pr.listUnitPrice}` : '—'}</td>
+                      <td className="num">{pr.moqKg != null ? `${pr.moqKg} kg` : '—'}</td>
+                      <td className="num">{pr.leadTimeDays}d</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>)}
+      </aside>
+    </div>
+  ), document.body);
+}
+
 function SuppliersView({ suppliers, loading, currentSupplierId }) {
+  const [openId, setOpenId] = useState(null);
+  const [detail, setDetail] = useState(null);
+  const [detailBusy, setDetailBusy] = useState(false);
+  const [detailErr, setDetailErr] = useState(null);
+
+  /* Fetched on open rather than held for all fifteen: the detail carries
+     every check line and the whole catalogue, and nobody reads fifteen of
+     those at once. */
+  const open = (id) => {
+    setOpenId(id); setDetail(null); setDetailErr(null); setDetailBusy(true);
+    api.get(`/api/suppliers/${encodeURIComponent(id)}`)
+      .then((r) => setDetail(r))
+      .catch((e) => setDetailErr(e.message))
+      .finally(() => setDetailBusy(false));
+  };
+
   const [q, setQ] = useState('');
   const [material, setMaterial] = useState('');
   const [cert, setCert] = useState('');
@@ -2282,7 +2429,13 @@ function SuppliersView({ suppliers, loading, currentSupplierId }) {
             </thead>
             <tbody>
               {shown.map((s) => (
-                <tr key={s.id} className={s.id === currentSupplierId ? 'hit' : ''}>
+                <tr
+                  key={s.id}
+                  className={`clickable${s.id === currentSupplierId ? ' hit' : ''}`}
+                  onClick={() => open(s.id)}
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(s.id); } }}
+                >
                   <td>
                     <div className="dt-name">
                       {s.name}
@@ -2306,6 +2459,13 @@ function SuppliersView({ suppliers, loading, currentSupplierId }) {
             </tbody>
           </table>
         </div>
+        {openId && (
+          <SupplierDetail
+            data={detail} loading={detailBusy} error={detailErr}
+            onClose={() => { setOpenId(null); setDetail(null); }}
+          />
+        )}
+
         {!shown.length && (
           <p className="sub" style={{ padding: '16px' }}>
             No supplier matches those filters. That is a statement about the filters, not about the market.
@@ -2459,6 +2619,10 @@ function CompanyView({ data, loading, role, onSaveBehaviour, onSaveLimits, notes
   const [blocked, setBlocked] = useState('');
   const [preferred, setPreferred] = useState('');
   const [cats, setCats] = useState('');
+  const [pace, setPace] = useState(0.5);
+  const [expedite, setExpedite] = useState('');
+  const [blockedRegions, setBlockedRegions] = useState('');
+  const [weights, setWeights] = useState(null);
   const [perDeal, setPerDeal] = useState('');
   const [autoBelow, setAutoBelow] = useState('');
 
@@ -2470,6 +2634,10 @@ function CompanyView({ data, loading, role, onSaveBehaviour, onSaveLimits, notes
     setBlocked(p.blockedSuppliers.join(', '));
     setPreferred(p.preferredSuppliers.join(', '));
     setCats(p.categories.map((c) => `${c.label}: ${c.materials.join(', ')}`).join('\n'));
+    setPace(p.concessionPace ?? 0.5);
+    setExpedite(p.maxExpeditePct == null ? '' : String(Math.round(p.maxExpeditePct * 100)));
+    setBlockedRegions((p.blockedRegions || []).join(', '));
+    setWeights({ ...p.rankingWeights });
   }, [p, company]);
 
   /*
@@ -2560,6 +2728,61 @@ function CompanyView({ data, loading, role, onSaveBehaviour, onSaveLimits, notes
           <span className="hint">Removed before anything is negotiated. Every exclusion is named on the run, so a blocklist cannot quietly hide a cheaper supplier.</span>
         </div>
 
+        <div className="cofield">
+          <label htmlFor="co-regions">Regions you will not buy from</label>
+          <input id="co-regions" value={blockedRegions} onChange={(e) => setBlockedRegions(e.target.value)} placeholder="China, Russia" />
+          <span className="hint">Screened out before negotiation, and named on the run like a blocked supplier.</span>
+        </div>
+
+        <div className="cofield">
+          <label>What the agent should weigh</label>
+          {/*
+            * These sliders had no effect at all until now - a settings control
+            * that changes nothing is worse than a missing one, because the
+            * person believes they have steered something. They set the
+            * company's STANDING preference, and a request that states its own
+            * ("need it fastest") still overrides them: specific beats standing.
+            */}
+          <div className="coweights">
+            {['price', 'speed', 'reputation', 'quality'].map((k) => (
+              <div key={k} className="coweight">
+                <span className="coweight-k">{k}</span>
+                <input
+                  type="range" min="0" max="100" step="5"
+                  value={Math.round(((weights && weights[k]) || 0) * 100)}
+                  onChange={(e) => setWeights({ ...weights, [k]: Number(e.target.value) / 100 })}
+                />
+                <span className="coweight-v mono">{Math.round(((weights && weights[k]) || 0) * 100)}</span>
+              </div>
+            ))}
+          </div>
+          <span className="hint">A request that states its own priority wins over these. They are the standing default, not an override.</span>
+        </div>
+
+        <div className="cofield">
+          <label htmlFor="co-pace">How fast the agent concedes</label>
+          <div className="coweights">
+            <div className="coweight">
+              <span className="coweight-k">{pace <= 0.3 ? 'patient' : pace >= 0.7 ? 'quick' : 'balanced'}</span>
+              <input
+                type="range" min="10" max="90" step="5"
+                value={Math.round(pace * 100)}
+                onChange={(e) => setPace(Number(e.target.value) / 100)}
+              />
+              <span className="coweight-v mono">{Math.round(pace * 100)}</span>
+            </div>
+          </div>
+          <span className="hint">
+            Conceding slower wins better prices and loses more deals. It moves the agent toward its ceiling and can never pass it.
+          </span>
+        </div>
+
+        <div className="cofield">
+          <label htmlFor="co-expedite">Most you will pay to rush an order</label>
+          <input id="co-expedite" value={expedite} onChange={(e) => setExpedite(e.target.value)} inputMode="decimal" placeholder="blank for no limit" />
+          <span className="hint">Per cent. This only ever refuses a deal, so the worst it can do is decline to pay for speed.</span>
+        </div>
+
         <div className="cofoot">
           <button
             className="btn btn-primary"
@@ -2569,6 +2792,10 @@ function CompanyView({ data, loading, role, onSaveBehaviour, onSaveLimits, notes
               categories: parseCats(cats),
               preferredSuppliers: list(preferred),
               blockedSuppliers: list(blocked),
+              blockedRegions: list(blockedRegions),
+              rankingWeights: weights,
+              concessionPace: pace,
+              maxExpeditePct: expedite === '' ? null : Number(expedite) / 100,
             })}
           >
             Save
@@ -3165,6 +3392,14 @@ function Desk() {
       .finally(() => { if (live) setSuppliersBusy(false); });
     return () => { live = false; };
   }, [session, view, suppliers]);
+
+  /* The run screen shows saved templates, so the profile has to be in hand
+     before the first render of it rather than only when Company is opened. */
+  useEffect(() => {
+    if (!session || companyProfile) return;
+    api.get('/api/profile').then((r) => setCompanyProfile(r)).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
 
   useEffect(() => {
     if (!session || view !== 'dashboard') return;
@@ -3792,6 +4027,18 @@ function Desk() {
    * have to rediscover why they are apart. Separate all the way down is harder
    * to collapse by accident.
    */
+  /*
+   * Saving a template is a behaviour change like any other, so it goes through
+   * the same route and the same permission. It is a separate function only
+   * because it has to merge with what is already there rather than replace it -
+   * a save that silently dropped the other templates would be a data loss
+   * nobody would notice until the month they needed one.
+   */
+  async function saveTemplate(name, body) {
+    const current = (companyProfile && companyProfile.profile && companyProfile.profile.templates) || [];
+    await saveBehaviour({ templates: [...current, { name, text: body }] });
+  }
+
   async function saveBehaviour(patch) {
     setCompanyBusy(true); setCompanyErr(null); setCompanyNotes([]);
     try {
@@ -4144,6 +4391,8 @@ function Desk() {
                 onRun={() => runSourcing()}
                 onRunExtracted={() => runSourcing({ useExistingBrief: true })}
                 onFile={readDocument}
+                templates={companyProfile && companyProfile.profile ? companyProfile.profile.templates : []}
+                onSaveTemplate={saveTemplate}
                 onCheck={(t) => checkCorrection(t, false)}
                 onOverride={(t) => checkCorrection(t, true)}
                 correction={correction}
@@ -5648,7 +5897,7 @@ function DocumentEvidence({ doc, brief, onRun, onClear, busy, disabled, onCheck,
 
 function RequestPanel({
   text, setText, onRun, onRunExtracted, onFile, sourceDoc, brief, busy, disabled, hasRun, onReset,
-  onCheck, onOverride, correction,
+  onCheck, onOverride, correction, templates, onSaveTemplate,
 }) {
   const fileRef = useRef(null);
   const [over, setOver] = useState(false);
@@ -5720,6 +5969,43 @@ function RequestPanel({
         </div>
         {over && <div className="composer-drop" aria-hidden="true">Drop the tender to read it</div>}
       </div>
+
+      {/*
+        * Things this company buys often.
+        *
+        * Only the TEXT is saved, never the brief it parsed into. A saved brief
+        * would freeze last quarter's reading of the same words, and the parser
+        * keeps improving - the delivery-clause fix alone changed what an
+        * identical sentence means. Re-parsing on use means a template gets
+        * better without anybody re-saving it.
+        */}
+      {(templates && templates.length > 0) || text.trim() ? (
+        <div className="templates">
+          {templates && templates.map((t) => (
+            <button
+              key={t.id}
+              className="tmpl"
+              disabled={!!busy}
+              onClick={() => setText(t.text)}
+              title={t.text}
+            >
+              {t.name}
+            </button>
+          ))}
+          {text.trim() && !(templates || []).some((t) => t.text === text.trim()) && (
+            <button
+              className="tmpl tmpl-add"
+              disabled={!!busy}
+              onClick={() => {
+                const name = window.prompt('Save this request as a template. What should it be called?');
+                if (name && name.trim()) onSaveTemplate(name.trim(), text.trim());
+              }}
+            >
+              + Save this one
+            </button>
+          )}
+        </div>
+      ) : null}
 
       <DocumentEvidence
         doc={sourceDoc} brief={brief} busy={busy} disabled={disabled}

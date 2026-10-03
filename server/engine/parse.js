@@ -111,7 +111,20 @@ function parseRequest(text) {
   // ---- soft preferences ------------------------------------------------
   const preferences = [];
   if (/fastest|urgent|asap|as soon as/i.test(src)) preferences.push({ key: 'speed', weight: 0.35 });
-  if (/cheap|lowest price|best price|budget/i.test(src)) preferences.push({ key: 'price', weight: 0.35 });
+  /*
+   * "budget" alone used to land here, and it was wrong in the most common
+   * sentence this product sees. "Budget is $1,200 total" STATES a constraint -
+   * already captured as budgetTotal - and saying it does not mean the buyer
+   * cares more about price than about anything else. Reading it as a
+   * preference double-counted the same words and, worse, meant almost every
+   * request looked like it had expressed a priority, so a company's own
+   * standing weights could never apply to anything.
+   *
+   * The phrasings below are preferences rather than statements of fact.
+   */
+  if (/cheap|cheapest|lowest price|best price|most economical|tight budget|budget[- ]conscious|keep (?:the )?cost down/i.test(src)) {
+    preferences.push({ key: 'price', weight: 0.35 });
+  }
   if (/reliable|trusted|reputation|proven/i.test(src)) preferences.push({ key: 'reputation', weight: 0.3 });
   if (/high quality|premium|best quality/i.test(src)) preferences.push({ key: 'quality', weight: 0.3 });
 
@@ -136,10 +149,23 @@ function parseRequest(text) {
     budgetTotal, budgetPerUnit,
     deadlineDays, certifications, minQuality,
     hardConstraints: hard,
-    softPreferences: preferences.length ? preferences : [
-      { key: 'price', weight: 0.4 }, { key: 'reputation', weight: 0.3 },
-      { key: 'speed', weight: 0.2 }, { key: 'quality', weight: 0.1 },
-    ],
+    /*
+     * Marked with whether the buyer actually expressed a priority, or whether
+     * this is the fallback.
+     *
+     * recommend() has to tell those apart: a company's standing weights should
+     * apply when the request said nothing, and must NOT override a request that
+     * said "urgent". Without the flag the fallback is indistinguishable from an
+     * expressed preference, and the settings page silently outranks the person
+     * typing.
+     */
+    softPreferences: Object.assign(
+      preferences.length ? preferences : [
+        { key: 'price', weight: 0.4 }, { key: 'reputation', weight: 0.3 },
+        { key: 'speed', weight: 0.2 }, { key: 'quality', weight: 0.1 },
+      ],
+      { stated: preferences.length > 0 }
+    ),
     missing,
     complete: missing.length === 0,
     notes,

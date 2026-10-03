@@ -208,6 +208,99 @@ async function run() {
     eq(new Set(p.blockedSuppliers).size, p.blockedSuppliers.length, 'no duplicates');
   });
 
+  await test('BEHAVIOUR: the new agent settings are behaviour, not authority', () => {
+    // Each one has to pass the same test: getting it wrong produces a worse
+    // purchase, never an unauthorised one. Pace cannot move the ceiling, the
+    // expedite cap only ever refuses, and a region rule only ever narrows.
+    const p = profile.applyBehaviour(profile.blankProfile(), {
+      concessionPace: 0.8, maxExpeditePct: 0.03, blockedRegions: ['China'],
+    }, 'sales').profile;
+    eq(p.concessionPace, 0.8);
+    eq(p.maxExpeditePct, 0.03);
+    eq(p.blockedRegions[0], 'china');
+    eq(p.limits.perDeal, null, 'and none of it touched a limit');
+    for (const f of ['concessionPace', 'maxExpeditePct', 'blockedRegions', 'preferredRegions']) {
+      ok(profile.BEHAVIOUR_FIELDS.includes(f), `${f} must be listed as behaviour`);
+      ok(!profile.AUTHORITY_FIELDS.includes(f), `${f} must not be authority`);
+    }
+  });
+
+  await test('BEHAVIOUR: concession pace cannot be set to a value that stops negotiation', () => {
+    /*
+     * Zero means an agent that never moves, which produces no deals and reads
+     * as a broken product. One means an agent that opens at its ceiling, which
+     * is not negotiating. Both ends are clamped rather than refused, because
+     * the intent behind "0" is readable and refusing it teaches nothing.
+     */
+    eq(profile.applyBehaviour(profile.blankProfile(), { concessionPace: 0 }, 'sales').profile.concessionPace, 0.1);
+    eq(profile.applyBehaviour(profile.blankProfile(), { concessionPace: 5 }, 'sales').profile.concessionPace, 0.9);
+  });
+
+  await test('BEHAVIOUR: a blocked region excludes and says which country', () => {
+    const p = profile.applyBehaviour(profile.blankProfile(), { blockedRegions: ['China'] }, 'sales').profile;
+    const { rows, excluded } = profile.applyBlocklist(p, [
+      { supplierId: 'SUP-C', name: 'Anhui', country: 'China' },
+      { supplierId: 'SUP-A', name: 'Meridian', country: 'Malaysia' },
+    ]);
+    eq(rows.length, 1);
+    eq(excluded[0].rule, 'region');
+    ok(/China/.test(excluded[0].reason), excluded[0].reason);
+    // Reported for the same reason the supplier blocklist is: a region rule can
+    // hide a cheaper supplier just as quietly as a named one.
+  });
+
+  await test('BEHAVIOUR: a preferred region ranks, it does not screen', () => {
+    const p = profile.applyBehaviour(profile.blankProfile(), { preferredRegions: ['India'] }, 'sales').profile;
+    ok(profile.isPreferred(p, 'SUP-X', 'India'));
+    ok(!profile.isPreferred(p, 'SUP-X', 'Poland'));
+    const { rows, excluded } = profile.applyBlocklist(p, [{ supplierId: 'SUP-X', name: 'X', country: 'Poland' }]);
+    eq(rows.length, 1, 'a preference removes nobody');
+    eq(excluded.length, 0);
+  });
+
+  await test('TEMPLATES: only the words are stored, never the parsed brief', () => {
+    /*
+     * The decision worth testing. A saved BRIEF would freeze one reading of the
+     * words, and the parser keeps improving - the delivery-clause fix alone
+     * changed what an identical sentence means. Storing the text means a
+     * template gets better without anybody re-saving it, and it cannot carry a
+     * stale budget into next quarter's purchase.
+     */
+    const p = profile.applyBehaviour(profile.blankProfile(), {
+      templates: [{ name: 'Monthly PET', text: '500 kg bottle-grade PET resin, budget $1,200, within 14 days.' }],
+    }, 'sales').profile;
+    eq(p.templates.length, 1);
+    eq(p.templates[0].id, 'monthly-pet');
+    ok(p.templates[0].text.includes('500 kg'));
+    for (const k of Object.keys(p.templates[0])) {
+      ok(['id', 'name', 'text', 'usedCount'].includes(k), `a template must not carry a "${k}"`);
+    }
+  });
+
+  await test('TEMPLATES: empty ones are dropped and duplicates collapse', () => {
+    const p = profile.applyBehaviour(profile.blankProfile(), {
+      templates: [
+        { name: 'A', text: '100 kg of ABS resin' },
+        { name: '', text: '' },
+        { name: 'A', text: 'something else entirely' },
+      ],
+    }, 'sales').profile;
+    eq(p.templates.length, 1, 'one usable template survives');
+  });
+
+  await test('TEMPLATES: a template is behaviour, and the limits still apply to it', () => {
+    // A template is a convenience for stating a request. It is not a way to
+    // state one the company would otherwise refuse.
+    ok(profile.BEHAVIOUR_FIELDS.includes('templates'));
+    ok(!profile.AUTHORITY_FIELDS.includes('templates'));
+    let p = profile.applyBehaviour(profile.blankProfile(), {
+      templates: [{ name: 'Big', text: '500 kg of PET resin, budget $9,000, within 14 days.' }],
+    }, 'sales').profile;
+    p = profile.applyLimits(p, { perDeal: 500 }, 'head').profile;
+    const check = profile.checkBrief(p, { material: 'PET resin', budgetTotal: 9000 });
+    eq(check.ok, false, 'a request from a template is checked like any other');
+  });
+
   await test('PROFILE: a profile holds nothing a client may not see', () => {
     // Worth asserting rather than assuming: every other object in this product
     // that reaches the browser goes through a whitelist projection, and the one

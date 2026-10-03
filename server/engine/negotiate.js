@@ -58,6 +58,29 @@ function negotiate(candidate, brief, opts = {}) {
       };
     }
 
+    /*
+     * What the company will pay for speed, if it said.
+     *
+     * Only ever refuses: the worst this setting can do is decline a rush
+     * surcharge, which is why it is safe in the sourcing desk's hands. Walking
+     * away here is a real outcome and is reported as one, rather than the agent
+     * quietly accepting a charge nobody authorised.
+     */
+    if (Number.isFinite(opts.maxExpeditePct) && priv.expediteFeePct > opts.maxExpeditePct) {
+      say('agent', 'walk_away', {
+        message: `Ending negotiation - the rush charge is ${(priv.expediteFeePct * 100).toFixed(1)}%.`,
+        rationale: `Your company does not pay more than ${(opts.maxExpeditePct * 100).toFixed(1)}% to expedite. `
+          + 'Raising that is a settings change, not something the agent decides mid-negotiation.',
+      });
+      return {
+        supplierId: candidate.supplierId, name: supplier.name, outcome: 'failed',
+        failureReason: 'expedite',
+        failureDetail: `Rush surcharge ${(priv.expediteFeePct * 100).toFixed(1)}% exceeds the `
+          + `${(opts.maxExpeditePct * 100).toFixed(1)}% your company allows.`,
+        transcript, rounds: round,
+      };
+    }
+
     expediteFeePct = priv.expediteFeePct;
     finalLeadTime = brief.deadlineDays;
     say('supplier', 'expedite_accept', {
@@ -161,7 +184,11 @@ function negotiate(candidate, brief, opts = {}) {
     const counter = r4(Math.max(minAcceptable, currentAsk - (currentAsk - minAcceptable) * priv.concessionRate));
     currentAsk = counter;
 
-    const nextOffer = r4(Math.min(ceiling, agentOffer + (ceiling - agentOffer) * 0.5));
+    /* How much ground the agent gives per round. The company's setting, or the
+       product default. It moves toward the ceiling and can never pass it: the
+       Math.min is what makes that true regardless of what anybody configures. */
+    const pace = Number.isFinite(opts.concessionPace) ? opts.concessionPace : 0.5;
+    const nextOffer = r4(Math.min(ceiling, agentOffer + (ceiling - agentOffer) * pace));
 
     say('supplier', 'counter', {
       unitPrice: counter, total: r2(counter * qty),
@@ -287,9 +314,10 @@ function negotiate(candidate, brief, opts = {}) {
  *                              does, which is the normal case and must behave
  *                              exactly as it did before this existed.
  */
-function negotiateAll(candidates, brief, historyBy) {
+function negotiateAll(candidates, brief, historyBy, behaviour) {
   return candidates.map((c) => negotiate(c, brief, {
     history: historyBy ? historyBy[c.supplierId] : null,
+    ...(behaviour || {}),
   }));
 }
 

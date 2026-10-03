@@ -1060,7 +1060,11 @@ app.post('/api/negotiate', wrap(async (req, res) => {
     if (h) historyBy[c.supplierId] = h;
   }
 
-  const results = negotiateAll(shortlist, session.brief, historyBy);
+  const results = negotiateAll(shortlist, session.brief, historyBy, {
+    concessionPace: session.profile ? session.profile.concessionPace : undefined,
+    maxExpeditePct: session.profile && session.profile.maxExpeditePct != null
+      ? session.profile.maxExpeditePct : undefined,
+  });
   session.negotiations = results;
 
   /* One row per counterparty, including the ones that walked away. A log that
@@ -1081,7 +1085,11 @@ app.post('/api/recommend', wrap(async (req, res) => {
   const session = sessionFor(req);
   guard(req, session, 'run');
   if (!session.negotiations.length) throw new Error('No negotiations completed yet.');
-  const rec = recommend(session.negotiations, session.candidates, session.brief);
+  /* The company's standing preference, used only where the request itself
+     expressed none. recommend() decides; this just hands it over. */
+  const rec = recommend(session.negotiations, session.candidates, session.brief, {
+    weights: session.profile ? session.profile.rankingWeights : null,
+  });
   session.recommendation = rec;
   await logOutcome(req, 'sourced', {
     outcome: rec.status,

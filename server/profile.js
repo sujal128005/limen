@@ -70,7 +70,10 @@ const MAX_TEXT = 120;
 const AUTO_APPROVE_MAX_FRACTION = Number(process.env.LIMEN_AUTO_APPROVE_MAX_FRACTION || 0.2);
 
 /** Fields the sourcing desk may write. Behaviour. */
-const BEHAVIOUR_FIELDS = ['company', 'categories', 'preferredSuppliers', 'blockedSuppliers', 'rankingWeights'];
+const BEHAVIOUR_FIELDS = [
+  'company', 'categories', 'preferredSuppliers', 'blockedSuppliers', 'rankingWeights',
+  'concessionPace', 'maxExpeditePct', 'blockedRegions', 'preferredRegions', 'templates',
+];
 
 /** Fields only the head may write. Authority. */
 const AUTHORITY_FIELDS = ['limits'];
@@ -96,6 +99,43 @@ function blankProfile() {
      * should win.
      */
     rankingWeights: { price: 0.4, reputation: 0.3, speed: 0.2, quality: 0.1 },
+    /*
+     * How the agent bargains. Behaviour, every one of them, and the test is
+     * simple: getting these wrong produces a worse purchase, never an
+     * unauthorised one.
+     *
+     * concessionPace   how fast the agent gives ground toward its own ceiling.
+     *                  Slower wins better prices and loses more deals; a
+     *                  company that would rather pay a little more than restart
+     *                  a tender sets it higher. It cannot move the ceiling.
+     * maxExpeditePct   the most the company will pay as a rush surcharge. This
+     *                  only ever REFUSES a deal, so it is safe in the desk's
+     *                  hands: the worst it can do is decline to pay for speed.
+     * blockedRegions   countries this company will not buy from. Screening, and
+     *                  reported like the supplier blocklist, because a region
+     *                  rule can hide a cheaper supplier just as quietly.
+     * preferredRegions ranking only, like preferred suppliers.
+     */
+    /*
+     * Requests this company makes often.
+     *
+     * A buyer ordering the same resin every month should not retype it every
+     * month, and the text is the ONLY thing stored - not the brief it parsed
+     * into. A saved brief would freeze last quarter's reading of the words,
+     * and the parser improves: the delivery-clause fix alone changed what the
+     * same sentence means. Re-parsing on use means a template gets better
+     * without anybody re-saving it.
+     *
+     * Behaviour, not authority. A template is a convenience for stating a
+     * request; the limits still apply to it exactly as they would to anything
+     * typed, and a template above the company ceiling is refused at the brief
+     * like any other request.
+     */
+    templates: [],
+    concessionPace: 0.5,
+    maxExpeditePct: null,          // null means no stated limit on rush charges
+    blockedRegions: [],
+    preferredRegions: [],
     limits: {
       perDeal: null,            // null means no stated limit, not an unlimited one
       perCategory: {},          // categoryId -> amount
@@ -137,6 +177,40 @@ function supplierList(v) {
     const id = str(item, 40).toUpperCase();
     if (id && !out.includes(id)) out.push(id);
     if (out.length >= MAX_SUPPLIER_LIST) break;
+  }
+  return out;
+}
+
+/* Regions are matched against the supplier's country, so they are normalised
+   the same way on both sides: trimmed, cased consistently, bounded. */
+const MAX_TEMPLATES = 20;
+const MAX_TEMPLATE_TEXT = 1200;
+
+function templateList(v) {
+  if (!Array.isArray(v)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const t of v) {
+    if (!t || typeof t !== 'object') continue;
+    const text = String(t.text == null ? '' : t.text).replace(/[\u0000-\u0008\u000b-\u001f]/g, ' ').trim().slice(0, MAX_TEMPLATE_TEXT);
+    if (!text) continue;
+    const name = str(t.name, 60) || text.slice(0, 48);
+    const id = slug(t.id || name);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push({ id, name, text, usedCount: Number.isFinite(Number(t.usedCount)) ? Number(t.usedCount) : 0 });
+    if (out.length >= MAX_TEMPLATES) break;
+  }
+  return out;
+}
+
+function regionList(v) {
+  if (!Array.isArray(v)) return [];
+  const out = [];
+  for (const item of v) {
+    const r = str(item, 60).toLowerCase();
+    if (r && !out.includes(r)) out.push(r);
+    if (out.length >= 48) break;
   }
   return out;
 }
@@ -210,6 +284,21 @@ function applyBehaviour(profile, patch, by) {
   if (patch.preferredSuppliers !== undefined) next.preferredSuppliers = supplierList(patch.preferredSuppliers);
   if (patch.blockedSuppliers !== undefined) next.blockedSuppliers = supplierList(patch.blockedSuppliers);
   if (patch.rankingWeights !== undefined) next.rankingWeights = weights(patch.rankingWeights, p.rankingWeights);
+
+  if (patch.templates !== undefined) next.templates = templateList(patch.templates);
+  if (patch.concessionPace !== undefined) {
+    /* Bounded at both ends. Zero would mean an agent that never moves, which
+       produces no deals and looks like a broken product; one would mean an
+       agent that opens at its ceiling, which is not negotiating. */
+    const n = num(patch.concessionPace);
+    next.concessionPace = n == null ? p.concessionPace : Math.max(0.1, Math.min(0.9, n));
+  }
+  if (patch.maxExpeditePct !== undefined) {
+    const n = patch.maxExpeditePct === null || patch.maxExpeditePct === '' ? null : num(patch.maxExpeditePct);
+    next.maxExpeditePct = n == null ? null : Math.max(0, Math.min(1, n));
+  }
+  if (patch.blockedRegions !== undefined) next.blockedRegions = regionList(patch.blockedRegions);
+  if (patch.preferredRegions !== undefined) next.preferredRegions = regionList(patch.preferredRegions);
 
   /*
    * A supplier cannot be both preferred and blocked, and the block wins.
@@ -393,6 +482,13 @@ function excludedBy(profile, row, verificationOf) {
   if (profile.blockedSuppliers.includes(id)) {
     return { supplierId: row.supplierId || row.id, name: row.name, rule: 'blocklist', reason: 'On your blocked list' };
   }
+  const country = String(row.country || '').toLowerCase();
+  if (country && profile.blockedRegions && profile.blockedRegions.includes(country)) {
+    return {
+      supplierId: row.supplierId || row.id, name: row.name, rule: 'region',
+      reason: `Your company does not buy from ${row.country}`,
+    };
+  }
   if (profile.limits && profile.limits.requireVerifiedSuppliers) {
     const v = verificationOf ? verificationOf(row) : null;
     const status = v ? v.status : 'unverified';
@@ -412,7 +508,10 @@ function excludedBy(profile, row, verificationOf) {
 
 function applyBlocklist(profile, rows, verificationOf) {
   const requiresVerified = !!(profile && profile.limits && profile.limits.requireVerifiedSuppliers);
-  if (!profile || (!profile.blockedSuppliers.length && !requiresVerified)) return { rows, excluded: [] };
+  const hasRegionRule = !!(profile && profile.blockedRegions && profile.blockedRegions.length);
+  if (!profile || (!profile.blockedSuppliers.length && !requiresVerified && !hasRegionRule)) {
+    return { rows, excluded: [] };
+  }
   const excluded = [];
   const kept = [];
   for (const r of rows) {
@@ -422,8 +521,11 @@ function applyBlocklist(profile, rows, verificationOf) {
   return { rows: kept, excluded };
 }
 
-function isPreferred(profile, supplierId) {
-  return !!(profile && profile.preferredSuppliers.includes(String(supplierId).toUpperCase()));
+function isPreferred(profile, supplierId, country) {
+  if (!profile) return false;
+  if (profile.preferredSuppliers.includes(String(supplierId).toUpperCase())) return true;
+  if (country && profile.preferredRegions && profile.preferredRegions.includes(String(country).toLowerCase())) return true;
+  return false;
 }
 
 /** What a client may see. The whole thing: a profile holds no secrets. */
