@@ -2414,6 +2414,8 @@ function Desk() {
   /* What the brief was read out of, when it was read out of a file rather than
      typed. Null for a typed run, which is why the evidence panel can key off it. */
   const [sourceDoc, setSourceDoc] = useState(null);
+  /* The last correction the agent checked, with its verdict and quotes. */
+  const [correction, setCorrection] = useState(null);
   const [candidates, setCandidates] = useState(null);
   const [shortlist, setShortlist] = useState([]);
   const [negotiations, setNegotiations] = useState(null);
@@ -3086,7 +3088,7 @@ function Desk() {
   async function readDocument(file) {
     if (!file) return;
     setError(null);
-    setBrief(null); setSourceDoc(null); setCandidates(null); setNegotiations(null); setRevealed({});
+    setBrief(null); setSourceDoc(null); setCorrection(null); setCandidates(null); setNegotiations(null); setRevealed({});
     setRec(null); setDeal(null); setDelivery(null); setRelease(null); setOverLimit(null); setEscalation(null);
     setSummaryDoc(null); setSettlementDoc(null); setSignature(null);
     setBusy('document'); setStage('request');
@@ -3108,6 +3110,33 @@ function Desk() {
     }
   }
 
+  /*
+   * Send a correction to be checked against the document.
+   *
+   * `override` is a second, deliberate call with the same sentence. It is not a
+   * flag on the first one, because the person has to have seen what the
+   * document says before they overrule it - that reading is the whole value of
+   * the step.
+   */
+  async function checkCorrection(said, override) {
+    setError(null);
+    setBusy('correct');
+    try {
+      const r = await api.post('/api/brief/correct', { text: said, override: !!override });
+      setCorrection(r);
+      if (r.applied && r.brief) {
+        setBrief(r.brief);
+        /* The shortlist below was computed against the old figures and the
+           server has already dropped it. The screen has to agree. */
+        setCandidates(null); setNegotiations(null); setRevealed({}); setRec(null);
+      }
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   /**
    * @param {{useExistingBrief?: boolean}} [opts] continue from a brief already
    *        read out of a document, instead of parsing the text box again.
@@ -3115,7 +3144,7 @@ function Desk() {
   async function runSourcing(opts) {
     const useExistingBrief = !!(opts && opts.useExistingBrief);
     setError(null);
-    if (!useExistingBrief) { setBrief(null); setSourceDoc(null); }
+    if (!useExistingBrief) { setBrief(null); setSourceDoc(null); setCorrection(null); }
     setCandidates(null); setNegotiations(null); setRevealed({});
     setRec(null); setDeal(null); setDelivery(null); setRelease(null); setOverLimit(null); setEscalation(null);
     setSummaryDoc(null); setSettlementDoc(null); setSignature(null);
@@ -3264,7 +3293,7 @@ function Desk() {
 
   async function resetAll() {
     await api.post('/api/reset');
-    setStage('request'); setBrief(null); setSourceDoc(null); setCandidates(null); setNegotiations(null);
+    setStage('request'); setBrief(null); setSourceDoc(null); setCorrection(null); setCandidates(null); setNegotiations(null);
     setRevealed({}); setRec(null); setDeal(null); setDelivery(null); setRelease(null);
     setOverLimit(null); setEscalation(null); setSummaryDoc(null); setSettlementDoc(null);
     setSignature(null); setError(null);
@@ -3570,6 +3599,9 @@ function Desk() {
                 onRun={() => runSourcing()}
                 onRunExtracted={() => runSourcing({ useExistingBrief: true })}
                 onFile={readDocument}
+                onCheck={(t) => checkCorrection(t, false)}
+                onOverride={(t) => checkCorrection(t, true)}
+                correction={correction}
                 sourceDoc={sourceDoc} brief={brief}
                 busy={busy} disabled={!status?.ready} onReset={resetAll}
                 /* A document that has been READ is not a run that has happened.
@@ -4869,7 +4901,106 @@ const ACCEPTED_DOCS = '.pdf,.docx,.txt,.md,application/pdf,text/plain';
  * deadline. The buyer sees the clause behind every figure before anything runs,
  * because the budget on this screen becomes the ceiling the contract enforces.
  */
-function DocumentEvidence({ doc, brief, onRun, onClear, busy, disabled }) {
+/*
+ * Saying the agent got something wrong.
+ *
+ * Deliberately not an editable field. A text box that writes straight into the
+ * brief would make the sentence the authority, and the budget in this brief
+ * becomes the ceiling the contract enforces - so "I typed it" is not a standard
+ * that figure should be able to meet.
+ *
+ * What goes back instead is a claim about the document, checked against the
+ * document. The verdict is shown with both lines: the one the person is
+ * probably looking at, and the one the agent used. Most of the time that
+ * settles it without anybody having to be believed.
+ */
+function CorrectionBox({ onCheck, onOverride, result, busy }) {
+  const [text, setText] = useState('');
+  const verdict = result && result.understood !== false ? result.verdict : null;
+  const tone = result
+    ? (result.applied ? 'ok' : result.understood === false ? 'warn' : 'warn')
+    : null;
+
+  const send = () => { if (text.trim()) onCheck(text.trim()); };
+
+  return (
+    <div className="fixit">
+      <label className="fixit-label" htmlFor="fixit-input">
+        Something read wrong? Say what it should be.
+      </label>
+      <div className="fixit-row">
+        <input
+          id="fixit-input"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') send(); }}
+          placeholder="e.g. delivery should be 7 days"
+          disabled={!!busy}
+          spellCheck={false}
+        />
+        <button className={`btn btn-quiet ${busy === 'correct' ? 'loading' : ''}`} onClick={send} disabled={!!busy || !text.trim()}>
+          {busy === 'correct' ? 'Checking' : 'Check the document'}
+        </button>
+      </div>
+      <p className="hint fixit-hint">
+        The agent re-reads the file before changing anything. It will not take your word for a figure.
+      </p>
+
+      {result && (
+        <div className={`fixit-result is-${tone}`} role="status">
+          <div className="fixit-msg">{result.message}</div>
+
+          {result.trapQuote && (
+            <div className="fixit-compare">
+              <div>
+                <span className="fixit-tag">You are looking at</span>
+                <span className="fixit-quote">&ldquo;{result.trapQuote}&rdquo;</span>
+              </div>
+              <div>
+                <span className="fixit-tag">The agent used</span>
+                <span className="fixit-quote">&ldquo;{result.currentQuote}&rdquo;</span>
+              </div>
+            </div>
+          )}
+          {!result.trapQuote && result.currentQuote && !result.applied && (
+            <div className="fixit-compare">
+              <div>
+                <span className="fixit-tag">The document says</span>
+                <span className="fixit-quote">&ldquo;{result.currentQuote}&rdquo;</span>
+              </div>
+            </div>
+          )}
+          {result.applied && result.quote && (
+            <div className="fixit-compare">
+              <div>
+                <span className="fixit-tag">Found in the document</span>
+                <span className="fixit-quote">&ldquo;{result.quote}&rdquo;</span>
+              </div>
+            </div>
+          )}
+
+          {result.canOverride && !result.applied && (
+            <div className="fixit-override">
+              <span className="hint">
+                If the document is wrong, you can set it anyway. It will be recorded as your figure,
+                not the document&rsquo;s, and the approver will see that.
+              </span>
+              <button
+                className="btn btn-quiet"
+                onClick={() => onOverride(text.trim())}
+                disabled={!!busy || !text.trim()}
+              >
+                Set it anyway
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DocumentEvidence({ doc, brief, onRun, onClear, busy, disabled, onCheck, onOverride, correction }) {
   if (!doc || !brief) return null;
 
   const ROWS = [
@@ -4908,8 +5039,12 @@ function DocumentEvidence({ doc, brief, onRun, onClear, busy, disabled }) {
       <dl className="docread-rows">
         {found.map((r) => {
           const s = src[r.key] || {};
+          const overridden = s.from === 'override';
           return (
-            <div key={r.key} className={`docread-row${s.insteadOf != null ? ' is-corrected' : ''}`}>
+            <div
+              key={r.key}
+              className={`docread-row${s.insteadOf != null ? ' is-corrected' : ''}${overridden ? ' is-overridden' : ''}`}
+            >
               <dt>{r.label}</dt>
               <dd>
                 <span className="docread-value mono">{r.show(brief)}</span>
@@ -4919,7 +5054,16 @@ function DocumentEvidence({ doc, brief, onRun, onClear, busy, disabled }) {
                     An earlier line in the document would have read {s.insteadOf}. This clause is the one about {r.label.toLowerCase()}.
                   </span>
                 )}
-                {!s.quote && <span className="docread-note">Matched from the document&rsquo;s wording.</span>}
+                {overridden && (
+                  <>
+                    <span className="docread-note">
+                      Set by {s.statedBy || 'a person'}, not found in the document.
+                      {s.documentSaid != null && ` The document says ${s.documentSaid}.`}
+                    </span>
+                    {s.documentQuote && <span className="docread-quote">&ldquo;{s.documentQuote}&rdquo;</span>}
+                  </>
+                )}
+                {!s.quote && !overridden && <span className="docread-note">Matched from the document&rsquo;s wording.</span>}
               </dd>
             </div>
           );
@@ -4932,6 +5076,8 @@ function DocumentEvidence({ doc, brief, onRun, onClear, busy, disabled }) {
           Nothing has been guessed. Add it above, or upload a document that states it.
         </div>
       )}
+
+      <CorrectionBox onCheck={onCheck} onOverride={onOverride} result={correction} busy={busy} />
 
       <div className="docread-foot">
         <span className="hint">
@@ -4952,6 +5098,7 @@ function DocumentEvidence({ doc, brief, onRun, onClear, busy, disabled }) {
 
 function RequestPanel({
   text, setText, onRun, onRunExtracted, onFile, sourceDoc, brief, busy, disabled, hasRun, onReset,
+  onCheck, onOverride, correction,
 }) {
   const fileRef = useRef(null);
   const [over, setOver] = useState(false);
@@ -5027,6 +5174,7 @@ function RequestPanel({
       <DocumentEvidence
         doc={sourceDoc} brief={brief} busy={busy} disabled={disabled}
         onRun={onRunExtracted} onClear={onReset}
+        onCheck={onCheck} onOverride={onOverride} correction={correction}
       />
 
       {!hasRun && (

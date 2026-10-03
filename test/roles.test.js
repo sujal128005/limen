@@ -1031,6 +1031,115 @@ async function run() {
     ok(JSON.stringify(row).includes(up.body.document.sha256), 'carrying the hash of the file that was read');
   });
 
+  await test('a correction is checked against the document, not taken on trust', async () => {
+    const c = await freshRun('doc-fix');
+    await upload(TENDER, { token: c.sales, workspace: c.ws });
+
+    const r = await call('POST', '/api/brief/correct', {
+      body: { text: 'delivery should be 7 days' }, token: c.sales, workspace: c.ws,
+    });
+    eq(r.status, 200, JSON.stringify(r.body).slice(0, 200));
+    eq(r.body.verdict, 'contradicted');
+    eq(r.body.applied, false, 'typing a figure must not change it');
+    eq(r.body.brief.deadlineDays, 14, 'the brief still holds what the document says');
+  });
+
+  await test('a correction pointing at the wrong clause is shown both lines', async () => {
+    const c = await freshRun('doc-trap');
+    await upload(TENDER, { token: c.sales, workspace: c.ws });
+    const r = await call('POST', '/api/brief/correct', {
+      body: { text: 'delivery should be 30 days' }, token: c.sales, workspace: c.ws,
+    });
+    eq(r.body.verdict, 'trap');
+    eq(r.body.applied, false);
+    ok(/Offer validity/i.test(r.body.trapQuote), r.body.trapQuote);
+    ok(/Delivery/i.test(r.body.currentQuote), r.body.currentQuote);
+  });
+
+  await test('an override changes the figure and says who changed it', async () => {
+    const c = await freshRun('doc-override');
+    await upload(TENDER, { token: c.sales, workspace: c.ws });
+    const r = await call('POST', '/api/brief/correct', {
+      body: { text: 'delivery should be 7 days', override: true }, token: c.sales, workspace: c.ws,
+    });
+    eq(r.status, 200);
+    eq(r.body.applied, true);
+    eq(r.body.overridden, true);
+    eq(r.body.brief.deadlineDays, 7);
+
+    const s = r.body.brief.sources.deadlineDays;
+    eq(s.from, 'override', 'labelled as a person\'s figure, not the document\'s');
+    eq(s.statedBy, 'sales', 'and whose');
+    eq(s.documentSaid, 14, 'with what the document actually said kept beside it');
+    ok(s.documentQuote, 'and the clause it said it in');
+
+    // The constraint the engine will enforce has to move with it, or the brief
+    // says one thing and the shortlist is screened against another.
+    const run = (await call('GET', '/api/run', { token: c.sales, workspace: c.ws })).body;
+    const deadline = run.brief.hardConstraints.find((x) => x.key === 'deadline');
+    eq(deadline.value, 7, 'the hard constraint was recomputed');
+  });
+
+  await test('a correction drops the shortlist it would have invalidated', async () => {
+    const c = await freshRun('doc-invalidate');
+    await upload(TENDER, { token: c.sales, workspace: c.ws });
+    await call('POST', '/api/candidates', { token: c.sales, workspace: c.ws });
+    await call('POST', '/api/negotiate', { token: c.sales, workspace: c.ws });
+    await call('POST', '/api/recommend', { token: c.sales, workspace: c.ws });
+    ok((await call('GET', '/api/run', { token: c.sales, workspace: c.ws })).body.recommendation,
+      'precondition: a recommendation exists');
+
+    await call('POST', '/api/brief/correct', {
+      body: { text: 'delivery should be 5 days', override: true }, token: c.sales, workspace: c.ws,
+    });
+    const run = (await call('GET', '/api/run', { token: c.sales, workspace: c.ws })).body;
+    ok(!run.recommendation, 'a shortlist screened against the old deadline must not survive it');
+  });
+
+  await test('a correction is refused once a human has approved the terms', async () => {
+    /*
+     * The approval is bound to the figures it was given. Moving one underneath
+     * it would turn a sanctioned purchase into a different purchase carrying
+     * the same signature.
+     */
+    const c = await freshRun('doc-locked');
+    await upload(TENDER, { token: c.sales, workspace: c.ws });
+    // Sourcing has to run again: the upload cleared the run the fixture made,
+    // which is the point of the test two above this one.
+    await call('POST', '/api/candidates', { token: c.sales, workspace: c.ws });
+    await call('POST', '/api/negotiate', { token: c.sales, workspace: c.ws });
+    await call('POST', '/api/recommend', { token: c.sales, workspace: c.ws });
+    await call('POST', '/api/policy', { body: { days: 30 }, token: c.head, workspace: c.ws });
+    await call('POST', '/api/purchase/submit', { token: c.sales, workspace: c.ws });
+    await call('POST', '/api/purchase/send-to-head', { token: c.sales, workspace: c.ws });
+    await call('POST', '/api/purchase/approve', { token: c.head, workspace: c.ws });
+    const r = await call('POST', '/api/brief/correct', {
+      body: { text: 'delivery should be 7 days', override: true }, token: c.sales, workspace: c.ws,
+    });
+    ok(r.status >= 400, `expected a refusal, got ${r.status}`);
+    ok(/already been approved/i.test(JSON.stringify(r.body)), JSON.stringify(r.body));
+  });
+
+  await test('a typed run has no document to check a correction against, and says so', async () => {
+    const c = await freshRun('doc-typed');
+    const r = await call('POST', '/api/brief/correct', {
+      body: { text: 'delivery should be 7 days' }, token: c.sales, workspace: c.ws,
+    });
+    ok(r.status >= 400, `expected a refusal, got ${r.status}`);
+    ok(/typed, not read from a document/i.test(JSON.stringify(r.body)), JSON.stringify(r.body));
+  });
+
+  await test('every correction lands in the audit trail, refused ones included', async () => {
+    const c = await freshRun('doc-fix-audit');
+    await upload(TENDER, { token: c.sales, workspace: c.ws });
+    await call('POST', '/api/brief/correct', { body: { text: 'delivery should be 7 days' }, token: c.sales, workspace: c.ws });
+    await call('POST', '/api/brief/correct', { body: { text: 'delivery should be 7 days', override: true }, token: c.sales, workspace: c.ws });
+    const audit = (await call('GET', '/api/audit', { token: c.sales, workspace: c.ws })).body;
+    const actions = (audit.entries || audit || []).map((e) => e.action);
+    ok(actions.includes('correction-refused'), `a refused correction is recorded too: ${actions.join(',')}`);
+    ok(actions.includes('correction-override'), `and the override: ${actions.join(',')}`);
+  });
+
   group('The seller\'s floor, over HTTP');
 
   /** A supplier in the seed directory that nobody has published a floor for. */

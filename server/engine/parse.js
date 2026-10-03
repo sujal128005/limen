@@ -241,6 +241,38 @@ async function llmParse(text) {
  * numeric fields - where a plausible wrong number is sitting in the same
  * document wearing the same units - need the labelled reader.
  */
+/*
+ * Rebuild everything that is derived from the four numeric fields.
+ *
+ * Extracted because two paths now change those fields: reading a document, and
+ * a correction the document confirmed. A derived figure recomputed in one place
+ * and not the other is how a brief ends up saying "within 14 days" in its
+ * constraints and sourcing against 30 - visible nowhere until a delivery is
+ * late. One function, called by both.
+ */
+function recomputeBrief(brief) {
+  brief.budgetPerUnit = brief.budgetTotal && brief.quantityKg
+    ? +(brief.budgetTotal / brief.quantityKg).toFixed(4)
+    : null;
+
+  brief.hardConstraints = [];
+  if (brief.material) brief.hardConstraints.push({ key: 'material', label: `Material is ${brief.material}`, value: brief.material });
+  if (brief.grade) brief.hardConstraints.push({ key: 'grade', label: `Grade is ${brief.grade}`, value: brief.grade });
+  if (brief.quantityKg) brief.hardConstraints.push({ key: 'quantity', label: `Quantity ${brief.quantityKg.toLocaleString()} kg`, value: brief.quantityKg });
+  if (brief.budgetTotal) brief.hardConstraints.push({ key: 'budget', label: `Total spend at or below $${brief.budgetTotal.toLocaleString()}`, value: brief.budgetTotal });
+  if (brief.deadlineDays) brief.hardConstraints.push({ key: 'deadline', label: `Delivered within ${brief.deadlineDays} days`, value: brief.deadlineDays });
+  for (const c of brief.certifications || []) brief.hardConstraints.push({ key: 'certification', label: `Certified ${c}`, value: c });
+  if (brief.minQuality) brief.hardConstraints.push({ key: 'quality', label: `Quality score at or above ${brief.minQuality}`, value: brief.minQuality });
+
+  brief.missing = [];
+  if (!brief.material) brief.missing.push('material');
+  if (!brief.quantityKg) brief.missing.push('quantity');
+  if (!brief.budgetTotal) brief.missing.push('budget');
+  if (!brief.deadlineDays) brief.missing.push('deadline');
+  brief.complete = brief.missing.length === 0;
+  return brief;
+}
+
 function parseDocument(text) {
   const brief = parseRequest(text);
   const { values, evidence } = readTender(text);
@@ -271,27 +303,7 @@ function parseDocument(text) {
     };
   }
 
-  /* Derived figures are recomputed, never carried over: budgetPerUnit from the
-     free-text pass would still be the old budget divided by the old quantity. */
-  brief.budgetPerUnit = brief.budgetTotal && brief.quantityKg
-    ? +(brief.budgetTotal / brief.quantityKg).toFixed(4)
-    : null;
-
-  brief.hardConstraints = [];
-  if (brief.material) brief.hardConstraints.push({ key: 'material', label: `Material is ${brief.material}`, value: brief.material });
-  if (brief.grade) brief.hardConstraints.push({ key: 'grade', label: `Grade is ${brief.grade}`, value: brief.grade });
-  if (brief.quantityKg) brief.hardConstraints.push({ key: 'quantity', label: `Quantity ${brief.quantityKg.toLocaleString()} kg`, value: brief.quantityKg });
-  if (brief.budgetTotal) brief.hardConstraints.push({ key: 'budget', label: `Total spend at or below $${brief.budgetTotal.toLocaleString()}`, value: brief.budgetTotal });
-  if (brief.deadlineDays) brief.hardConstraints.push({ key: 'deadline', label: `Delivered within ${brief.deadlineDays} days`, value: brief.deadlineDays });
-  for (const c of brief.certifications) brief.hardConstraints.push({ key: 'certification', label: `Certified ${c}`, value: c });
-  if (brief.minQuality) brief.hardConstraints.push({ key: 'quality', label: `Quality score at or above ${brief.minQuality}`, value: brief.minQuality });
-
-  brief.missing = [];
-  if (!brief.material) brief.missing.push('material');
-  if (!brief.quantityKg) brief.missing.push('quantity');
-  if (!brief.budgetTotal) brief.missing.push('budget');
-  if (!brief.deadlineDays) brief.missing.push('deadline');
-  brief.complete = brief.missing.length === 0;
+  recomputeBrief(brief);
 
   /*
    * `raw` does NOT become the document.
@@ -329,4 +341,4 @@ Use null for anything not stated. Reply with JSON only.
 
 Request: `;
 
-module.exports = { parseRequest, parseDocument, llmParse };
+module.exports = { parseRequest, parseDocument, recomputeBrief, llmParse };

@@ -250,6 +250,30 @@ So `server/engine/tender.js` finds the clause that is *about* delivery and reads
 
 The bytes are hashed on arrival and the hash is kept with the run and in the audit trail, so a year later "is this the document that purchase came from" is a comparison rather than a recollection.
 
+### When the agent reads it wrong
+
+The reader will sometimes be wrong, so the sourcing desk can say so in plain words — *"delivery should be 7 days"*. What it will not do is take their word for it.
+
+A correction is treated as **a claim about the document**, and the agent re-reads the file to check it. Four verdicts, and only the first changes anything on its own:
+
+| | |
+|---|---|
+| **confirmed** | The document does say that, in a clause about that field. Applied, with the new clause as its evidence. |
+| **trap** | The number is in the document — in a clause about something else. |
+| **contradicted** | The document states a different value where it sets that field. |
+| **absent** | The document does not mention it. |
+
+**The trap verdict is the one worth having.** Somebody reads page one of the sample, sees *"Offer validity: 30 days"*, and confidently corrects the delivery deadline to 30 — they are looking straight at the number. Saying "not found" would be both unhelpful and untrue. So the screen shows both lines:
+
+> **You are looking at** — *"c. Offer validity: 30 days from the bid closing date."*
+> **The agent used** — *"d. Delivery: Material shall be delivered within 14 days from the date of issue of the Purchase Order."*
+
+That settles it without anybody having to be believed.
+
+**Override is a second, deliberate act.** A buyer owns their requirement and a document can be wrong, so an unconfirmed figure can still be set — and it is then recorded as *stated by a person, not found in the document*, with what the document actually said kept beside it. The mark shows on the review screen and travels into the audit trail, so the head sanctioning the purchase can see which figures came from the tender and which did not. A correction also drops the shortlist below it, and is refused outright once a human has approved the terms.
+
+**No model is in this path.** `server/engine/correction.js` imports exactly one thing — the document reader. "The agent must not hallucinate" is not achieved by asking a model to be careful; it is achieved by not having a model there, and that is a property of the import graph, which a test asserts.
+
 PDF text extraction is `server/intake/pdftext.js` — written here rather than pulled in, because the alternatives were a 34 MB dependency and a wrapper around an old build of one. It handles filter chains (the sample is ASCII85 then Flate), font encodings, `/Differences` and ToUnicode CMaps. It does **not** do OCR: a scan has no text layer, and it says so plainly instead of returning an empty string the parser would read as a tender with no budget in it.
 
 ---
