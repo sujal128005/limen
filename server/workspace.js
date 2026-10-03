@@ -44,7 +44,15 @@ const getStore = () => store;
 
 function blankSession() {
   return {
+    /*
+     * The buying company. Null until somebody fills it in, and deliberately the
+     * first field here: everything below it belongs to one purchase, and this
+     * belongs to the company that makes them. resetSession carries it across.
+     */
+    profile: null,
+
     brief: null, candidates: [], negotiations: [], recommendation: null,
+    excludedByPolicy: [],   // suppliers the company's blocklist removed, kept so the run can say so
     dealId: null, settlementFacts: null, signature: null,
 
     submittedAt: null, submittedBy: null,        // sales: run finished, packet raised
@@ -155,10 +163,31 @@ async function saveSession(req) {
   return true;
 }
 
+/**
+ * Clear the run. Keep the company.
+ *
+ * This used to delete the whole workspace and make a new one, which was right
+ * when a workspace held nothing but a purchase in progress. It now also holds
+ * the buying company - its name, its categories, its blocked suppliers and the
+ * spending limits the head set - and none of that is run state. A company that
+ * has to re-enter its own procurement policy because somebody pressed "reset
+ * run" does not have a profile, it has a form.
+ *
+ * So the profile is carried across explicitly. Explicitly, rather than by
+ * making reset shallower, because the list of things a reset must destroy is
+ * long and load-bearing - a stale approval surviving a reset is how a purchase
+ * nobody looked at arrives at the finance desk sanctioned - and it is safer to
+ * keep destroying everything by default and name the one survivor.
+ */
 async function resetSession(req) {
   const id = workspaceIdFrom(req);
+  const prior = await store.load(id);
+  const profile = prior && prior.state ? prior.state.profile : null;
+
   await store.remove(id);
-  const row = await store.create(id, blankSession());
+  const fresh = blankSession();
+  if (profile) fresh.profile = profile;
+  const row = await store.create(id, fresh);
   row.state.id = id;
   req.session = row.state;
   req.sessionVersion = row.version;

@@ -916,8 +916,6 @@ async function run() {
     ok(dealsBefore === null || dealsBefore === undefined || true, 'sanity');
   });
 
-  group('A tender document, over HTTP');
-
   /*
    * The route takes raw bytes rather than JSON, so it needs its own caller. The
    * shape matters: these go over HTTP with a real token for the same reason
@@ -954,6 +952,222 @@ async function run() {
   const TENDER = require('fs').readFileSync(
     require('path').join(__dirname, '..', 'docs', 'samples', 'sample-tender-pet-resin.pdf')
   );
+
+  group('The company profile, over HTTP');
+
+  /*
+   * The split between behaviour and authority is a property of the routes, not
+   * of server/profile.js. A unit test proves applyBehaviour cannot write a
+   * limit; only a request with a real sales token proves the sourcing desk
+   * cannot. That distinction is the reason this whole file exists.
+   */
+
+  await test('the sourcing desk owns how the agent behaves', async () => {
+    const c = await freshRun('prof-behaviour');
+    const r = await call('PATCH', '/api/profile', {
+      body: {
+        company: { name: 'Nexa Materials Private Limited', country: 'India' },
+        categories: [{ id: 'polymers', label: 'Polymers', materials: ['PET resin'] }],
+        blockedSuppliers: ['SUP-C'],
+      },
+      token: c.sales, workspace: c.ws,
+    });
+    eq(r.status, 200, JSON.stringify(r.body).slice(0, 200));
+    eq(r.body.profile.company.name, 'Nexa Materials Private Limited');
+    eq(r.body.profile.categories.length, 1);
+    eq(r.body.profile.blockedSuppliers[0], 'SUP-C');
+  });
+
+  await test('the sourcing desk cannot set a spending limit, and is told who can', async () => {
+    const c = await freshRun('prof-guard');
+    const direct = await call('PATCH', '/api/profile/limits', {
+      body: { perDeal: 1_000_000 }, token: c.sales, workspace: c.ws,
+    });
+    ok(direct.status >= 400, `the limits route must refuse sales, got ${direct.status}`);
+
+    // And the interesting one: smuggling limits through the route sales DOES
+    // hold. Refused rather than ignored, because a caller that believes it set
+    // a limit is worse off than one that was told it cannot.
+    const smuggled = await call('PATCH', '/api/profile', {
+      body: { company: { name: 'X' }, limits: { perDeal: 1_000_000, autoApproveBelow: 999_999 } },
+      token: c.sales, workspace: c.ws,
+    });
+    ok(smuggled.status >= 400, `a limits key on the behaviour route must be refused, got ${smuggled.status}`);
+    ok(/head/i.test(JSON.stringify(smuggled.body)), JSON.stringify(smuggled.body));
+
+    const after = (await call('GET', '/api/profile', { token: c.sales, workspace: c.ws })).body;
+    eq(after.profile.limits.perDeal, null, 'and nothing was written');
+    eq(after.profile.company.name, '', 'the whole request was refused, not half-applied');
+  });
+
+  await test('the head owns the limits', async () => {
+    const c = await freshRun('prof-limits');
+    await call('PATCH', '/api/profile', {
+      body: { categories: [{ id: 'polymers', label: 'Polymers', materials: ['PET resin'] }] },
+      token: c.sales, workspace: c.ws,
+    });
+    const r = await call('PATCH', '/api/profile/limits', {
+      body: { perDeal: 5000, perCategory: { polymers: 1000 } }, token: c.head, workspace: c.ws,
+    });
+    eq(r.status, 200, JSON.stringify(r.body).slice(0, 200));
+    eq(r.body.profile.limits.perDeal, 5000);
+    eq(r.body.profile.limits.perCategory.polymers, 1000);
+    eq(r.body.profile.limitsUpdatedBy, 'head', 'and the record says who');
+  });
+
+  await test('the profile outlives the run', async () => {
+    /*
+     * The whole reason this is not session state. A company that has to
+     * re-enter its own procurement policy because somebody pressed "reset run"
+     * does not have a profile, it has a form.
+     */
+    const c = await freshRun('prof-durable');
+    await call('PATCH', '/api/profile', {
+      body: { company: { name: 'Nexa Materials' }, blockedSuppliers: ['SUP-C'] },
+      token: c.sales, workspace: c.ws,
+    });
+    await call('PATCH', '/api/profile/limits', { body: { perDeal: 5000 }, token: c.head, workspace: c.ws });
+
+    await call('POST', '/api/reset', { token: c.sales, workspace: c.ws });
+
+    const after = (await call('GET', '/api/profile', { token: c.sales, workspace: c.ws })).body;
+    eq(after.profile.company.name, 'Nexa Materials', 'the company survived a reset');
+    eq(after.profile.limits.perDeal, 5000, 'and so did the limits');
+    eq(after.profile.blockedSuppliers[0], 'SUP-C');
+
+    const run = (await call('GET', '/api/run', { token: c.sales, workspace: c.ws })).body;
+    ok(!run.brief, 'while the run itself was genuinely cleared');
+  });
+
+  await test('a request above the company limit is refused before anything is sourced', async () => {
+    const c = await freshRun('prof-ceiling');
+    const before = (await call('GET', '/api/run', { token: c.sales, workspace: c.ws })).body;
+    await call('PATCH', '/api/profile/limits', { body: { perDeal: 500 }, token: c.head, workspace: c.ws });
+
+    const r = await call('POST', '/api/brief', { body: { text: REQUEST }, token: c.sales, workspace: c.ws });
+    ok(r.status >= 400, `expected a refusal, got ${r.status}`);
+    const msg = JSON.stringify(r.body);
+    ok(/Nothing has been sourced/i.test(msg), msg);
+    ok(/head/i.test(msg), 'and says whose decision it is to raise');
+
+    /*
+     * The refusal happens before startNewRun, so the workspace is not merely
+     * missing a new brief - it still holds the old one, untouched. That is the
+     * stronger property and the first draft of this test missed it by asserting
+     * the brief was absent: a refused request that had already wiped the
+     * previous run would have passed.
+     */
+    const after = (await call('GET', '/api/run', { token: c.sales, workspace: c.ws })).body;
+    eq(JSON.stringify(after.brief), JSON.stringify(before.brief), 'the previous run is untouched');
+    eq(after.candidates.length, before.candidates.length, 'and no new supplier was screened');
+  });
+
+  await test('a tender document is not a way around the company limit', async () => {
+    const c = await freshRun('prof-ceiling-doc');
+    await call('PATCH', '/api/profile/limits', { body: { perDeal: 500 }, token: c.head, workspace: c.ws });
+    const r = await upload(TENDER, { token: c.sales, workspace: c.ws });
+    ok(r.status >= 400, `a document above the limit must be refused too, got ${r.status}`);
+  });
+
+  await test('a category limit binds the material in that category', async () => {
+    const c = await freshRun('prof-category');
+    await call('PATCH', '/api/profile', {
+      body: { categories: [{ id: 'polymers', label: 'Polymers', materials: ['PET resin'] }] },
+      token: c.sales, workspace: c.ws,
+    });
+    await call('PATCH', '/api/profile/limits', {
+      body: { perDeal: 50000, perCategory: { polymers: 500 } }, token: c.head, workspace: c.ws,
+    });
+    const r = await call('POST', '/api/brief', { body: { text: REQUEST }, token: c.sales, workspace: c.ws });
+    ok(r.status >= 400, `the category limit must bind even under a generous per-deal limit, got ${r.status}`);
+    ok(/Polymers/.test(JSON.stringify(r.body)), JSON.stringify(r.body));
+  });
+
+  await test('a blocked supplier never reaches the shortlist, and the run says so', async () => {
+    const c = await freshRun('prof-block');
+    const before = (await call('GET', '/api/run', { token: c.sales, workspace: c.ws })).body;
+    const victim = before.candidates[0].supplierId;
+
+    await call('PATCH', '/api/profile', { body: { blockedSuppliers: [victim] }, token: c.sales, workspace: c.ws });
+    await call('POST', '/api/brief', { body: { text: REQUEST }, token: c.sales, workspace: c.ws });
+    const r = await call('POST', '/api/candidates', { token: c.sales, workspace: c.ws });
+
+    eq(r.status, 200);
+    ok(!r.body.candidates.some((x) => x.supplierId === victim), `${victim} must not be screened`);
+    ok(r.body.excludedByPolicy.some((x) => x.supplierId === victim), 'and the exclusion must be reported');
+    /*
+     * The reporting matters more than the blocking. A blocklist is the easiest
+     * way in this product to hide a cheaper supplier from a buyer, and an
+     * exclusion nobody can see is indistinguishable from the engine deciding on
+     * its own.
+     */
+    ok(/blocked/i.test(JSON.stringify(r.body.excludedByPolicy)), JSON.stringify(r.body.excludedByPolicy));
+  });
+
+  group('Approval by a standing rule');
+
+  await test('automatic approval cannot be set past its cap, even by the head', async () => {
+    const c = await freshRun('prof-autocap');
+    await call('PATCH', '/api/profile/limits', { body: { perDeal: 10000 }, token: c.head, workspace: c.ws });
+    const r = await call('PATCH', '/api/profile/limits', {
+      body: { autoApproveBelow: 9999 }, token: c.head, workspace: c.ws,
+    });
+    eq(r.status, 200);
+    const cap = 10000 * r.body.profile.autoApproveMaxFraction;
+    eq(r.body.profile.limits.autoApproveBelow, cap, 'capped to the fraction of the per-deal limit');
+    ok(r.body.notes.length, 'and said so rather than silently clamping');
+    // The head is capped too. Separation of duties that the duty-holder can
+    // switch off is not separation of duties.
+  });
+
+  await test('a purchase under the threshold is approved by rule, and the record says no person did', async () => {
+    const c = await freshRun('prof-auto');
+    await call('PATCH', '/api/profile/limits', {
+      body: { perDeal: 10000, autoApproveBelow: 2000 }, token: c.head, workspace: c.ws,
+    });
+    await call('POST', '/api/policy', { body: { days: 30 }, token: c.head, workspace: c.ws });
+    await call('POST', '/api/purchase/submit', { token: c.sales, workspace: c.ws });
+    const r = await call('POST', '/api/purchase/send-to-head', { token: c.sales, workspace: c.ws });
+
+    eq(r.status, 200, JSON.stringify(r.body).slice(0, 200));
+    ok(r.body.autoApproved, `the purchase is under 2,000 so it should auto-approve: ${JSON.stringify(r.body).slice(0, 300)}`);
+    eq(r.body.autoApproved.auto, true);
+    eq(r.body.autoApproved.method, 'rule', 'not a typed name');
+    eq(r.body.autoApproved.rule.autoApproveBelow, 2000, 'the rule is copied into the record');
+    eq(r.body.autoApproved.rule.setBy, 'head', 'naming who set it');
+
+    const audit = (await call('GET', '/api/audit', { token: c.sales, workspace: c.ws })).body;
+    const actions = (audit.entries || audit || []).map((e) => e.action);
+    ok(actions.includes('auto-approve'), `recorded as auto-approve, not approve: ${actions.join(',')}`);
+    ok(!actions.includes('approve'), 'and never as a human approval');
+  });
+
+  await test('a purchase above the threshold still waits for a person', async () => {
+    const c = await freshRun('prof-auto-no');
+    await call('PATCH', '/api/profile/limits', {
+      body: { perDeal: 10000, autoApproveBelow: 100 }, token: c.head, workspace: c.ws,
+    });
+    await call('POST', '/api/policy', { body: { days: 30 }, token: c.head, workspace: c.ws });
+    await call('POST', '/api/purchase/submit', { token: c.sales, workspace: c.ws });
+    const r = await call('POST', '/api/purchase/send-to-head', { token: c.sales, workspace: c.ws });
+    eq(r.status, 200);
+    eq(r.body.autoApproved, null, 'a purchase over the threshold is not approved by rule');
+    eq(await stateOf(c), 'HEAD_APPROVAL', 'it is waiting on the head');
+  });
+
+  await test('with no threshold set, every purchase waits for a person', async () => {
+    // The default, and the one worth defaulting to. A blank profile must mean
+    // "nothing automated", never "nothing required".
+    const c = await freshRun('prof-auto-default');
+    await call('POST', '/api/policy', { body: { days: 30 }, token: c.head, workspace: c.ws });
+    await call('POST', '/api/purchase/submit', { token: c.sales, workspace: c.ws });
+    const r = await call('POST', '/api/purchase/send-to-head', { token: c.sales, workspace: c.ws });
+    eq(r.body.autoApproved, null);
+    eq(await stateOf(c), 'HEAD_APPROVAL');
+  });
+
+  group('A tender document, over HTTP');
+
 
   await test('a buyer can start a run from a tender document', async () => {
     const c = await freshRun('doc-read');

@@ -7,6 +7,9 @@ const { summary } = require('./harness');
   if (require('fs').existsSync(require('path').join(__dirname, 'seller-floor.test.js'))) {
     await require('./seller-floor.test').run();
   }
+  if (require('fs').existsSync(require('path').join(__dirname, 'profile.test.js'))) {
+    await require('./profile.test').run();
+  }
   if (require('fs').existsSync(require('path').join(__dirname, 'document.test.js'))) {
     await require('./document.test').run();
   }

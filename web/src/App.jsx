@@ -243,6 +243,9 @@ const api = {
   post(p, body, opts) {
     return request(p, { method: 'POST', body: body || {}, ...opts });
   },
+  patch(p, body, opts) {
+    return request(p, { method: 'PATCH', body: body || {}, ...opts });
+  },
 
   /*
    * Upload a tender document.
@@ -716,21 +719,21 @@ const ROLE_DESKS = {
     short: 'Sales',
     blurb: 'Runs the sourcing, reviews what the agent found, and sends it up for approval.',
     home: 'run',
-    nav: ['run', 'review', 'thread', 'suppliers', 'documents', 'audit', 'adversary'],
+    nav: ['run', 'review', 'thread', 'suppliers', 'company', 'documents', 'audit', 'adversary'],
   },
   head: {
     label: 'Head / Manager',
     short: 'Head',
     blurb: 'Owns the spending policy and sanctions the amount. Does not pay.',
     home: 'approvals',
-    nav: ['approvals', 'thread', 'suppliers', 'documents', 'audit', 'adversary'],
+    nav: ['approvals', 'thread', 'suppliers', 'company', 'documents', 'audit', 'adversary'],
   },
   finance: {
     label: 'Finance / Payments',
     short: 'Finance',
     blurb: 'Executes an authorised payment. Cannot raise one or approve one.',
     home: 'payments',
-    nav: ['payments', 'thread', 'suppliers', 'documents', 'audit', 'adversary'],
+    nav: ['payments', 'thread', 'suppliers', 'company', 'documents', 'audit', 'adversary'],
   },
 };
 
@@ -2343,6 +2346,227 @@ const AUDIT_LABEL = {
   reset: 'Cleared the workspace',
 };
 
+/* ------------------------------------------------------------- the company */
+
+/*
+ * The buying company, in two halves that look like two halves.
+ *
+ * The product rests on one sentence: a company can change how its agent
+ * BEHAVES, and cannot change what its agent is ALLOWED to do. A settings page
+ * is exactly where that sentence gets quietly broken, because on a settings
+ * page a spending limit looks like just another field with a number in it.
+ *
+ * So the two halves are drawn apart, labelled by who may write them, and the
+ * locked half carries the figure the chain is actually holding beside the one
+ * this page states. That gap is the most honest thing this screen can show: the
+ * number here is what the company INTENDS, and the number the escrow will
+ * accept is contract state no part of this application can write.
+ */
+function CompanyView({ data, loading, role, onSaveBehaviour, onSaveLimits, notes, error }) {
+  const p = data && data.profile;
+  const onChain = data && data.onChain;
+  const mayWriteLimits = role === 'head';
+
+  const [company, setCompany] = useState(null);
+  const [blocked, setBlocked] = useState('');
+  const [preferred, setPreferred] = useState('');
+  const [cats, setCats] = useState('');
+  const [perDeal, setPerDeal] = useState('');
+  const [autoBelow, setAutoBelow] = useState('');
+
+  /* Seeded from the server once it arrives, then left alone: re-seeding on
+     every render would fight the person typing. */
+  useEffect(() => {
+    if (!p || company !== null) return;
+    setCompany({ ...p.company });
+    setBlocked(p.blockedSuppliers.join(', '));
+    setPreferred(p.preferredSuppliers.join(', '));
+    setCats(p.categories.map((c) => `${c.label}: ${c.materials.join(', ')}`).join('\n'));
+  }, [p, company]);
+
+  /*
+   * The limit boxes are re-seeded on every save, and they have to be.
+   *
+   * The server clamps: an automatic-approval threshold above its cap comes back
+   * lowered, and a category ceiling above the per-purchase limit comes back
+   * brought down. Leaving the typed figure on screen would show a person 8,000
+   * in a box the server is holding at 1,800 - a settings page quietly
+   * disagreeing with the system it configures, which is the exact failure this
+   * screen exists to make impossible one level up.
+   *
+   * Keyed on when the limits were last written rather than on their values, so
+   * a save that changes nothing still refreshes the boxes, and typing between
+   * saves is left alone.
+   */
+  const limitsStamp = p ? p.limitsUpdatedAt : null;
+  useEffect(() => {
+    if (!p) return;
+    setPerDeal(p.limits.perDeal == null ? '' : String(p.limits.perDeal));
+    setAutoBelow(String(p.limits.autoApproveBelow || 0));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [limitsStamp, p === null]);
+
+  if (loading && !p) return <section className="section"><Working title="Loading the company profile" sub="One request." /></section>;
+  if (!p) return <section className="section"><p className="sub">{error || 'No company profile yet.'}</p></section>;
+
+  const list = (s) => s.split(/[,\n]/).map((x) => x.trim()).filter(Boolean);
+  const parseCats = (s) => s.split('\n').map((line) => {
+    const [label, mats] = line.split(':');
+    if (!label || !label.trim()) return null;
+    return { id: label.trim(), label: label.trim(), materials: (mats || '').split(',').map((m) => m.trim()).filter(Boolean) };
+  }).filter(Boolean);
+
+  const stated = p.limits.perDeal;
+  const enforced = onChain && onChain.active ? onChain.maxPerDeal : null;
+  const gap = stated != null && enforced != null && Math.abs(stated - enforced) > 0.005;
+
+  return (
+    <section className="section">
+      <div className="view-head">
+        <div className="eyebrow">Company</div>
+        <h2>{p.company.name || 'Your company'}</h2>
+        <p className="sub">
+          What this company buys, who it will deal with, and what it is willing to spend.
+          This outlives every individual purchase.
+        </p>
+      </div>
+
+      {error && <div className="banner err" role="alert"><span>{error}</span></div>}
+      {notes && notes.map((n) => <div key={n} className="banner warn" role="status"><span>{n}</span></div>)}
+
+      {/* ---- behaviour */}
+      <div className="cohalf">
+        <div className="cohalf-head">
+          <div>
+            <h3>How the agent behaves</h3>
+            <p className="sub">The sourcing desk owns this. Getting it wrong produces a worse purchase, never an unauthorised one.</p>
+          </div>
+          <span className="pill">Sourcing desk</span>
+        </div>
+
+        <div className="cofield">
+          <label htmlFor="co-name">Company name</label>
+          <input id="co-name" value={company?.name || ''} onChange={(e) => setCompany({ ...company, name: e.target.value })} />
+        </div>
+        <div className="cofield">
+          <label htmlFor="co-id">Registered number</label>
+          <input id="co-id" value={company?.registeredId || ''} onChange={(e) => setCompany({ ...company, registeredId: e.target.value })} placeholder="GSTIN or CIN" />
+        </div>
+        <div className="cofield">
+          <label htmlFor="co-cats">Categories</label>
+          <textarea
+            id="co-cats" rows={4} value={cats} onChange={(e) => setCats(e.target.value)}
+            placeholder={'Polymers: PET resin, HDPE granules\nMetals: aluminium ingot'}
+            spellCheck={false}
+          />
+          <span className="hint">One per line, <span className="mono">Label: material, material</span>. A limit can then be set per category.</span>
+        </div>
+        <div className="cofield">
+          <label htmlFor="co-pref">Preferred suppliers</label>
+          <input id="co-pref" value={preferred} onChange={(e) => setPreferred(e.target.value)} placeholder="SUP-A, SUP-D" />
+          <span className="hint">Moves them up a shortlist they already earned a place on. It cannot promote a supplier past a hard requirement.</span>
+        </div>
+        <div className="cofield">
+          <label htmlFor="co-block">Blocked suppliers</label>
+          <input id="co-block" value={blocked} onChange={(e) => setBlocked(e.target.value)} placeholder="SUP-C" />
+          <span className="hint">Removed before anything is negotiated. Every exclusion is named on the run, so a blocklist cannot quietly hide a cheaper supplier.</span>
+        </div>
+
+        <div className="cofoot">
+          <button
+            className="btn btn-primary"
+            disabled={loading}
+            onClick={() => onSaveBehaviour({
+              company,
+              categories: parseCats(cats),
+              preferredSuppliers: list(preferred),
+              blockedSuppliers: list(blocked),
+            })}
+          >
+            Save
+          </button>
+        </div>
+      </div>
+
+      {/* ---- authority */}
+      <div className={`cohalf is-authority${mayWriteLimits ? '' : ' is-locked'}`}>
+        <div className="cohalf-head">
+          <div>
+            <h3>What the agent is allowed to spend</h3>
+            <p className="sub">
+              The head owns this, and only the head.
+              {!mayWriteLimits && ' You can read it here; you cannot change it.'}
+            </p>
+          </div>
+          <span className="pill pill-lock">Head only</span>
+        </div>
+
+        <div className="cofield">
+          <label htmlFor="co-perdeal">Limit on a single purchase</label>
+          <input
+            id="co-perdeal" value={perDeal} onChange={(e) => setPerDeal(e.target.value)}
+            disabled={!mayWriteLimits} inputMode="decimal" placeholder="5000"
+          />
+          <span className="hint">A request above this is refused at the brief, before any supplier is contacted.</span>
+        </div>
+
+        <div className="cofield">
+          <label htmlFor="co-auto">Approve automatically below</label>
+          <input
+            id="co-auto" value={autoBelow} onChange={(e) => setAutoBelow(e.target.value)}
+            disabled={!mayWriteLimits} inputMode="decimal" placeholder="0"
+          />
+          <span className="hint">
+            0 means every purchase waits for a person. Capped at {Math.round((p.autoApproveMaxFraction || 0.2) * 100)}% of
+            the single-purchase limit, including for the head: separation of duties the duty-holder can switch off is not separation.
+          </span>
+        </div>
+
+        {/*
+          * The gap, and the reason this screen exists at all. The figure above
+          * is what the company says its limit is. The figure below is what the
+          * escrow contract will actually accept, and no part of this
+          * application can write it.
+          */}
+        <div className="cochain">
+          <div className="cochain-row">
+            <span className="cochain-k">Stated here</span>
+            <span className="cochain-v mono">{stated == null ? 'not set' : `$${Number(stated).toLocaleString()}`}</span>
+          </div>
+          <div className="cochain-row">
+            <span className="cochain-k">Enforced on chain</span>
+            <span className="cochain-v mono">
+              {!onChain ? 'chain unreachable' : !onChain.active ? 'no policy published' : `$${Number(enforced).toLocaleString()}`}
+            </span>
+          </div>
+          <p className={`cochain-note${gap ? ' is-gap' : ''}`}>
+            {gap
+              ? 'These disagree. The contract holds the lower authority in practice: whatever this page says, '
+                + 'the escrow accepts only what the head last published on chain.'
+              : 'The limit above is this company’s stated intent. What the escrow will accept is the policy '
+                + 'the head published on chain, which this application cannot write.'}
+          </p>
+        </div>
+
+        {mayWriteLimits && (
+          <div className="cofoot">
+            <button
+              className="btn btn-primary"
+              disabled={loading}
+              onClick={() => onSaveLimits({
+                perDeal: perDeal === '' ? null : Number(perDeal),
+                autoApproveBelow: Number(autoBelow || 0),
+              })}
+            >
+              Save limits
+            </button>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function AuditView({ entries, loading, onExport }) {
   if (loading) return <Working title="Reading the audit trail" sub="Every transition, in the order it happened." />;
   return (
@@ -2414,6 +2638,13 @@ function Desk() {
   /* What the brief was read out of, when it was read out of a file rather than
      typed. Null for a typed run, which is why the evidence panel can key off it. */
   const [sourceDoc, setSourceDoc] = useState(null);
+  /* The buying company. Loaded when the screen is opened rather than on
+     sign-in: it is not needed to run a purchase and a workspace that has
+     never had one should not pay for a request on every boot. */
+  const [companyProfile, setCompanyProfile] = useState(null);
+  const [companyBusy, setCompanyBusy] = useState(false);
+  const [companyNotes, setCompanyNotes] = useState([]);
+  const [companyErr, setCompanyErr] = useState(null);
   /* The last correction the agent checked, with its verdict and quotes. */
   const [correction, setCorrection] = useState(null);
   const [candidates, setCandidates] = useState(null);
@@ -2703,6 +2934,18 @@ function Desk() {
       .finally(() => { if (live) setSuppliersBusy(false); });
     return () => { live = false; };
   }, [session, view, suppliers]);
+
+  useEffect(() => {
+    if (!session || view !== 'company') return;
+    let live = true;
+    setCompanyBusy(!companyProfile);
+    api.get('/api/profile')
+      .then((r) => { if (live) { setCompanyProfile(r); setCompanyErr(null); } })
+      .catch((e) => { if (live) setCompanyErr(e.message); })
+      .finally(() => { if (live) setCompanyBusy(false); });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, view]);
 
   useEffect(() => {
     if (!session || view !== 'audit') return;
@@ -3291,6 +3534,38 @@ function Desk() {
     setBusy(null);
   }
 
+  /*
+   * Two savers, not one, and they call two different routes.
+   *
+   * A single save that posted the whole profile would put one permission check
+   * between the sourcing desk and the company's spending limits, and that check
+   * would live on the server where it belongs - but the client would still be
+   * sending them together, and the first person to refactor the route would
+   * have to rediscover why they are apart. Separate all the way down is harder
+   * to collapse by accident.
+   */
+  async function saveBehaviour(patch) {
+    setCompanyBusy(true); setCompanyErr(null); setCompanyNotes([]);
+    try {
+      const r = await api.patch('/api/profile', patch);
+      setCompanyProfile((cur) => ({ ...(cur || {}), profile: r.profile }));
+      setCompanyNotes(r.notes || []);
+    } catch (e) { setCompanyErr(e.message); } finally { setCompanyBusy(false); }
+  }
+
+  async function saveLimits(patch) {
+    setCompanyBusy(true); setCompanyErr(null); setCompanyNotes([]);
+    try {
+      const r = await api.patch('/api/profile/limits', patch);
+      setCompanyProfile((cur) => ({ ...(cur || {}), profile: r.profile }));
+      setCompanyNotes(r.notes || []);
+      /* The on-chain figure may now disagree with the stated one, and that gap
+         is the most useful thing this screen shows. Re-read it rather than
+         leaving a stale number beside a fresh one. */
+      api.get('/api/profile').then((full) => setCompanyProfile(full)).catch(() => {});
+    } catch (e) { setCompanyErr(e.message); } finally { setCompanyBusy(false); }
+  }
+
   async function resetAll() {
     await api.post('/api/reset');
     setStage('request'); setBrief(null); setSourceDoc(null); setCorrection(null); setCandidates(null); setNegotiations(null);
@@ -3549,6 +3824,18 @@ function Desk() {
                 busy={actBusy}
                 error={threadErr}
                 sealed={!!purchase && purchase.state === 'SETTLED'}
+              />
+            )}
+
+            {view === 'company' && (
+              <CompanyView
+                data={companyProfile}
+                loading={companyBusy}
+                role={session && session.role}
+                onSaveBehaviour={saveBehaviour}
+                onSaveLimits={saveLimits}
+                notes={companyNotes}
+                error={companyErr}
               />
             )}
 
@@ -4066,6 +4353,10 @@ const NAV_ITEMS = {
   /* Was "Ledger", which was the name of a component in the right-hand rail
      rather than a screen. Nobody could have guessed what it held, because it
      held nothing. */
+  /* The buying company, as opposed to the current purchase. Visible to every
+     desk because the limits on it are what they all work under; writable in two
+     halves, and the server decides which half each desk may touch. */
+  company: { label: 'Company', d: 'M4 20V8l8-4 8 4v12M9 20v-6h6v6' },
   audit: { label: 'Audit trail', d: 'M5 5h14v14H5zM5 10h14M10 10v9' },
   thread: { label: 'Messages', d: 'M4 5h16v11H9l-5 4z' },
   adversary: { label: 'Adversary', d: 'M12 3l8 4-8 4-8-4zM4 7l8 4 8-4M4 17l8 4 8-4M4 12l8 4 8-4' },

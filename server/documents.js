@@ -246,21 +246,37 @@ function contentHash(doc) {
 }
 
 /*
- * @param {object} [proof] when the head signed with a key:
- *                         { method: 'wallet', address, signature }
+ * @param {object} [proof] how the approval was made:
+ *                         { method: 'wallet', address, signature }  a key
+ *                         { method: 'rule', rule }                  a standing threshold
+ *                         anything else                             a typed name
  *
  * The method travels with the record because every document has to say which
  * one it was. A typed name and a key signature are different kinds of evidence,
  * and a document that presented them identically would be the dishonest part.
+ *
+ * 'rule' was added when the company profile gained an auto-approve threshold,
+ * and it had to be its own method rather than borrowing 'name'. A purchase that
+ * no person looked at would otherwise appear on its own agreement as signed by
+ * someone called "Automatic approval", which reads exactly like a person who
+ * typed their name - the one reading the document must not be allowed to make.
+ * The rule that allowed it is copied into the record, so the agreement says
+ * what the threshold was and who set it rather than pointing at a setting that
+ * may since have changed.
  */
 function signAgreement(session, doc, signer, proof) {
   const name = String(signer || '').trim();
   if (name.length < 2) throw new Error('Enter the approver name to sign.');
   if (name.length > 80) throw new Error('Name is too long.');
 
-  const attestation = proof && proof.method === 'wallet'
-    ? { method: 'wallet', address: proof.address, signature: proof.signature }
-    : { method: 'name' };
+  let attestation;
+  if (proof && proof.method === 'wallet') {
+    attestation = { method: 'wallet', address: proof.address, signature: proof.signature };
+  } else if (proof && proof.method === 'rule') {
+    attestation = { method: 'rule', rule: proof.rule || null, noHumanApprover: true };
+  } else {
+    attestation = { method: 'name' };
+  }
 
   const prior = session.signature;
   if (prior && prior.signed) {
