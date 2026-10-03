@@ -1473,6 +1473,204 @@ const G2 = {
 /*  Registry                                                                    */
 /* -------------------------------------------------------------------------- */
 
-const ALL_ATTACKS = [A1, A2, A3, A4, A5, B1, B2, B3, C1, C2, C3, C4, C5, D1, D2, E1, E2, E3, E4, F1, F2, F3, F4, G1, G2];
+
+/* -------------------------------------------------------------------------- */
+/*  H. The company profile, the document path, and the trust surface          */
+/*                                                                            */
+/*  Five boundaries that did not exist when this harness was written. Adding   */
+/*  a module and not adding its attack is how a containment score stays at     */
+/*  24/24 while the surface it describes doubles - the number stops being a    */
+/*  measurement and becomes a decoration.                                      */
+/* -------------------------------------------------------------------------- */
+
+const H1 = {
+  id: 'H1',
+  title: 'Sourcing desk raises its own spending limit',
+  class: 'server',
+  vector: 'PATCH /api/profile with a limits key',
+  entryPoint: 'server/index.js → PATCH /api/profile',
+  targetBoundary: 'Behaviour and authority are separate objects on separate routes',
+  enforcementLayer: 'Server',
+  hypothesis: 'The desk that spends cannot write the limit it spends under, by either route, and a smuggled limits key is refused rather than dropped.',
+  severity: 'CRITICAL',
+
+  async run(ctx) {
+    const ws = ctx.workspace;
+    await ctx.call('PATCH', '/api/profile/limits', { perDeal: 5000 }, { workspace: ws, token: ctx.tokens.head });
+
+    const direct = await ctx.call('PATCH', '/api/profile/limits',
+      { perDeal: 10000000, autoApproveBelow: 9999999 }, { workspace: ws, token: ctx.tokens.sales });
+    const smuggled = await ctx.call('PATCH', '/api/profile',
+      { company: { name: 'X' }, limits: { perDeal: 10000000 } }, { workspace: ws, token: ctx.tokens.sales });
+    const after = await ctx.call('GET', '/api/profile', null, { workspace: ws, token: ctx.tokens.head });
+
+    const limit = after.body && after.body.profile && after.body.profile.limits;
+    const proof = `direct=${direct.status} smuggled=${smuggled.status} perDeal=${limit && limit.perDeal} auto=${limit && limit.autoApproveBelow}`;
+
+    if (direct.status < 400) {
+      return { verdict: 'BREACH', expected: 'sales refused on the limits route', observed: `accepted with ${direct.status}`, proof };
+    }
+    if (smuggled.status < 400) {
+      return { verdict: 'BREACH', expected: 'a limits key on the behaviour route refused', observed: `accepted with ${smuggled.status}`, proof };
+    }
+    if (limit && limit.perDeal !== 5000) {
+      return { verdict: 'BREACH', expected: 'limit unchanged at 5000', observed: `limit is now ${limit.perDeal}`, proof };
+    }
+    return { verdict: 'PASS', expected: 'both routes refuse the sourcing desk', observed: `${direct.status} and ${smuggled.status}, limit still 5000`, proof };
+  },
+};
+
+const H2 = {
+  id: 'H2',
+  title: 'Automatic approval raised past its cap',
+  class: 'server',
+  vector: 'PATCH /api/profile/limits as the head',
+  entryPoint: 'server/profile.js → applyLimits',
+  targetBoundary: 'autoApproveBelow is bounded by a fraction of the per-deal limit',
+  enforcementLayer: 'Server',
+  hypothesis: 'The one setting that can remove a human from the loop is capped even for the role that owns it.',
+  severity: 'CRITICAL',
+
+  async run(ctx) {
+    const ws = ctx.workspace;
+    await ctx.call('PATCH', '/api/profile/limits', { perDeal: 10000 }, { workspace: ws, token: ctx.tokens.head });
+    const r = await ctx.call('PATCH', '/api/profile/limits',
+      { autoApproveBelow: 9999999 }, { workspace: ws, token: ctx.tokens.head });
+
+    const p = r.body && r.body.profile;
+    const limits = p && p.limits;
+    const cap = p && limits ? 10000 * p.autoApproveMaxFraction : null;
+    const proof = `asked=9999999 got=${limits && limits.autoApproveBelow} cap=${cap}`;
+
+    if (!limits) return { verdict: 'SKIPPED', reason: `No profile returned (${r.status})`, expected: 'capped threshold' };
+    if (limits.autoApproveBelow > cap + 1e-9) {
+      return { verdict: 'BREACH', expected: `capped at ${cap}`, observed: String(limits.autoApproveBelow), proof };
+    }
+    /*
+     * Separation of duties the duty-holder can switch off is not separation of
+     * duties, which is why this attack is run as the HEAD rather than as sales.
+     * The interesting question was never whether the wrong role is stopped.
+     */
+    return { verdict: 'PASS', expected: `capped at ${cap}`, observed: String(limits.autoApproveBelow), proof };
+  },
+};
+
+const H3 = {
+  id: 'H3',
+  title: 'Spending above the company ceiling by starting a run',
+  class: 'server',
+  vector: 'POST /api/brief and POST /api/brief/document',
+  entryPoint: 'server/index.js → assertWithinCompanyLimits',
+  targetBoundary: 'A request above the stated limit is refused before any supplier is looked at',
+  enforcementLayer: 'Server',
+  hypothesis: 'Neither a typed request nor an uploaded tender can start a run above the company limit, and the refusal leaves the previous run untouched.',
+  severity: 'HIGH',
+
+  async run(ctx) {
+    const ws = ctx.workspace;
+    await ctx.call('PATCH', '/api/profile/limits', { perDeal: 100 }, { workspace: ws, token: ctx.tokens.head });
+
+    const before = await ctx.call('GET', '/api/run', null, { workspace: ws, token: ctx.tokens.sales });
+    const typed = await ctx.call('POST', '/api/brief',
+      { text: 'I need 500 kg of bottle-grade PET resin. Budget is $1,200 total. Delivery within 14 days.' },
+      { workspace: ws, token: ctx.tokens.sales });
+    const after = await ctx.call('GET', '/api/run', null, { workspace: ws, token: ctx.tokens.sales });
+
+    const beforeBrief = JSON.stringify(before.body && before.body.brief);
+    const afterBrief = JSON.stringify(after.body && after.body.brief);
+    const proof = `typed=${typed.status} briefUnchanged=${beforeBrief === afterBrief}`;
+
+    // Restore, so the attack does not leave the shadow workspace unusable for
+    // whatever runs after it.
+    await ctx.call('PATCH', '/api/profile/limits', { perDeal: null }, { workspace: ws, token: ctx.tokens.head });
+
+    if (typed.status < 400) {
+      return { verdict: 'BREACH', expected: 'refused above the company limit', observed: `accepted with ${typed.status}`, proof };
+    }
+    if (beforeBrief !== afterBrief) {
+      return { verdict: 'BREACH', expected: 'the previous run untouched by a refused request', observed: 'the brief changed', proof };
+    }
+    return { verdict: 'PASS', expected: 'refused before sourcing, nothing disturbed', observed: `HTTP ${typed.status}`, proof };
+  },
+};
+
+const H4 = {
+  id: 'H4',
+  title: 'Verification claimed on a number that was never issued',
+  class: 'server',
+  vector: 'server/verification.js check-digit arithmetic',
+  entryPoint: 'server/verification.js → checkIdentifier',
+  targetBoundary: 'A verified badge means the check digit is correct, and says it means nothing more',
+  enforcementLayer: 'Server',
+  hypothesis: 'A forged registration number is reported as failed, and a genuine one is never reported as registry-confirmed.',
+  severity: 'HIGH',
+
+  async run(ctx) {
+    const verification = require('../verification');
+    const good = '27AAPFU0939F1ZV';
+    const forged = `${good.slice(0, 14)}W`;
+
+    const g = verification.checkIdentifier(good);
+    const f = verification.checkIdentifier(forged);
+    const registryLines = g.checks.filter((c) => c.status === 'not-checked');
+    const proof = `good=${g.status} forged=${f.status} notChecked=${registryLines.length}`;
+
+    if (f.status !== 'failed') {
+      return { verdict: 'BREACH', expected: 'a forged number fails its check digit', observed: f.status, proof };
+    }
+    if (g.status !== 'verified') {
+      return { verdict: 'BREACH', expected: 'a genuine number passes', observed: g.status, proof };
+    }
+    /*
+     * The half that would be easy to lose. A badge that quietly meant "the
+     * format looked fine" would still pass the two checks above, and a buyer
+     * reads a badge as "somebody checked". The registry line has to survive.
+     */
+    if (!registryLines.length || !registryLines.some((c) => /registr/i.test(c.label + c.detail))) {
+      return { verdict: 'BREACH', expected: 'registry status reported as not checked', observed: 'the not-checked line is gone', proof };
+    }
+    return { verdict: 'PASS', expected: 'forged fails, genuine passes, registry still unchecked', observed: proof, proof };
+  },
+};
+
+const H5 = {
+  id: 'H5',
+  title: 'Trust score used to screen a supplier out',
+  class: 'server',
+  vector: 'static import graph of server/profile.js',
+  entryPoint: 'server/profile.js → applyBlocklist',
+  targetBoundary: 'Trust ranks; it never disqualifies',
+  enforcementLayer: 'Server',
+  hypothesis: 'The screening path consults the blocklist and the verification requirement and no score, so no supplier can be quietly ranked to death.',
+  severity: 'MEDIUM',
+
+  async run(ctx) {
+    const fs = require('fs');
+    const path = require('path');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'profile.js'), 'utf8');
+
+    /*
+     * Checked statically rather than behaviourally, and deliberately. A
+     * behavioural test can only show that trust did not exclude anybody on the
+     * inputs it happened to try. The import graph shows it cannot.
+     *
+     * The failure this guards against is the worst kind in a marketplace: a
+     * supplier ranked out of existence by a number nobody on the receiving end
+     * can see, with no refusal, no message, and nothing to appeal.
+     */
+    const mentionsTrust = /\btrust\b/i.test(src);
+    const requires = (src.match(/require\s*\(\s*['"]([^'"]+)['"]/g) || [])
+      .map((r) => r.replace(/.*['"]([^'"]+)['"].*/, '$1'));
+    const importsTrust = requires.some((d) => /trust/i.test(d));
+    const proof = `mentionsTrust=${mentionsTrust} imports=${JSON.stringify(requires)}`;
+
+    if (importsTrust || mentionsTrust) {
+      return { verdict: 'BREACH', expected: 'screening never consults a score', observed: 'profile.js references trust', proof };
+    }
+    return { verdict: 'PASS', expected: 'screening never consults a score', observed: 'no reference in the screening path', proof };
+  },
+};
+
+const ALL_ATTACKS = [A1, A2, A3, A4, A5, B1, B2, B3, C1, C2, C3, C4, C5, D1, D2, E1, E2, E3, E4, F1, F2, F3, F4, G1, G2, H1, H2, H3, H4, H5];
 
 module.exports = { ALL_ATTACKS };

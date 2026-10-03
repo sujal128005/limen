@@ -83,10 +83,55 @@ function negotiate(candidate, brief, opts = {}) {
     });
   }
 
-  // Anchor below the ceiling but not absurdly low - an insulting anchor costs
-  // credibility and rounds. Agent has no visibility of the floor.
-  let agentOffer = r4(Math.min(ceiling * 0.94, currentAsk * 0.88));
+  /*
+   * Anchor below the ceiling but not absurdly low - an insulting anchor costs
+   * credibility and rounds. Agent has no visibility of the floor.
+   *
+   * THE HISTORY MOVES THIS ANCHOR AND NOTHING ELSE.
+   *
+   * opts.history is what the outcome log says about this supplier: how far
+   * below list it has actually settled before, over how many runs. A supplier
+   * that has twice taken fifteen percent off is worth opening harder against
+   * than one nobody has ever bargained with, and opening at the same place for
+   * both is leaving money on the table for no reason other than that the agent
+   * has no memory.
+   *
+   * Three bounds, and each of them exists because the obvious version of this
+   * feature is dangerous:
+   *
+   *   It only ever moves the OPENING. Every later round, the acceptance rule
+   *   and both invariants are untouched, so a history cannot talk the agent
+   *   into accepting something it would otherwise refuse.
+   *
+   *   It only moves the opening DOWN. A supplier with a generous history gets a
+   *   harder first offer; a supplier with a stingy one does not get a softer
+   *   one. Moving it up would be the log quietly spending more of the buyer's
+   *   budget than the deterministic opener would have.
+   *
+   *   It is CAPPED, and it is ignored below three runs. Two data points are not
+   *   a pattern, and an agent that anchors aggressively on one lucky previous
+   *   deal will walk away from suppliers it should have bought from.
+   *
+   * It is deterministic and it says so in the transcript. "The model decided"
+   * is not an answer a procurement head accepts, and this way they get
+   * "we opened lower because this supplier has settled 12% below list across
+   * four previous deals", which they can argue with.
+   */
+  const history = opts.history && opts.history.runs >= 3 && opts.history.avgConcession > 0
+    ? opts.history : null;
+  const learnedPush = history ? Math.min(0.06, history.avgConcession * 0.4) : 0;
+
+  let agentOffer = r4(Math.min(ceiling * 0.94, currentAsk * (0.88 - learnedPush)));
   let agreedUnit = null;
+
+  if (history) {
+    say('agent', 'recall', {
+      message: `Opening harder: this supplier has settled ${(history.avgConcession * 100).toFixed(1)}% below list before.`,
+      rationale: `Across ${history.runs} previous run${history.runs === 1 ? '' : 's'} `
+        + `(${history.agreed} agreed, ${history.walkedAway} walked away). `
+        + 'Past behaviour moves the opening offer only - never the ceiling, and never what the agent will accept.',
+    });
+  }
 
   for (let i = 0; i < maxRounds; i++) {
     round += 1;
@@ -236,8 +281,16 @@ function negotiate(candidate, brief, opts = {}) {
   };
 }
 
-function negotiateAll(candidates, brief) {
-  return candidates.map((c) => negotiate(c, brief));
+/**
+ * @param {object} [historyBy]  supplierId -> what the outcome log says about
+ *                              them. Absent on the first run a workspace ever
+ *                              does, which is the normal case and must behave
+ *                              exactly as it did before this existed.
+ */
+function negotiateAll(candidates, brief, historyBy) {
+  return candidates.map((c) => negotiate(c, brief, {
+    history: historyBy ? historyBy[c.supplierId] : null,
+  }));
 }
 
 module.exports = { negotiate, negotiateAll };
