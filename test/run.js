@@ -51,6 +51,9 @@ const { summary } = require('./harness');
   if (require('fs').existsSync(require('path').join(__dirname, 'roles.test.js'))) {
     await require('./roles.test').run();
   }
+  // Accounts, the supplier portal and the buyer-supplier seam. Last, because it
+  // reuses the server the roles suite booted rather than starting a second chain.
+  await require('./platform.test').run();
   const failed = summary();
   process.exit(failed ? 1 : 0);
 })().catch((e) => { console.error('\nFATAL', e); process.exit(1); });

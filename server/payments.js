@@ -225,7 +225,41 @@ try {
 } catch (_) {
   console.warn('[payments] RAZORPAY_FUND_ACCOUNTS is not valid JSON, so no supplier can be paid on the live rail.');
 }
-const fundAccountFor = (supplierId) => FUND_ACCOUNTS[supplierId] || null;
+/*
+ * The supplier portal registers fund accounts too. A supplier that entered its
+ * own bank details is resolved through the portal first; the env map stays as
+ * the operator override for suppliers with no account.
+ */
+let portalResolver = () => null;
+const setFundAccountResolver = (fn) => { portalResolver = typeof fn === 'function' ? fn : () => null; };
+const fundAccountFor = (supplierId) => portalResolver(supplierId) || FUND_ACCOUNTS[supplierId] || null;
+
+/*
+ * Register a supplier's bank account with RazorpayX: a contact, then a bank
+ * fund account under it. Only called when the live rail is configured; on the
+ * local rail there is nothing to register with and the caller says so.
+ */
+async function registerFundAccount({ supplierId, name, email, holder, ifsc, accountNumber }) {
+  if (!(KEY_ID && KEY_SECRET && ACCOUNT)) return null;
+  const auth = Buffer.from(`${KEY_ID}:${KEY_SECRET}`).toString('base64');
+  const post = async (path, body) => {
+    const res = await fetch(`https://api.razorpay.com/v1/${path}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Basic ${auth}` },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(Number(process.env.RAZORPAY_TIMEOUT_MS || 15000)),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error((json.error && json.error.description) || `Razorpay refused with ${res.status}`);
+    return json;
+  };
+  const contact = await post('contacts', { name, email, type: 'vendor', reference_id: supplierId });
+  const fa = await post('fund_accounts', {
+    contact_id: contact.id, account_type: 'bank_account',
+    bank_account: { name: holder, ifsc, account_number: accountNumber },
+  });
+  return { contactId: contact.id, fundAccountId: fa.id };
+}
 
 /*
  * Is a payout stuck?
@@ -360,7 +394,7 @@ function applyEvent(payment, event) {
 module.exports = {
   makeClient, localClient, razorpayClient,
   idempotencyKey, toPaise, classify,
-  fundAccountFor, reconcile,
+  fundAccountFor, reconcile, setFundAccountResolver, registerFundAccount,
   verifyWebhook, signWebhook, applyEvent,
   EVENT_STATE, TERMINAL,
   // Whether the payout rail is live, which needs the account to pay from and

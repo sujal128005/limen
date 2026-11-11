@@ -175,11 +175,21 @@ function checkCode(role, code) {
  * records a person the company could actually ask about a decision rather than
  * whatever string was in the box.
  */
-function issue(role, company) {
+/*
+ * A desk token from an account carries the person's own name and the id of the
+ * account session it was issued under. The name is what the audit trail and the
+ * signed agreement record, so a purchase approved by Priya says Priya rather
+ * than the demo signatory. The session id lets the server refuse the token the
+ * moment that session ends (sign-out, password reset, removal from the team),
+ * which a bare signed token cannot do on its own.
+ */
+function issue(role, company, account = null) {
   if (!ROLES[role]) throw new Error(`Unknown role: ${role}`);
-  const who = ROLES[role].signatory;
-  const payload = JSON.stringify({ role, name: who, co: String(company || ''), iat: Date.now() });
-  return { token: `v1.${b64(payload)}.${sign(payload)}`, role, name: who, company };
+  const who = account && account.name ? String(account.name).slice(0, 80) : ROLES[role].signatory;
+  const claims = { role, name: who, co: String(company || ''), iat: Date.now() };
+  if (account && account.sid) { claims.sid = String(account.sid); claims.uid = String(account.uid || ''); }
+  const payload = JSON.stringify(claims);
+  return { token: `v1.${b64(payload)}.${sign(payload)}`, role, name: who, company, label: ROLES[role].label };
 }
 
 /**
@@ -214,7 +224,10 @@ function verify(token) {
    * That is the right outcome: it says sign in again, which is one click, and
    * the alternative is honouring a claim this process can no longer interpret.
    */
-  return { role: claims.role, name: claims.name, company: claims.co, issuedAt: claims.iat };
+  return {
+    role: claims.role, name: claims.name, company: claims.co, issuedAt: claims.iat,
+    ...(claims.sid ? { sid: claims.sid, userId: claims.uid || null } : {}),
+  };
 }
 
 function can(actor, capability) {

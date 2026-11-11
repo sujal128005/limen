@@ -368,3 +368,14 @@ Use null for anything not stated. Reply with JSON only.
 Request: `;
 
 module.exports = { parseRequest, parseDocument, recomputeBrief, llmParse };
+
+/*
+ * The vocabulary the request reader understands, for the supplier portal.
+ * A listing whose material the reader cannot name is a listing no buyer's
+ * request will ever match, so the portal offers exactly these and no others.
+ */
+module.exports.taxonomy = () => ({
+  materials: MATERIALS.map((m) => m.name),
+  grades: GRADES.map((g) => g.name),
+  certifications: CERTS.map((c) => c.name),
+});

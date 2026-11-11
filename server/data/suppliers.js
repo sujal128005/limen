@@ -401,7 +401,9 @@ const SUPPLIERS = [
  * paid. Cheap to assert, expensive to discover in a demo.
  */
 const AGENT_ACCOUNT = 10;
-const MAX_ACCOUNTS = 32;
+/* Room for suppliers that join through the portal, on top of the seeded set.
+   Must match the account count the in-process chain is started with. */
+const MAX_ACCOUNTS = Math.max(32, Number(process.env.LIMEN_CHAIN_ACCOUNTS || 64));
 
 function checkWallets(list) {
   const seen = new Map();
@@ -458,4 +460,5 @@ function replaceCatalogue(list) {
 
 module.exports = {
   SUPPLIERS, publicCatalogue, findSupplier, materials, listingCount, checkWallets, replaceCatalogue,
+  MAX_ACCOUNTS, AGENT_ACCOUNT,
 };

@@ -11,6 +11,7 @@ const { getFreePort } = require('./freeport');
 // supplier. The agent sits at a fixed index so the separation test can assert
 // against a known account rather than whatever happened to be free.
 const AGENT_ACCOUNT = 10;
+const { MAX_ACCOUNTS } = require('./data/suppliers');
 
 /*
  * The float each workspace buyer is given on the local chain. Large enough that
@@ -158,7 +159,7 @@ class Chain {
         // Enough accounts for one wallet per supplier plus the reserved roles.
         // Sharing a wallet between two suppliers would send both their proceeds
         // to the same address, which is silently wrong rather than loudly wrong.
-        wallet: { deterministic: true, totalAccounts: 32 },
+        wallet: { deterministic: true, totalAccounts: MAX_ACCOUNTS },
         chain: { chainId: 31337 },
         miner: { blockGasLimit: 30000000 },
       });
@@ -218,7 +219,7 @@ class Chain {
        */
       this.supplierSigners = [];
       this.signerByAccount = new Map();
-      for (let i = 2; i < 32; i++) {
+      for (let i = 2; i < MAX_ACCOUNTS; i++) {
         if (i === AGENT_ACCOUNT) continue;
         const signer = await this.provider.getSigner(i);
         this.signerByAccount.set(i, signer);
