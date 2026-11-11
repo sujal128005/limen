@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { AccountMenu } from './platform/Shell';
 /* eslint-disable react-hooks/exhaustive-deps */
 
 /* ---------------------------------------------------------------- helpers */
@@ -74,6 +75,18 @@ write('limen.tender', WORKSPACE);
  * sitting here is worth exactly what it was worth in memory, and no more. It is
  * not a key and nothing here can sign anything.
  */
+/*
+ * The account this desk was opened for, when the person signed in with one.
+ *
+ * Set by main.jsx before this module loads. With an account, the desk token in
+ * sessionStorage was minted from the account and is bound to its session, the
+ * company is the account's company, and "switch desk" becomes the account
+ * menu: a person with an account sits at the desk their admin assigned, and
+ * changes it by asking that admin, not by typing another desk's code.
+ */
+const ACCOUNT = typeof window !== 'undefined' ? window.__LIMEN_ACCOUNT__ || null : null;
+const accountExpired = () => window.location.assign('/login?expired=1');
+
 const SESSION_KEY = 'limen.session';
 let SESSION = null;
 try {
@@ -3218,6 +3231,7 @@ function Desk() {
        * That happens on every restart, because the session secret is random per
        * boot unless LIMEN_SESSION_SECRET is set.
        */
+      if (SESSION && p && p.actor === null && ACCOUNT) { accountExpired(); return; }
       if (SESSION && p && p.actor === null) {
         setSessionToken(null);
         setSession(null);
@@ -3266,6 +3280,7 @@ function Desk() {
    */
   useEffect(() => {
     setSessionLostHandler(() => {
+      if (ACCOUNT) { accountExpired(); return; }
       setSessionToken(null);
       setSession((cur) => (cur ? null : cur));
     });
@@ -4837,6 +4852,7 @@ function TopBar({ onHome, status, wallet, busy, counts, needsApproval, settled, 
       {/* Who is at this desk. Named rather than iconographic, because the whole
           demo turns on the reader knowing which of three people is acting. */}
       {session && (
+        ACCOUNT ? <AccountMenu account={ACCOUNT} /> :
         <button type="button" className={`tb-who ${session.role}`} onClick={onSwitchDesk} title="Switch desk">
           <span className="tb-who-role">{ROLE_DESKS[session.role].short}</span>
           <span className="tb-who-name">{session.name}</span>
@@ -5776,6 +5792,11 @@ function Entry({ status, onWallet, onDemo, error, ready }) {
           <BrandMark />
           <span>Limen</span>
         </div>
+        <nav className="hp-acct" aria-label="Account">
+          <a href="/signup?as=supplier">For suppliers</a>
+          <a href="/login">Sign in</a>
+          <a className="btn btn-primary" href="/signup">Create account</a>
+        </nav>
         <ThemeSwitch />
       </header>
 
@@ -5803,13 +5824,15 @@ function Entry({ status, onWallet, onDemo, error, ready }) {
               <button className="btn btn-primary btn-xl" onClick={onDemo} disabled={!ready}>
                 {ready ? 'Try the demo workspace' : 'Starting the chain'}
               </button>
-              <button className="btn btn-ghost btn-xl" onClick={onWallet}>Sign in with a wallet</button>
+              <a className="btn btn-ghost btn-xl" href="/signup">Create a company account</a>
             </div>
 
             {error && <div className="hp-err">{error} You can still use the demo workspace.</div>}
 
             <p className="hp-note">
-              No account and no wallet required. The chain runs inside the app.
+              The demo needs no account and no wallet: the chain runs inside the app.
+              {' '}Selling? <a href="/signup?as=supplier">Open a supplier account</a>.
+              {' '}Or <button type="button" className="hp-linkbtn" onClick={onWallet}>sign in with a wallet</button>.
             </p>
           </div>
 
