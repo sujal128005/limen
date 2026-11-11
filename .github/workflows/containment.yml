@@ -21,6 +21,11 @@ jobs:
       - name: Install dependencies
         run: npm install --no-save --no-audit --no-fund
 
+      # Before the tests, as in ci.yml: without web/dist, / serves a fallback
+      # page whose CSP has no frame-ancestors and the HTTP hardening test fails.
+      - name: Build web app
+        run: npm run build:web
+
       - name: Unit and integration tests
         run: npm test
 
