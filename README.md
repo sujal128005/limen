@@ -1,6 +1,36 @@
 # Limen
 
-**An AI procurement agent whose spending authority is enforced by a smart contract, not by application code.**
+**A two-sided procurement platform. Buyers' AI agents source and negotiate with spending authority enforced by a smart contract; suppliers sell through their own portal behind a price floor the same contract enforces.**
+
+> **New in 2.0: the platform.** Company accounts with teams and roles, a full supplier portal (listings, private negotiating mandate, on-chain floor, opportunities, orders, shipping, payouts, analytics), two-step sign-in, a hash-chained company audit log, and production hardening. Runs with `npm start`, no Docker. See [docs/PLATFORM.md](docs/PLATFORM.md), [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) and [docs/PROCURE_REVIEW.md](docs/PROCURE_REVIEW.md).
+
+### Try both sides in two minutes
+
+```bash
+npm install
+npm start                    # http://localhost:4000
+```
+
+Open http://localhost:4000/login. A fresh local server creates demo accounts (password `Limen-Demo-2026!`, shown on the sign-in page outside production):
+
+| Who | Email | Lands in |
+|---|---|---|
+| Buyer, Head (approves, sets limits) | `priya@aarav.example` | the sourcing desk |
+| Buyer, Sales (runs sourcing) | `rohit@aarav.example` | the sourcing desk |
+| Buyer, Finance (pays) | `imran@aarav.example` | the sourcing desk |
+| Supplier owner, Anhui Konsheng | `li.wei@konsheng.example` | the supplier portal |
+| Supplier fulfilment, Anhui Konsheng | `chen.yu@konsheng.example` | the supplier portal |
+| Supplier owner, Meridian Polymers | `aisha@meridian.example` | the supplier portal |
+
+Sign in as Rohit and run the default PET request: Anhui wins. Sign in as Li Wei in another browser and the opportunity is already there, without the buyer's budget and without the buyer's name until Priya approves. Or run the whole loop from the command line:
+
+```bash
+npm run demo:two-sided       # sourced → approved → funded → shipped on chain → received → paid
+```
+
+---
+
+**The original buyer desk, as before:**
 
 Limen sources physical goods, screens suppliers, negotiates against floor prices it cannot see, and brings back one deal. Then it stops, because the money is not its to spend.
 
@@ -101,7 +131,10 @@ The first boot compiles the contracts with solc, deploys three of them to an in-
 | `npm run dev` | Runs the server without rebuilding the frontend |
 | `npm run dev:web` | Vite dev server for frontend work, with hot reload |
 | `npm run build:web` | Builds the frontend only |
-| `npm test` | 316 unit and contract tests. No server needed |
+| `npm test` | The full suite: contracts, engine, roles, durability, and the platform (accounts, supplier portal, isolation). No server needed |
+| `npm run test:platform` | The platform tests only |
+| `npm run demo:two-sided` | Buyer and supplier accounts walk one purchase end to end against a running server |
+| `npm run check:env` | Checks a deployment's environment (`NODE_ENV=production` for the strict checks) |
 | `npm run sweep` | 154 checks against a running server |
 | `npm run verify:ui` | 70 checks in a real browser |
 | `npm run verify:tier4` | 20 more, including contrast in both themes |

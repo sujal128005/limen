@@ -31,7 +31,28 @@ services:
     healthCheckPath: /api/status
     envVars:
       - key: NODE_VERSION
-        value: "20"
+        value: "22"
+
+      # Encrypts supplier bank details and two-step secrets at rest.
+      - key: LIMEN_DATA_KEY
+        generateValue: true
+
+      # Your service's https address, e.g. https://limen-xxxx.onrender.com.
+      # Invitation, verification and reset links are built from it.
+      - key: LIMEN_PUBLIC_URL
+        sync: false
+
+      # Email for invitations and password resets: smtps://user:pass@host:465
+      - key: SMTP_URL
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+
+      # This blueprint is the public demo: demo accounts on. For a real
+      # deployment set NODE_ENV=production, LIMEN_DEMO_ACCOUNTS=false and
+      # LIMEN_PUBLIC_DEMO=false, and see docs/DEPLOYMENT.md.
+      - key: LIMEN_DEMO_ACCOUNTS
+        value: "true"
 
       # Signs the role tokens. Left unset, a random secret is minted at boot,
       # which means every restart signs all three desks out mid-demo. Use
