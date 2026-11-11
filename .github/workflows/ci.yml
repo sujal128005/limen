@@ -34,8 +34,12 @@ jobs:
       # skips the darwin-only package as unbuildable rather than fatal, and
       # leaves the lockfile untouched so CI cannot quietly drift.
       - run: npm install --no-save --no-audit --no-fund
-      - run: npm test
+      # Build before testing. The HTTP hardening tests fetch `/`, and without
+      # web/dist the server answers with a fallback page whose CSP has no
+      # frame-ancestors, so "every page carries a CSP" fails on a fresh checkout.
+      # Production always serves the built app, so the built app is what to test.
       - run: npm run build:web
+      - run: npm test
 
       # The API key is server-side only. If it ever reaches the browser bundle,
       # fail the build rather than shipping it.
