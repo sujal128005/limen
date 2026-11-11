@@ -1,8 +1,8 @@
 {
   "name": "limen",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "Procurement agents that source and negotiate, with spending authority enforced by contract.",
+  "description": "Two-sided procurement platform: buyer agents source and negotiate under contract-enforced spending authority; suppliers sell through a portal with on-chain price floors.",
   "type": "commonjs",
   "scripts": {
     "dev": "node server/index.js",
@@ -18,22 +18,29 @@
     "check:razorpay": "node scripts/check-razorpay.js",
     "build:docs": "node scripts/build-docs.js",
     "adversary": "node scripts/adversary.js",
-    "demo:floor": "node scripts/floor-demo.js"
+    "demo:floor": "node scripts/floor-demo.js",
+    "demo:two-sided": "node scripts/two-sided.js",
+    "check:env": "node scripts/check-env.js",
+    "test:platform": "node test/platform-only.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
     "ethers": "^6.13.4",
     "express": "^4.21.2",
     "ganache": "^7.9.2",
+    "nodemailer": "^6.10.1",
     "pdfkit": "^0.15.0",
-    "solc": "0.8.24",
-    "pg": "^8.13.1"
+    "pg": "^8.13.1",
+    "solc": "0.8.24"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
-    "vite": "^5.4.11",
+    "pg-mem": "^3.0.5",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "pg-mem": "^3.0.5"
+    "vite": "^5.4.11"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

@@ -298,6 +298,7 @@ async function saveSession(req) {
   const { version } = await store.save(req.workspaceId, req.session, req.sessionVersion);
   req.sessionVersion = version;
   req.sessionSnapshot = next;
+  emitSaved(req.workspaceId, req.session, req.companyId);
   return true;
 }
 
@@ -331,6 +332,7 @@ async function resetSession(req) {
   if (profile) fresh.profile = profile;
   const row = await store.create(id, fresh, companyId);
   row.state.id = id;
+  emitSaved(id, row.state, companyId);
   await attachCompany(req, companyId, row.state);
   req.session = row.state;
   req.sessionVersion = row.version;
@@ -349,7 +351,38 @@ async function sessionByPayout(payoutId) {
 }
 
 async function saveById(id, state, version) {
-  return store.save(id, state, version);
+  const out = await store.save(id, state, version);
+  emitSaved(id, state, null);
+  return out;
+}
+
+/*
+ * Told after every successful save of a purchase.
+ *
+ * The supplier portal listens, and rebuilds what each supplier on the purchase
+ * may see. A listener runs after the write and outside the request, and its
+ * failure is logged rather than thrown: a supplier's screen lagging by one
+ * refresh is a far smaller fault than a buyer's approval failing because a
+ * projection could not be written.
+ */
+const saveListeners = [];
+function onSaved(fn) { saveListeners.push(fn); }
+function emitSaved(id, state, companyId) {
+  if (!saveListeners.length) return;
+  const snapshot = JSON.parse(JSON.stringify(state));
+  for (const fn of saveListeners) {
+    Promise.resolve().then(() => fn(id, snapshot, companyId)).catch((e) => console.warn('[workspace] save listener failed: %s', e.message));
+  }
+}
+
+/* Load a purchase by id, for a party that is not its owner but is entitled to
+   act on it (the supplier it was awarded to). The caller authorises; this only
+   reads. */
+async function loadById(id) {
+  const row = await store.load(id);
+  if (!row) return null;
+  row.state.id = id;
+  return row;
 }
 
 /**
@@ -460,7 +493,7 @@ async function discardTender(companyId, id) {
 module.exports = {
   sessionFor, loadSession, saveSession, resetSession, sessionByPayout, saveById, peekSession,
   blankSession, workspaceIdFrom, companyIdFrom, withLock, recordAudit, tendersFor, createTender, discardTender,
-  setStore, getStore, ConflictError,
+  setStore, getStore, ConflictError, onSaved, loadById,
   DEFAULT_WORKSPACE, MAX_WORKSPACES, MAX_TENDERS,
   init: () => store.init(),
   count: () => store.count(),

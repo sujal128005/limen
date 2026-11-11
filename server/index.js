@@ -42,6 +42,15 @@ const grok = require('./grok');
 const documents = require('./documents');
 const pdf = require('./pdf');
 const adversaryRouter = require('./routes/adversary');
+const { createPlatform } = require('./platform');
+const { seed: seedDemoAccounts } = require('./platform/seed');
+const security = require('./security');
+
+/*
+ * Accounts, companies and the supplier portal. Created here so the purchase
+ * routes below can consult it, and initialised in boot() once the chain exists.
+ */
+const platform = createPlatform({ identity, workspace, payments, taxonomy: parse.taxonomy });
 
 /*
  * One rail client for the process. Held in a variable rather than required
@@ -76,7 +85,23 @@ const toQty = (kg) => {
 };
 
 const app = express();
-app.use(cors());
+app.disable('x-powered-by');
+/*
+ * Behind Render, Railway or any reverse proxy the client address arrives in
+ * X-Forwarded-For. Trusting one hop makes req.ip the real client, which the
+ * rate limit and the sign-in throttle both key on. Off by default locally.
+ */
+if (process.env.LIMEN_TRUST_PROXY !== 'false' && (process.env.NODE_ENV === 'production' || process.env.LIMEN_TRUST_PROXY === 'true')) {
+  app.set('trust proxy', 1);
+}
+app.use(security.headers);
+/*
+ * Cross-origin access. The app is served from the same origin as the API, so a
+ * browser never needs CORS at all; the open policy existed for the Vite dev
+ * server. In production only the origins listed in LIMEN_CORS_ORIGINS are
+ * allowed, and never with credentials, so another site cannot ride a session.
+ */
+app.use(cors(security.corsOptions()));
 /*
  * The raw buffer is kept because a webhook signature is computed over the bytes
  * that arrived. Re-serialising the parsed body produces a different string for
@@ -89,6 +114,27 @@ app.use(express.json({
 }));
 
 /*
+ * One line per API request in production: method, path, status, time, and who.
+ * Never the body, never a header, never a token. Enough to answer "what
+ * happened at 14:02" without becoming a second copy of anybody's data.
+ */
+if (process.env.NODE_ENV === 'production' || process.env.LIMEN_ACCESS_LOG === 'true') {
+  app.use((req, res, next) => {
+    if (!req.path.startsWith('/api/') || req.path === '/api/health') return next();
+    const t0 = process.hrtime.bigint();
+    res.on('finish', () => {
+      const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+      const who = req.account ? `${req.account.user.id}@${req.account.org ? req.account.org.id : '-'}` : '-';
+      console.log(JSON.stringify({ t: new Date().toISOString(), m: req.method, p: req.path, s: res.statusCode, ms: Math.round(ms), who }));
+    });
+    next();
+  });
+}
+
+/* Who is signed in, and which company they act for. Before every route. */
+app.use(platform.middleware);
+
+/*
  * Who is asking, read only out of a signature.
  *
  * The role is never taken from a header, a query parameter or the body. A
@@ -99,6 +145,8 @@ app.use((req, _res, next) => {
   const header = req.get('authorization') || '';
   const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
   req.actor = identity.verify(token); // null when absent or tampered with
+  // A desk token issued from an account dies with that account's session.
+  platform.bindActor(req);
   next();
 });
 
@@ -410,6 +458,18 @@ app.get('/api/session/roles', async (req, res) => {
  */
 app.post('/api/session/login', wrap(async (req, res) => {
   const session = sessionFor(req);
+  /* A company with accounts signs its people in by account. A desk code would
+     let anyone who knows the published demo codes act for it. */
+  if (process.env.LIMEN_PUBLIC_DEMO === 'false') {
+    const e = new Error('The public demo desk is switched off on this deployment. Sign in with your account.');
+    e.status = 403;
+    throw e;
+  }
+  if (String(req.companyId || '').startsWith(platform.ACCOUNT_PREFIX)) {
+    const e = new Error('This company signs in with accounts, not desk codes. Your desk comes from your account.');
+    e.status = 403;
+    throw e;
+  }
   const role = String(req.body.role || '');
   if (!identity.ROLES[role]) {
     throw new Error(`Choose one of: ${identity.ROLE_IDS.join(', ')}.`);
@@ -3510,15 +3570,168 @@ app.post('/api/reset', wrap(async (req, res) => {
 // Adversary console routes
 adversaryRouter.makeRouter(app, chain, workspace);
 
+/* ------------------------------------------------- the supplier's acts */
+
+/*
+ * The on-chain acts a supplier performs, called by the supplier portal only
+ * after it has authorised the person (platform/supplier.js). They live here
+ * because this is where the contracts and keys are.
+ *
+ * KEY CUSTODY. On the in-process chain each supplier company has a custodial
+ * key on this server, the same way the seeded suppliers always have. On a
+ * public network supplierSignerFor returns null and these refuse plainly: a
+ * real deployment needs the supplier to sign from its own wallet (or an
+ * HSM-held key per supplier), and that is listed as an open item rather than
+ * faked here.
+ */
+function supplierEntry(org) {
+  const s = findSupplier(org.supplierId);
+  return s || { id: org.supplierId, name: org.name, walletIndex: org.walletIndex };
+}
+
+function signerOrRefuse(s) {
+  const signer = chain.supplierSignerFor(s.walletIndex);
+  if (!signer) {
+    const e = new Error('Supplier keys are not held by this server on a public network. Sign this from your own wallet.');
+    e.status = 501;
+    throw e;
+  }
+  return signer;
+}
+
+const chainOps = {
+  async registerSupplier(s) {
+    if (supplierWallets[s.id]) return supplierWallets[s.id];
+    const wallet = await chain.supplierAddressFor(s.id, s.walletIndex);
+    const tx = await chain.registry.registerSupplier(wallet, ethers.id(s.id));
+    await tx.wait();
+    supplierWallets[s.id] = wallet;
+    return wallet;
+  },
+
+  async readFloor(org) {
+    if (!chain.escrow) return { active: false, note: 'The chain is still starting.' };
+    const wallet = await chain.supplierAddressFor(org.supplierId, org.walletIndex);
+    const p = await chain.escrow.sellerPolicies(wallet);
+    const block = await chain.provider.getBlock('latest');
+    const expiry = Number(p.expiry);
+    return {
+      wallet,
+      active: Boolean(p.active) && expiry > block.timestamp,
+      minUnitPrice: fromUnits(p.minUnitPrice),
+      maxPerDealKg: Number(p.maxPerDeal),
+      maxTotalKg: Number(p.maxTotal),
+      committedKg: Number(p.committed),
+      expiresAt: expiry ? new Date(expiry * 1000).toISOString() : null,
+      escrow: addresses.escrow,
+    };
+  },
+
+  async publishFloor(org, { floorUnitPrice, maxPerDealKg, maxTotalKg, days }) {
+    const s = supplierEntry(org);
+    const signer = signerOrRefuse(s);
+    const block = await chain.provider.getBlock('latest');
+    const expiry = block.timestamp + days * 86400;
+    const escrow = chain.contractAt('ProcurementEscrow', addresses.escrow, signer);
+    let tx;
+    try {
+      tx = await escrow.setSellerPolicy(toUnits(floorUnitPrice), BigInt(maxPerDealKg), BigInt(maxTotalKg), expiry);
+    } catch (e) {
+      const reason = chain.explainRevert(e);
+      if (!reason) throw e;
+      throw new Error(reason);
+    }
+    const rc = await tx.wait();
+    return {
+      txHash: rc.hash, blockNumber: rc.blockNumber, floorUnitPrice, maxPerDealKg, maxTotalKg,
+      expiresAt: new Date(expiry * 1000).toISOString(), wallet: await signer.getAddress(),
+      enforcedBy: 'ProcurementEscrow.createDeal',
+    };
+  },
+
+  async attestShipment(workspaceId, org, { reference, carrier, actorName }) {
+    const s = supplierEntry(org);
+    const signer = signerOrRefuse(s);
+    let out = null;
+    await workspaceOps.mutate(workspaceId, async (session) => {
+      const w = session.recommendation && session.recommendation.winner;
+      if (!w || w.supplierId !== org.supplierId) throw Object.assign(new Error('This order is not yours to ship.'), { status: 403 });
+      if (!session.dealId) throw Object.assign(new Error('There is no funded deal to ship against.'), { status: 409 });
+      if (session.shipment) throw Object.assign(new Error('This order was already marked shipped.'), { status: 409 });
+      const shipmentHash = ethers.id(reference);
+      const escrow = chain.contractAt('ProcurementEscrow', addresses.escrow, signer);
+      let tx;
+      try {
+        tx = await escrow.attestShipment(session.dealId, shipmentHash);
+      } catch (e) {
+        const reason = chain.explainRevert(e);
+        if (!reason) throw e;
+        throw new Error(reason);
+      }
+      const rc = await tx.wait();
+      session.shipment = {
+        reference, carrier: carrier || null, shipmentHash, txHash: rc.hash,
+        attestedBy: actorName, supplierWallet: await signer.getAddress(),
+        at: new Date().toISOString(), simulated: false, via: 'supplier-portal',
+      };
+      out = session.shipment;
+    }, { actorName, action: 'attest-shipment' });
+    return out;
+  },
+};
+
+/*
+ * Change a purchase on behalf of its supplier. Same lock and the same
+ * optimistic version check as a buyer request, and the same audit trail, with
+ * the supplier named as the actor.
+ */
+const workspaceOps = {
+  async mutate(workspaceId, fn, { actorName, action }) {
+    return workspace.withLock(workspaceId, async () => {
+      const row = await workspace.loadById(workspaceId);
+      if (!row) throw Object.assign(new Error('No such purchase.'), { status: 404 });
+      const from = authorization.purchaseState(row.state);
+      await fn(row.state);
+      await workspace.saveById(workspaceId, row.state, row.version);
+      await workspace.recordAudit({
+        workspaceId, actorName, actorRole: 'supplier', action,
+        fromState: from, toState: authorization.purchaseState(row.state), detail: null,
+      });
+    });
+  },
+};
+
+platform.mount(app);
+
+/*
+ * Health. /api/health is liveness: the process answers. /api/ready is
+ * readiness: the chain is up, the contracts are deployed and both stores
+ * answer. A load balancer should route only to ready instances.
+ */
+let booted = false;
+app.get('/api/health', (req, res) => res.json({ ok: true, uptimeSec: Math.round(process.uptime()) }));
+app.get('/api/ready', async (req, res) => {
+  const checks = { booted, chain: !!(chain.escrow), store: false, platformStore: false };
+  try { await workspace.getStore().count(); checks.store = true; } catch (_) { /* reported below */ }
+  try { await platform.store.count('orgs'); checks.platformStore = true; } catch (_) { /* reported below */ }
+  const ok = Object.values(checks).every(Boolean);
+  res.status(ok ? 200 : 503).json({ ok, checks });
+});
+
+/* Unknown API paths are a 404 in JSON, not the single-page app's HTML. */
+app.use('/api', (req, res) => res.status(404).json({ error: 'No such endpoint.' }));
+
 // serve the built frontend if present
 const dist = path.join(__dirname, '..', 'web', 'dist');
 if (require('fs').existsSync(dist)) {
-  app.use(express.static(dist));
+  try { security.allowInlineScriptsFrom(require('fs').readFileSync(path.join(dist, 'index.html'), 'utf8')); } catch (_) { /* no build yet */ }
+  app.use(express.static(dist, { index: false, maxAge: '1h', setHeaders: (res, p) => { if (/[\/]assets[\/]/.test(p)) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable'); } }));
   app.get('*', (req, res) => res.sendFile(path.join(dist, 'index.html')));
 }
 
 async function boot() {
   console.log('Limen - booting');
+  require('./config').assertProductionReady();
 
   /*
    * Storage first. If the database is unreachable, failing here with a clear
@@ -3603,6 +3816,13 @@ async function boot() {
    * approved on first use instead, in chain.buyerFor, so a workspace nobody
    * visits costs nothing.
    */
+  await platform.init({ chain: chainOps, workspace: workspaceOps });
+  {
+    const seeded = await seedDemoAccounts(platform);
+    const n = await platform.registerPortalSuppliers();
+    console.log(`  accounts: ${platform.store.kind} store${seeded.seeded ? `, demo accounts created (password ${seeded.password})` : ''}; ${n} portal supplier${n === 1 ? '' : 's'} on chain`);
+  }
+
   await chain.fundBuyer(toUnits(250000));
   const usdcAsBuyer = chain.contractAt('MockUSDC', addresses.usdc, chain.buyer);
   await (await usdcAsBuyer.approve(addresses.escrow, toUnits(250000))).wait();
@@ -3631,6 +3851,7 @@ async function boot() {
     }
   }
 
+  booted = true;
   return app;
 }
 
@@ -3651,7 +3872,28 @@ function serve() {
 }
 
 if (require.main === module) {
-  boot().then(serve).catch((e) => {
+  /*
+   * Stop cleanly. A platform restarting the service sends SIGTERM and waits;
+   * finishing the requests in flight, then closing the database pools, means a
+   * deploy never cuts an approval or a payout off halfway through its write.
+   */
+  let httpServer = null;
+  const shutdown = (signal) => {
+    console.log(`\n  ${signal} received, finishing requests in flight...`);
+    const force = setTimeout(() => process.exit(1), 15000);
+    force.unref();
+    const done = async () => {
+      try { await platform.store.close(); } catch (_) { /* best effort */ }
+      try { await workspace.getStore().close(); } catch (_) { /* best effort */ }
+      process.exit(0);
+    };
+    if (httpServer) httpServer.close(done); else done();
+  };
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('unhandledRejection', (e) => console.error('[unhandled]', e));
+
+  boot().then(() => { httpServer = serve(); }).catch((e) => {
     /*
      * A misconfiguration gets the sentence; a real fault gets the stack.
      *
@@ -3670,4 +3912,4 @@ if (require.main === module) {
 
 /* setRail is exported for the test that has to count calls to the payment rail.
    Nothing else in the product uses it. */
-module.exports = { app, chain, boot, serve, supplierWallets, getAddresses: () => addresses, setRail };
+module.exports = { app, chain, boot, serve, supplierWallets, getAddresses: () => addresses, setRail, platform };
