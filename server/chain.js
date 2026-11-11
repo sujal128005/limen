@@ -166,7 +166,13 @@ class Chain {
       // Explicit EVM_PORT wins; otherwise take whatever the OS has free so a test
       // run never collides with an already-running dev server.
       this.port = process.env.EVM_PORT ? Number(process.env.EVM_PORT) : await getFreePort();
-      await this.server.listen(this.port);
+      // Loopback only, and the host has to be passed. Called as listen(port),
+      // ganache accepts connections on every interface while its address()
+      // still reports 127.0.0.1. Its JSON-RPC has no authentication and every
+      // account on it is unlocked, so anyone who could reach the port could
+      // send as the buyer. Only this process talks to it. docs/DEPENDENCIES.md
+      // has the measurement.
+      await this.server.listen(this.port, '127.0.0.1');
 
       /*
        * Options chosen for an instamine chain, where every send is already
