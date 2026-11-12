@@ -326,8 +326,10 @@ const api = {
    * The timeout is its own value because reading six pages of PDF is slower
    * than any other write this client makes, and borrowing the write budget
    * would mean a large tender aborting at the point it was nearly done.
+   * Longer than the server's own limit on a model reading a photo (180 s for
+   * Gemma on a laptop CPU), so the server always answers before this gives up.
    */
-  async upload(p, file, { timeout = 120000 } = {}) {
+  async upload(p, file, { timeout = 240000 } = {}) {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeout);
     try {
@@ -6169,7 +6171,7 @@ function GeminiReading({ report }) {
       <span className="gem-mark" aria-hidden="true">G</span>
       <div className="gem-body">
         <strong>Read by {who}</strong>
-        <span className="hint"> · {report.model}{report.latencyMs ? ` · ${(report.latencyMs / 1000).toFixed(1)} s` : ''} · every figure checked against the document</span>
+        <span className="hint"> · {report.model}{report.latencyMs ? ` · ${(report.latencyMs / 1000).toFixed(1)} s` : ''} · {report.unverified?.length && !report.agreed?.length && !report.filled?.length ? 'no text to check against, so you confirm each figure' : 'every figure checked against the document'}</span>
         <ul className="gem-list">
           {report.agreed?.length > 0 && <li>Agrees with the clause reader on {names(report.agreed)}.</li>}
           {report.filled?.length > 0 && <li>Found what the clause reader missed: {names(report.filled)}.</li>}
@@ -6179,10 +6181,10 @@ function GeminiReading({ report }) {
           ))}
           {report.rejected?.map((r) => (
             <li key={r.field} className="bad">
-              Rejected {who}&rsquo;s {label[r.field] || r.field} ({String(r.value)}): {r.why === 'quote-not-found' ? 'the quoted words are not in the document' : 'the figure is not in the words it quoted'}.
+              Rejected {who}&rsquo;s {label[r.field] || r.field} ({String(r.value)}): {r.why === 'quote-not-found' ? (r.quote ? 'the quoted words are not in the document' : 'it gave no words from the document for it') : 'the figure is not in the words it quoted'}.
             </li>
           ))}
-          {report.notes?.map((n) => <li key={n} className="warn">{n}</li>)}
+          {report.notes?.filter((n) => !(report.unverified?.length && /^Read from a scan or photo/.test(n))).map((n) => <li key={n} className="warn">{n}</li>)}
         </ul>
       </div>
     </div>

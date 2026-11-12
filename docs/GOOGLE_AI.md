@@ -8,7 +8,7 @@ Limen uses Google DeepMind's models in one of two free ways, chosen in `.env`:
 | Setting | `LIMEN_AI=gemma` | `GEMINI_API_KEY=...` |
 | Cost and key | Free, no key, nothing leaves the machine | Free tier; some Google projects are refused it |
 | Tender PDFs | Reads the PDF's text layer | Reads the PDF itself, scans included |
-| Speed on a laptop CPU | 10 to 40 seconds a tender | 1 to 3 seconds |
+| Speed on a laptop CPU | About 25 s a text tender, 30 s a photo (95 s for the first photo, while the vision weights load) | 1 to 3 seconds |
 
 Every check below applies to both: the code does not care which model answered.
 

@@ -167,6 +167,18 @@ async function run() {
     ok(b.gemini.notes.some((n) => /USD/.test(n)), 'told to state it in USD');
   });
 
+  await test('words quoted with an empty value still count, a figure never does', async () => {
+    /* What Gemma 3 4B returned for a photographed tender. */
+    const sparse = clone(GOOD);
+    sparse.material = { value: null, quote: 'Supply of 500 kg bottle-grade PET resin.' };
+    sparse.certifications = { value: null, quote: 'FDA food-contact certified / compliant documentation mandatory.' };
+    sparse.quantityKg = { value: null, quote: 'a. Scope: Supply of 500 kg bottle-grade PET resin.' };
+    const b = googleTender.mergeReading(null, sparse, doc.text, {});
+    eq(b.material, 'PET resin', 'material from its quote');
+    ok((b.certifications || []).length === 1, 'certification from its quote');
+    eq(b.quantityKg, null, 'no number taken from a quote alone');
+  });
+
   await test('images are refused without Gemini and accepted with it', async () => {
     const png = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3]);
     let threw = false;
