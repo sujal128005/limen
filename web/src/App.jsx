@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AccountMenu } from './platform/Shell';
+import { startSupplierDemo } from './platform/core';
 /* eslint-disable react-hooks/exhaustive-deps */
 
 /* ---------------------------------------------------------------- helpers */
@@ -114,6 +115,11 @@ const setSessionToken = (s) => {
 
 const headers = () => ({
   'content-type': 'application/json',
+  // The account routes refuse a cookie-carrying write without this header.
+  // Without it, anybody signed in to an account (a supplier, or the supplier
+  // demo) who opened the buyer demo had every action refused with "Missing
+  // request header".
+  'x-limen-csrf': '1',
   'x-workspace': WORKSPACE,
   'x-company': COMPANY,
   ...(SESSION ? { authorization: `Bearer ${SESSION.token}` } : {}),
@@ -840,12 +846,20 @@ function mayI(session, capability) {
  * the amount" and "Waiting on the Head" are the same fact and only one of them
  * is useful at a given desk.
  */
-function Handover({ next, tone }) {
+function Handover({ next, tone, onGo }) {
   if (!next) return null;
   const mine = next.mine;
   const nobody = !next.role;
+  // When the move is yours the banner is the way to it. It carries an arrow,
+  // and it used to be a plain box that did nothing when pressed.
+  const go = mine && onGo ? onGo : null;
+  const Tag = go ? 'button' : 'div';
   return (
-    <div className={`handover ${mine ? 'mine' : nobody ? 'idle' : 'waiting'} ${tone || ''}`}>
+    <Tag
+      type={go ? 'button' : undefined}
+      onClick={go || undefined}
+      className={`handover ${mine ? 'mine' : nobody ? 'idle' : 'waiting'} ${tone || ''} ${go ? 'is-link' : ''}`}
+    >
       <span className="ho-mark" aria-hidden="true">
         {mine ? (
           <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h13M13 6l6 6-6 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -864,8 +878,15 @@ function Handover({ next, tone }) {
         </div>
       </div>
       {!mine && !nobody && <span className="ho-tag">Not your step</span>}
-    </div>
+    </Tag>
   );
+}
+
+/* Where a desk does the step the server says is theirs. */
+function viewForNext(next, role) {
+  if (!next || !role) return null;
+  if (role === 'sales') return next.state === 'DRAFT' ? 'run' : 'review';
+  return ROLE_DESKS[role] ? ROLE_DESKS[role].home : null;
 }
 
 /*
@@ -905,8 +926,15 @@ function RoleDoor({ onIn, busy, error }) {
   const hint = byId[role] && byId[role].demoCode;
 
   /* Changing desk clears the box. Carrying a code across would submit the wrong
-     desk's code and produce a refusal that reads like the code was mistyped. */
-  const pick = (id) => { setRole(id); setCode(''); };
+     desk's code and produce a refusal that reads like the code was mistyped.
+     When the codes are the published demo ones, the box is filled with the
+     chosen desk's code instead: it used to sit there as grey placeholder text,
+     which read as already filled in, next to a Continue button that stayed
+     disabled until the same four digits were typed by hand. */
+  const pick = (id) => { setRole(id); setCode((byId[id] && byId[id].demoCode) || ''); };
+  useEffect(() => {
+    if (hint) setCode((c) => c || hint);
+  }, [hint]);
 
   const submit = (e) => {
     e.preventDefault();
@@ -3176,7 +3204,10 @@ function Desk() {
   const [escalation, setEscalation] = useState(null);
   const [panelOpen, setPanelOpen] = useState(false);
   /* A restored session means this browser was already past the entry screen. */
-  const [entered, setEntered] = useState(() => !!SESSION);
+  // ?demo opens the demo desk directly. The sign-in page links here as "try
+  // the public demo desk", and without this the link only showed the landing
+  // page again.
+  const [entered, setEntered] = useState(() => !!SESSION || new URLSearchParams(window.location.search).has('demo'));
 
   /* Who is at this desk, and what the server says about the purchase. Both come
      from the server; neither is inferred here. */
@@ -4323,7 +4354,15 @@ function Desk() {
                 wrong but that nothing on screen said who had to act next, so
                 the only way to find out was to press something. */}
             {purchase && purchase.progress && purchase.progress.next && (
-              <Handover next={purchase.progress.next} tone="lead" />
+              <Handover
+                next={purchase.progress.next}
+                tone="lead"
+                onGo={() => {
+                  const target = viewForNext(purchase.progress.next, session.role);
+                  if (target) setView(target);
+                  window.scrollTo({ top: 0, behavior: 'auto' });
+                }}
+              />
             )}
 
             {view === 'approvals' && (<>
@@ -5781,6 +5820,17 @@ function Reveal({ as: Tag = 'section', className = '', children, ...rest }) {
 }
 
 function Entry({ status, onWallet, onDemo, error, ready }) {
+  const [supplierBusy, setSupplierBusy] = useState(false);
+  const [supplierError, setSupplierError] = useState(null);
+  const supplierDemo = async () => {
+    setSupplierBusy(true); setSupplierError(null);
+    try {
+      await startSupplierDemo();
+    } catch (e) {
+      setSupplierError(e.message);
+      setSupplierBusy(false);
+    }
+  };
   const listings = status?.listingCount || 39;
   const suppliers = status?.supplierCount || 15;
   const industries = new Set(SCENARIOS.map((s) => s.industry)).size;
@@ -5820,19 +5870,24 @@ function Entry({ status, onWallet, onDemo, error, ready }) {
               limit is contract state and it has no way to reach it.
             </p>
 
+            {/* Two doors, one per side of the market. The supplier demo used
+                to be missing: a seller had to sign up before seeing anything. */}
             <div className="hp-cta">
               <button className="btn btn-primary btn-xl" onClick={onDemo} disabled={!ready}>
-                {ready ? 'Try the demo workspace' : 'Starting the chain'}
+                {ready ? 'Try the buyer demo' : 'Starting the chain'}
               </button>
-              <a className="btn btn-ghost btn-xl" href="/signup">Create a company account</a>
+              <button className="btn btn-ghost btn-xl" onClick={supplierDemo} disabled={!ready || supplierBusy}>
+                {supplierBusy ? 'Opening the portal' : 'Try the supplier demo'}
+              </button>
             </div>
 
             {error && <div className="hp-err">{error} You can still use the demo workspace.</div>}
+            {supplierError && <div className="hp-err">{supplierError}</div>}
 
             <p className="hp-note">
-              The demo needs no account and no wallet: the chain runs inside the app.
-              {' '}Selling? <a href="/signup?as=supplier">Open a supplier account</a>.
-              {' '}Or <button type="button" className="hp-linkbtn" onClick={onWallet}>sign in with a wallet</button>.
+              Neither demo needs an account or a wallet: the chain runs inside the app.
+              {' '}For your own company, <a href="/signup">create a buyer account</a> or <a href="/signup?as=supplier">a supplier account</a>,
+              {' '}or <button type="button" className="hp-linkbtn" onClick={onWallet}>sign in with a wallet</button>.
             </p>
           </div>
 
@@ -5919,9 +5974,14 @@ function Entry({ status, onWallet, onDemo, error, ready }) {
           The demo workspace runs a real chain in the page. Publish a ceiling, then push the agent
           past it and read the revert.
         </p>
-        <button className="btn btn-primary btn-xl" onClick={onDemo} disabled={!ready}>
-          {ready ? 'Open the demo workspace' : 'Starting the chain'}
-        </button>
+        <div className="hp-cta hp-cta-center">
+          <button className="btn btn-primary btn-xl" onClick={onDemo} disabled={!ready}>
+            {ready ? 'Open the buyer demo' : 'Starting the chain'}
+          </button>
+          <button className="btn btn-secondary btn-xl" onClick={supplierDemo} disabled={!ready || supplierBusy}>
+            {supplierBusy ? 'Opening the portal' : 'Open the supplier demo'}
+          </button>
+        </div>
       </Reveal>
 
       <footer className="hp-foot">

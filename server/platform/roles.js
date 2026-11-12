@@ -66,7 +66,19 @@ const CAN = {
 // The mandate's behaviour half belongs to whoever may edit pricing as well.
 for (const r of ['owner', 'admin']) CAN.supplier[r].push('behaviour.edit');
 
-function rolesFor(kind) { return kind === 'supplier' ? SUPPLIER_ROLES : BUYER_ROLES; }
+/*
+ * The shared account behind the public supplier demo (see seed.js). It can look
+ * at everything a supplier sees, floors included, and ship an order, which is
+ * the half of the loop a visitor came to see. It cannot change what every other
+ * visitor sees next. Nobody can be given it: it is left out of the assignable
+ * roles and out of the catalogue the team screens are built from.
+ */
+const SUPPLIER_DEMO_ROLE = { label: 'Demo visitor', blurb: 'The public supplier demo. Sees floors and orders and can ship; changes nothing else.' };
+CAN.supplier.demo = ['pricing.read', 'orders.fulfil', 'audit.read'];
+const SUPPLIER_ROLES_ALL = { ...SUPPLIER_ROLES, demo: SUPPLIER_DEMO_ROLE };
+
+function rolesFor(kind) { return kind === 'supplier' ? SUPPLIER_ROLES_ALL : BUYER_ROLES; }
+function assignableRoles(kind) { return kind === 'supplier' ? SUPPLIER_ROLES : BUYER_ROLES; }
 
 function can(kind, membership, capability) {
   if (!membership || membership.status !== 'active') return false;
@@ -83,11 +95,11 @@ function holderOf(kind, capability) {
   return r ? rolesFor(kind)[r].label : 'an administrator';
 }
 
-function validRole(kind, role) { return Object.prototype.hasOwnProperty.call(rolesFor(kind), role); }
+function validRole(kind, role) { return Object.prototype.hasOwnProperty.call(assignableRoles(kind), role); }
 function validDesk(desk) { return Object.prototype.hasOwnProperty.call(BUYER_DESKS, desk); }
 
 function catalogue(kind) {
-  const roles = rolesFor(kind);
+  const roles = assignableRoles(kind);
   return {
     roles: Object.entries(roles).map(([id, r]) => ({ id, ...r, can: (CAN[kind][id] || []).slice() })),
     desks: kind === 'buyer' ? Object.entries(BUYER_DESKS).map(([id, d]) => ({ id, ...d })) : [],

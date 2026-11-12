@@ -20,8 +20,12 @@ const crypto = require('crypto');
 let inlineHashes = [];
 const INLINE = new RegExp('<script(?![^>]*\\ssrc=)[^>]*>([\\s\\S]*?)</script>', 'gi');
 function allowInlineScriptsFrom(html) {
+  // The browser hashes the script after the HTML parser has normalised line
+  // endings to LF. A checkout with CRLF endings (Git on Windows) would otherwise
+  // produce a hash that never matches, and the theme bootstrap would be blocked.
   inlineHashes = [...String(html).matchAll(INLINE)]
-    .map((m) => `'sha256-${crypto.createHash('sha256').update(m[1]).digest('base64')}'`);
+    .map((m) => m[1].replace(/\r\n?/g, '\n'))
+    .map((s) => `'sha256-${crypto.createHash('sha256').update(s).digest('base64')}'`);
   return inlineHashes.length;
 }
 

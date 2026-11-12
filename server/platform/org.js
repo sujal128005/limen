@@ -128,6 +128,9 @@ function makeOrgRoutes({ store, auth, activity, mailer, taxonomy, onOrgChanged }
     // purchase, and hand it back - separation of duties with a toggle on it.
     if (m.userId === a.user.id) throw httpError(403, 'You cannot change your own role or desk. Ask another administrator.');
     if (m.role === 'owner' && a.membership.role !== 'owner') throw httpError(403, 'Only an owner can change another owner.');
+    // The public demo's seat is shared by every visitor. Giving it a real role
+    // would give that role to the internet. It can be removed, not changed.
+    if (m.role === 'demo') throw httpError(403, 'The public demo account cannot be given another role. Remove it instead.');
     const before = { role: m.role, desk: m.desk || null, status: m.status };
     if (b.role !== undefined) {
       if (!roles.validRole(a.org.kind, b.role)) throw httpError(422, 'Unknown role.');

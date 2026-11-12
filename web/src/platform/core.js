@@ -54,6 +54,15 @@ export const api = {
   del: (p) => http('DELETE', p),
 };
 
+/*
+ * The public supplier demo: one request signs into the shared demo account,
+ * then a full load of the portal, as after any sign-in.
+ */
+export async function startSupplierDemo() {
+  await api.post('/api/auth/demo/supplier');
+  window.location.assign('/supplier');
+}
+
 /* ---------------------------------------------------------------- router */
 
 const listeners = new Set();

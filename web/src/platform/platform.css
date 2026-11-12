@@ -343,10 +343,24 @@ a.pf-kpi:hover { border-color: var(--pine-line); }
 
 /* landing page account links (the desk's public page) */
 .hp-acct { display: flex; align-items: center; gap: 18px; margin-left: auto; margin-right: 14px; font-size: 14px; }
-.hp-acct a { color: inherit; opacity: .85; text-decoration: none; font-weight: 550; }
-.hp-acct a:hover { opacity: 1; }
-.hp-acct a.btn { opacity: 1; padding: 8px 14px; height: auto; }
+/* The bar sits on the inverted hero in both themes, so these take the hero's
+   colours. They used to inherit the page ink, which put near-black links on a
+   near-black hero, and overrode the primary button's own text colour too. */
+.hp-acct a:not(.btn) { color: var(--invert-fg); opacity: .82; text-decoration: none; font-weight: 550; }
+.hp-acct a:not(.btn):hover { opacity: 1; }
+.hp-acct a.btn { padding: 8px 14px; height: auto; text-decoration: none; }
 .hp-linkbtn { background: none; border: 0; padding: 0; color: inherit; text-decoration: underline; cursor: pointer; font: inherit; }
+/* The shared supplier demo says what it is on every page. */
+.pf-demobar {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px 18px; flex-wrap: wrap;
+  margin: 14px clamp(16px, 3vw, 32px) 0; padding: 10px 14px; border-radius: var(--r-sm);
+  background: var(--pine-wash); border: 1px solid var(--pine-line); color: var(--ink); font-size: 13px; line-height: 1.5;
+}
+.pf-demobar b { font-weight: 650; }
+.pf-demobar-links { display: flex; gap: 14px; flex-wrap: wrap; white-space: nowrap; }
+.pf-demobar-links a { color: var(--pine); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+
+.hp-note a, .hp-note .hp-linkbtn { color: var(--invert-fg); text-decoration: underline; text-underline-offset: 2px; }
 @media (max-width: 720px) { .hp-acct a:not(.btn) { display: none; } }
 .pf-acct .pf-pop a { color: var(--ink); }
 

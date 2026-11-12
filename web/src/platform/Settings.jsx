@@ -218,6 +218,21 @@ function MemberModal({ member, catalogue, buyer, onClose, onDone }) {
 
 export function AccountSecurity() {
   const account = useAccount();
+  if (account.user && account.user.demo) {
+    return (
+      <>
+        <PageHeader icon="user" title="Account & security">Shared demo account</PageHeader>
+        <Callout tone="info" title="These settings are locked in the demo">
+          Every visitor signs in to this same account, so a password, two-step code or name set here would
+          apply to all of them. <a href="/signup?as=supplier">Open your own supplier account</a> to see these settings.
+        </Callout>
+      </>
+    );
+  }
+  return <AccountSecurityForms account={account} />;
+}
+
+function AccountSecurityForms({ account }) {
   const toast = useToast();
   const sessions = useLoad('/api/auth/sessions');
   const [name, setName] = useState(account.user.name);

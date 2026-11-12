@@ -83,54 +83,133 @@ async function seed(platform, { force = false } = {}) {
   await activity.record(buyer.id, { actorName: 'Limen', action: 'company.created', detail: { kind: 'buyer', demo: true } });
 
   // ---- suppliers that claim seeded catalogue entries
-  async function claim(supplierId, people, extra) {
-    const base = findSupplier(supplierId);
-    if (!base) return null;
-    const org = await store.insert('orgs', {
-      id: `org_${base.name.toLowerCase().replace(/[^a-z]/g, '').slice(0, 20)}`,
-      kind: 'supplier', name: base.name, legalName: extra.legalName || base.name,
-      country: base.country, city: base.city, yearsActive: base.yearsActive,
-      certifications: base.certifications.slice(), registeredId: base.registeredId || null,
-      verification: base.registeredId ? verification.verifySupplier(base) : null,
-      supplierId: base.id, walletIndex: base.walletIndex, status: 'active', demo: true,
-      about: extra.about,
-    });
+  async function claim(supplierId, people) {
+    const org = await claimSupplier(platform, supplierId);
+    if (!org) return null;
     for (const p of people) await person(p, org.id);
     const owner = await store.getByKey('users', people[0].email);
-    for (const prod of base.products) {
-      await store.insert('listings', {
-        id: S.newId('lst'), orgId: org.id, sku: prod.sku, material: prod.material, grade: prod.grade || null,
-        description: '', listUnitPrice: prod.listUnitPrice, moqKg: prod.moqKg,
-        monthlyCapacityKg: prod.monthlyCapacityKg == null ? null : prod.monthlyCapacityKg,
-        leadTimeDays: prod.leadTimeDays, qualityScore: prod.qualityScore == null ? null : prod.qualityScore,
-        active: true,
-        private: { ...prod.private, confirmedAt: now, confirmedBy: owner.id, confirmedByName: owner.name },
-      });
+    for (const l of await store.list('listings', { orgId: org.id, limit: 1000 })) {
+      l.private = { ...l.private, confirmedBy: owner.id, confirmedByName: owner.name };
+      await store.put('listings', l);
     }
-    await activity.record(org.id, { actorName: 'Limen', action: 'company.created', detail: { kind: 'supplier', claimed: base.id, demo: true } });
     return org;
   }
 
-  const anhui = await claim('SUP-C', PEOPLE.anhui, {
-    legalName: 'Anhui Konsheng Materials Co., Ltd.',
-    about: 'Food-contact PET and polyolefin resins for bottle and film converters. BRC certified plant in Hefei.',
-  });
-  await claim('SUP-A', PEOPLE.meridian, {
-    legalName: 'Meridian Polymers Sdn Bhd',
-    about: 'PET, LDPE and BOPP film for South-East Asian converters.',
-  });
-
-  if (anhui) {
-    await store.insert('payout_accounts', {
-      id: S.newId('pay'), orgId: anhui.id, holder: 'Anhui Konsheng Materials Co Ltd', bankName: 'Demo Bank (local rail)',
-      ifsc: 'DEMO0000001', accountNumber: S.seal('000123456789'), last4: '6789',
-      fundAccountId: null, railNote: 'Demo account on the local payout rail. Nothing is sent to a bank.',
-      changedBy: null, changedByName: 'Limen demo seed',
-    });
-  }
+  const anhui = await claim('SUP-C', PEOPLE.anhui);
+  await claim('SUP-A', PEOPLE.meridian);
+  if (anhui) await demoPayoutAccount(platform, anhui);
 
   await platform.onCatalogueChanged();
   return { seeded: true, password: DEMO_PASSWORD, people: PEOPLE };
 }
 
-module.exports = { seed, shouldSeed, DEMO_PASSWORD, PEOPLE };
+/* What the demo companies say about themselves, by the catalogue entry they claim. */
+const CLAIMS = {
+  'SUP-C': {
+    legalName: 'Anhui Konsheng Materials Co., Ltd.',
+    about: 'Food-contact PET and polyolefin resins for bottle and film converters. BRC certified plant in Hefei.',
+  },
+  'SUP-A': {
+    legalName: 'Meridian Polymers Sdn Bhd',
+    about: 'PET, LDPE and BOPP film for South-East Asian converters.',
+  },
+};
+
+/*
+ * A demo supplier company that claims a seeded catalogue entry: the company
+ * record, and its listings with the floors already confirmed. Returns null if
+ * the catalogue has no such supplier.
+ */
+async function claimSupplier(platform, supplierId) {
+  const { store, activity } = platform;
+  const base = findSupplier(supplierId);
+  if (!base) return null;
+  const extra = CLAIMS[supplierId] || {};
+  const now = new Date().toISOString();
+  const org = await store.insert('orgs', {
+    id: `org_${base.name.toLowerCase().replace(/[^a-z]/g, '').slice(0, 20)}`,
+    kind: 'supplier', name: base.name, legalName: extra.legalName || base.name,
+    country: base.country, city: base.city, yearsActive: base.yearsActive,
+    certifications: base.certifications.slice(), registeredId: base.registeredId || null,
+    verification: base.registeredId ? verification.verifySupplier(base) : null,
+    supplierId: base.id, walletIndex: base.walletIndex, status: 'active', demo: true,
+    about: extra.about,
+  });
+  for (const prod of base.products) {
+    await store.insert('listings', {
+      id: S.newId('lst'), orgId: org.id, sku: prod.sku, material: prod.material, grade: prod.grade || null,
+      description: '', listUnitPrice: prod.listUnitPrice, moqKg: prod.moqKg,
+      monthlyCapacityKg: prod.monthlyCapacityKg == null ? null : prod.monthlyCapacityKg,
+      leadTimeDays: prod.leadTimeDays, qualityScore: prod.qualityScore == null ? null : prod.qualityScore,
+      active: true,
+      private: { ...prod.private, confirmedAt: now, confirmedBy: null, confirmedByName: 'Limen demo' },
+    });
+  }
+  await activity.record(org.id, { actorName: 'Limen', action: 'company.created', detail: { kind: 'supplier', claimed: base.id, demo: true } });
+  return org;
+}
+
+async function demoPayoutAccount(platform, org) {
+  if (await platform.store.getByKey('payout_accounts', org.id)) return;
+  await platform.store.insert('payout_accounts', {
+    id: S.newId('pay'), orgId: org.id, holder: CLAIMS[org.supplierId] ? CLAIMS[org.supplierId].legalName : org.name,
+    bankName: 'Demo Bank (local rail)', ifsc: 'DEMO0000001', accountNumber: S.seal('000123456789'), last4: '6789',
+    fundAccountId: null, railNote: 'Demo account on the local payout rail. Nothing is sent to a bank.',
+    changedBy: null, changedByName: 'Limen demo seed',
+  });
+}
+
+/*
+ * The public supplier demo: the supplier-side twin of the buyer's demo desk.
+ *
+ * One shared account, signed into without a password, at a demo company that
+ * claims the catalogue's Anhui Konsheng, which wins the reference PET
+ * purchase, so a run on the buyer demo turns up here as an order to ship. It
+ * holds the 'demo' role: it sees floors and orders and can ship, and it cannot
+ * change listings, prices, the team, the company record or payouts, because
+ * every visitor shares it. Its own account settings are locked in the auth
+ * routes for the same reason.
+ *
+ * A catalogue entry that a real company has claimed is never borrowed: the
+ * next candidate is tried, and if none is free the demo is unavailable.
+ */
+const PUBLIC_SUPPLIER_DEMO = { email: 'supplier-demo@limen.example', name: 'Demo visitor' };
+const PUBLIC_DEMO_SUPPLIERS = ['SUP-C', 'SUP-A'];
+
+async function ensurePublicSupplierDemo(platform) {
+  const { store } = platform;
+  let org = null;
+  let created = false;
+  for (const supplierId of PUBLIC_DEMO_SUPPLIERS) {
+    const claimed = (await store.list('orgs', { refId: supplierId, limit: 5 })).find((o) => o.kind === 'supplier');
+    if (claimed) {
+      if (claimed.demo && claimed.status !== 'closed') { org = claimed; break; }
+      continue;
+    }
+    org = await claimSupplier(platform, supplierId);
+    if (org) { created = true; break; }
+  }
+  if (!org) return null;
+  if (created) {
+    await demoPayoutAccount(platform, org);
+    await platform.onCatalogueChanged();
+  }
+
+  let user = await store.getByKey('users', PUBLIC_SUPPLIER_DEMO.email);
+  if (!user) {
+    user = await store.insert('users', {
+      id: S.newId('usr'), email: PUBLIC_SUPPLIER_DEMO.email, name: PUBLIC_SUPPLIER_DEMO.name,
+      passwordHash: null, emailVerifiedAt: new Date().toISOString(), mfa: null, lastLoginAt: null,
+      demo: true, publicDemo: true,
+    });
+  }
+  let membership = await store.getByKey('memberships', `${org.id}:${user.id}`);
+  if (!membership) {
+    membership = await store.insert('memberships', {
+      id: S.newId('mem'), orgId: org.id, userId: user.id, role: 'demo', desk: null, status: 'active', invitedBy: null,
+    });
+  }
+  return { user, org, membership };
+}
+
+module.exports = { seed, shouldSeed, ensurePublicSupplierDemo, DEMO_PASSWORD, PEOPLE, PUBLIC_SUPPLIER_DEMO };
