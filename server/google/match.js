@@ -22,7 +22,17 @@
 const gemini = require('./gemini');
 const { publicCatalogue } = require('../data/suppliers');
 
-const THRESHOLD = Number(process.env.GEMINI_MATCH_THRESHOLD || 0.72);
+/*
+ * Each embedding model scores on its own scale, so the threshold is per model,
+ * measured rather than assumed. EmbeddingGemma on this catalogue: real matches
+ * 0.48 to 0.64 ("PETE pellets" 0.54, "polyester chips" 0.49), unrelated
+ * requests under 0.20 ("office chairs" 0.16, "mangoes" 0.20). Both models must
+ * also clear the runner-up by a margin, so a near tie is never forced onto one.
+ */
+const THRESHOLDS = { gemma: 0.40, gemini: 0.72 };
+const MARGIN = Number(process.env.GEMINI_MATCH_MARGIN || 0.05);
+const threshold = () => Number(process.env.GEMINI_MATCH_THRESHOLD || THRESHOLDS[gemini.provider()] || 0.72);
+const THRESHOLD = THRESHOLDS.gemini;
 
 /* What each material is, in plain words, so "water bottles" lands on PET and
    "packaging film" on BOPP. Written once, here, not by a model. */
@@ -87,8 +97,8 @@ async function resolveMaterial(requestText) {
     material: best.material,
     similarity: best.similarity,
     runnerUp: scored[1] || null,
-    accepted: best.similarity >= THRESHOLD,
-    threshold: THRESHOLD,
+    accepted: best.similarity >= threshold() && (!scored[1] || best.similarity - scored[1].similarity >= MARGIN),
+    threshold: threshold(),
     model: gemini.EMBED_MODEL(),
   };
 }
