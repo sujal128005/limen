@@ -130,7 +130,7 @@ function docxToText(xml) {
  * @param {string} filename  for the error message only; never trusted for type
  * @returns {{text, kind, pages, bytes, sha256, warnings}}
  */
-function readDocument(buf, filename = 'the file') {
+function readDocument(buf, filename = 'the file', { allowImages = false } = {}) {
   if (!Buffer.isBuffer(buf) || !buf.length) throw new Error('That upload was empty.');
   if (buf.length > MAX_BYTES) {
     throw new Error(
@@ -151,6 +151,13 @@ function readDocument(buf, filename = 'the file') {
   const kind = sniff(buf);
   const warnings = [];
 
+  /* A scan or a photo of a tender. Gemini can read it; the rules reader cannot,
+     so without Gemini it is refused as before. Its readings come back marked
+     unverified, because there is no text layer to check them against. */
+  if (kind === 'image' && allowImages) {
+    const mime = buf[0] === 0x89 ? 'image/png' : 'image/jpeg';
+    return { text: '', kind: 'image', mime, pages: 1, bytes: buf.length, sha256, warnings: ['Read from an image: figures must be confirmed.'] };
+  }
   if (kind === 'image') {
     throw new Error(
       'That is an image, and Limen reads text rather than pictures of text. '

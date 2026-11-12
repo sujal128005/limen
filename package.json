@@ -21,7 +21,8 @@
     "demo:floor": "node scripts/floor-demo.js",
     "demo:two-sided": "node scripts/two-sided.js",
     "check:env": "node scripts/check-env.js",
-    "test:platform": "node test/platform-only.js"
+    "test:platform": "node test/platform-only.js",
+    "check:gemini": "node scripts/gemini-check.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

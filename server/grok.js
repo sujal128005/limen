@@ -46,8 +46,10 @@ const SYSTEM = [
   '- If the given answer says something is unavailable, keep saying that.',
 ].join('\n');
 
+const gemini = require('./google/gemini');
+
 function isEnabled() {
-  return !!apiKey();
+  return gemini.isEnabled() || !!apiKey();
 }
 
 // Models substitute typographic characters that look identical on screen and
@@ -73,8 +75,28 @@ function fail(reason, latencyMs, detail) {
   return { ok: false, reason, latencyMs, model: MODEL, detail: detail || null };
 }
 
+/*
+ * Gemini first. With GEMINI_API_KEY set (Google AI Studio, free tier) the
+ * rewrite goes to Gemini under the same system instruction; without it, the
+ * OpenAI-compatible path below is used exactly as before. Either way the caller
+ * checks every figure in the rewrite against the grounded answer.
+ */
+async function polishWithGemini(question, groundedAnswer) {
+  const r = await gemini.generateText({
+    system: SYSTEM,
+    prompt: `Question: ${question}\n\nFactual answer to rewrite:\n${groundedAnswer}`,
+    temperature: 0.2,
+    maxTokens: 320,
+    timeoutMs: TIMEOUT_MS,
+  });
+  if (!r.ok) return { ok: false, reason: r.reason, latencyMs: r.latencyMs || 0, model: r.model, detail: r.detail || null, provider: 'gemini' };
+  if (r.text.length < 10) return { ok: false, reason: 'malformed-completion', latencyMs: r.latencyMs, model: r.model, provider: 'gemini' };
+  return { ok: true, text: normalise(r.text), latencyMs: r.latencyMs, slow: r.latencyMs > SLOW_MS, model: r.model, usage: r.usage, provider: 'gemini' };
+}
+
 async function polish(question, groundedAnswer) {
-  if (!isEnabled()) return fail('no-key', 0);
+  if (gemini.isEnabled()) return polishWithGemini(question, groundedAnswer);
+  if (!apiKey()) return fail('no-key', 0);
 
   const started = Date.now();
   const controller = new AbortController();
@@ -138,4 +160,7 @@ async function polish(question, groundedAnswer) {
   }
 }
 
-module.exports = { polish, isEnabled, MODEL, TIMEOUT_MS, SLOW_MS, ENDPOINT, BASE_URL };
+module.exports = { polish, isEnabled, TIMEOUT_MS, SLOW_MS, ENDPOINT, BASE_URL };
+/* The model in use, read at call time: Gemini when its key is set. */
+Object.defineProperty(module.exports, 'MODEL', { enumerable: true, get: () => (gemini.isEnabled() ? gemini.MODEL() : MODEL) });
+Object.defineProperty(module.exports, 'PROVIDER', { enumerable: true, get: () => (gemini.isEnabled() ? 'gemini' : (apiKey() ? 'openai-compatible' : 'none')) });

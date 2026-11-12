@@ -14,6 +14,9 @@ const directory = require('./directory');
 let supplierSource = { source: 'seeded', seeded: true };
 const { parseRequest, parseDocument, llmParse } = require('./engine/parse');
 const intake = require('./intake/document');
+const gemini = require('./google/gemini');
+const googleTender = require('./google/tender');
+const googleMatch = require('./google/match');
 const correction = require('./engine/correction');
 const parse = require('./engine/parse');
 const profile = require('./profile');
@@ -608,6 +611,16 @@ app.get('/api/status', wrap(async (req, res) => {
     supplierSeeded: !!supplierSource.seeded,
     listingCount: SUPPLIERS.reduce((n, s) => n + s.products.length, 0),
     counselModel: grok.isEnabled() ? grok.MODEL : 'local',
+    // Google AI in use: Gemini on the free tier, and which features it powers.
+    // Never the key; only whether one is set, the models and the call counts.
+    googleAi: (() => {
+      const g = gemini.status();
+      return {
+        enabled: g.enabled, model: g.model, embedModel: g.embedModel, tier: g.tier,
+        coolingDown: g.coolingDown, calls: g.calls, ok: g.ok, rateLimited: g.rateLimited,
+        features: g.enabled ? ['tender reading', 'scan and photo reading', 'material matching', 'LIM AI', 'request parsing'] : [],
+      };
+    })(),
     addresses,
     buyer: buyer.address,
     agent: chain.agentAddress,
@@ -907,7 +920,13 @@ app.post('/api/brief', wrap(async (req, res) => {
     if (brief.budgetTotal && brief.quantityKg && !brief.budgetPerUnit) {
       brief.budgetPerUnit = +(brief.budgetTotal / brief.quantityKg).toFixed(4);
     }
+    if (llm.provider) brief.llmProvider = llm.provider;
+    parse.recomputeBrief(brief);
   }
+  /* Still no material: match the request to the catalogue by meaning with
+     Gemini embeddings. Proposes a material only; every requirement is still
+     screened. No key, or below the threshold: the brief is unchanged. */
+  if (!brief.material) await googleMatch.fillMaterial(brief, text, parse.recomputeBrief);
   assertWithinCompanyLimits(req, brief);
   startNewRun(session, brief);
   res.json(brief);
@@ -1043,8 +1062,29 @@ app.post(
       .trim()
       .slice(0, 120) || 'document';
 
-    const doc = intake.readDocument(body, filename);
-    const brief = parseDocument(doc.text);
+    const geminiOn = gemini.isEnabled();
+    const doc = intake.readDocument(body, filename, { allowImages: geminiOn });
+
+    /*
+     * Two readers. The rules reader finds labelled clauses in the text layer;
+     * Gemini (free tier) reads the document itself, scans and photos included.
+     * Every Gemini figure is checked against the document's text before it
+     * counts, and where the two disagree the labelled clause stays and Gemini's
+     * reading is shown beside it. A Gemini failure of any kind (no key, quota,
+     * timeout) leaves the rules reader's brief exactly as it was.
+     */
+    const hasText = !!doc.text && doc.text.replace(/\s+/g, '').length >= 40;
+    let brief = hasText ? parseDocument(doc.text) : null;
+    if (geminiOn) {
+      const g = await googleTender.readWithGemini({ buf: body, kind: doc.kind, mime: doc.mime, text: doc.text });
+      if (g.ok) brief = googleTender.mergeReading(brief, g.data, hasText ? doc.text : '', { model: g.model, latencyMs: g.latencyMs });
+      else if (brief) brief.gemini = { model: g.model || null, error: g.reason };
+    }
+    if (!brief) brief = parseDocument(doc.text || '');
+    if (!brief.material && hasText) {
+      const scope = (doc.text.match(/^.*(?:scope|supply of|procurement of|requirement).*$/im) || [doc.text.slice(0, 400)])[0];
+      await googleMatch.fillMaterial(brief, scope, parse.recomputeBrief);
+    }
 
     /* The same gate as the typed path. A tender is not a way round the
        company's own limits just because it arrived as a file. */
@@ -1075,6 +1115,12 @@ app.post(
     await audit(req, 'read-document', null, {
       filename, kind: doc.kind, pages: doc.pages, bytes: doc.bytes, sha256: doc.sha256,
       extracted: Object.keys(brief.sources || {}),
+      gemini: brief.gemini ? {
+        model: brief.gemini.model, error: brief.gemini.error || null,
+        agreed: brief.gemini.agreed, filled: brief.gemini.filled, unverified: brief.gemini.unverified,
+        disagreed: (brief.gemini.disagreed || []).map((d) => d.field),
+        rejected: (brief.gemini.rejected || []).map((r) => `${r.field}:${r.why}`),
+      } : null,
       missing: brief.missing,
     });
 
@@ -3262,7 +3308,14 @@ app.post('/api/counsel', wrap(async (req, res) => {
   if (!result.refused) {
     const p = await grok.polish(question, result.text);
     modelMs = p.latencyMs;
-    if (p.ok) {
+    /* Every figure in the grounded answer must survive the rewrite, and the
+       rewrite may add none. The summary path always checked this; this path
+       shipped the rewrite unchecked, which made "the model never introduces a
+       number" a promise of the prompt rather than of the code. */
+    const rejected = p.ok ? summary.rejectRewrite(result.text, p.text) : null;
+    if (p.ok && rejected) {
+      fallback = `figures: ${rejected}`;
+    } else if (p.ok) {
       text = p.text;
       phrased = true;
       usage = p.usage;
@@ -3297,6 +3350,7 @@ app.post('/api/counsel', wrap(async (req, res) => {
     pipeline: {
       mode: phrased ? 'model' : 'local',
       model: grok.MODEL,
+      provider: grok.PROVIDER,
       keyPresent: grok.isEnabled(),
       localMs,
       modelMs,
@@ -3355,7 +3409,8 @@ app.post('/api/decision-brief', wrap(async (req, res) => {
       decisionbrief.proseFor(brief)
     );
     modelMs = p.latencyMs;
-    if (p.ok) { headline = p.text; phrased = true; } else { fallback = p.reason; }
+    const rejected = p.ok ? summary.rejectRewrite(decisionbrief.proseFor(brief), p.text) : null;
+    if (p.ok && !rejected) { headline = p.text; phrased = true; } else { fallback = rejected ? `figures: ${rejected}` : p.reason; }
   } else {
     fallback = 'not-ready';
   }

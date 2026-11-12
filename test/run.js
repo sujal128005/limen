@@ -16,6 +16,7 @@ const { summary } = require('./harness');
   if (require('fs').existsSync(require('path').join(__dirname, 'document.test.js'))) {
     await require('./document.test').run();
   }
+  await require('./gemini.test').run();
   if (require('fs').existsSync(require('path').join(__dirname, 'engine.test.js'))) {
     await require('./engine.test').run();
   }
