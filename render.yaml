@@ -76,6 +76,10 @@ services:
 
       # sync: false means "set this in the dashboard, never in the repo".
       # Every one of these is a secret. None may ever reach the browser.
+      # Gemini, free tier from Google AI Studio (aistudio.google.com/apikey).
+      # Takes precedence over LLM_API_KEY for every model call when set.
+      - key: GEMINI_API_KEY
+        sync: false
       - key: LLM_API_KEY
         sync: false
       - key: LLM_BASE_URL

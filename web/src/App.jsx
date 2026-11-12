@@ -4524,6 +4524,7 @@ function Desk() {
                 onOverride={(t) => checkCorrection(t, true)}
                 correction={correction}
                 sourceDoc={sourceDoc} brief={brief}
+                googleAi={status?.googleAi}
                 busy={busy} disabled={!status?.ready} onReset={resetAll}
                 /* A document that has been READ is not a run that has happened.
                    Keying this on the brief made the button say "Run again"
@@ -6032,6 +6033,8 @@ function Working({ title, sub }) {
 /* -------------------------------------------------------------- request */
 
 const ACCEPTED_DOCS = '.pdf,.docx,.txt,.md,application/pdf,text/plain';
+/* With Gemini on, a scan or a phone photo of a tender can be read too. */
+const ACCEPTED_DOCS_WITH_IMAGES = `${ACCEPTED_DOCS},.png,.jpg,.jpeg,image/png,image/jpeg`;
 
 /**
  * What the agent read out of the document, and where each figure came from.
@@ -6142,6 +6145,49 @@ function CorrectionBox({ onCheck, onOverride, result, busy }) {
   );
 }
 
+/*
+ * What Gemini did with the document, in one block: which figures it agreed
+ * with, which it filled, which it read from an image, and which were thrown out
+ * because the document does not say them. Rejections are shown on purpose: a
+ * model reading that failed the check is the evidence that the check exists.
+ */
+function GeminiReading({ report }) {
+  if (!report) return null;
+  if (report.error) {
+    return (
+      <div className="gem-box quiet">
+        <span className="gem-mark" aria-hidden="true">G</span>
+        <span>Gemini did not read this one ({report.error === 'rate-limited' ? 'free-tier limit reached' : report.error}). The rules reader&rsquo;s result is shown.</span>
+      </div>
+    );
+  }
+  const label = { material: 'material', grade: 'grade', quantityKg: 'quantity', budgetTotal: 'budget', deadlineDays: 'delivery', certifications: 'certification', minQuality: 'quality floor' };
+  const names = (list) => list.map((k) => label[k] || k).join(', ');
+  return (
+    <div className="gem-box">
+      <span className="gem-mark" aria-hidden="true">G</span>
+      <div className="gem-body">
+        <strong>Read by Gemini</strong>
+        <span className="hint"> · {report.model}{report.latencyMs ? ` · ${(report.latencyMs / 1000).toFixed(1)} s` : ''} · every figure checked against the document</span>
+        <ul className="gem-list">
+          {report.agreed?.length > 0 && <li>Agrees with the clause reader on {names(report.agreed)}.</li>}
+          {report.filled?.length > 0 && <li>Found what the clause reader missed: {names(report.filled)}.</li>}
+          {report.unverified?.length > 0 && <li className="warn">Read from an image, so not checkable against text: {names(report.unverified)}. Confirm before running.</li>}
+          {report.disagreed?.map((d) => (
+            <li key={d.field} className="warn">Disagrees on {label[d.field] || d.field}: the clause says {String(d.rules)}, Gemini read {String(d.gemini)}. The clause is kept.</li>
+          ))}
+          {report.rejected?.map((r) => (
+            <li key={r.field} className="bad">
+              Rejected Gemini&rsquo;s {label[r.field] || r.field} ({String(r.value)}): {r.why === 'quote-not-found' ? 'the quoted words are not in the document' : 'the figure is not in the words it quoted'}.
+            </li>
+          ))}
+          {report.notes?.map((n) => <li key={n} className="warn">{n}</li>)}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
 function DocumentEvidence({ doc, brief, onRun, onClear, busy, disabled, onCheck, onOverride, correction }) {
   if (!doc || !brief) return null;
 
@@ -6178,6 +6224,8 @@ function DocumentEvidence({ doc, brief, onRun, onClear, busy, disabled, onCheck,
         <div key={w} className="docread-warn">{w}</div>
       ))}
 
+      <GeminiReading report={brief.gemini} />
+
       <dl className="docread-rows">
         {found.map((r) => {
           const s = src[r.key] || {};
@@ -6205,7 +6253,22 @@ function DocumentEvidence({ doc, brief, onRun, onClear, busy, disabled, onCheck,
                     {s.documentQuote && <span className="docread-quote">&ldquo;{s.documentQuote}&rdquo;</span>}
                   </>
                 )}
-                {!s.quote && !overridden && <span className="docread-note">Matched from the document&rsquo;s wording.</span>}
+                {s.from === 'gemini' && (
+                  <span className={`gem-badge ${s.verified ? 'ok' : 'warn'}`}>
+                    {s.verified ? 'Read by Gemini · checked against the document' : 'Read by Gemini from an image · confirm it'}
+                  </span>
+                )}
+                {s.from === 'gemini-embeddings' && (
+                  <span className="gem-badge ok">Matched by meaning · Gemini embeddings {Number(s.similarity).toFixed(2)}</span>
+                )}
+                {s.gemini && s.gemini.agrees && <span className="gem-badge ok">Gemini agrees</span>}
+                {s.gemini && !s.gemini.agrees && (
+                  <span className="docread-note">
+                    Gemini read {Array.isArray(s.gemini.value) ? s.gemini.value.join(', ') : String(s.gemini.value)} from
+                    {' '}&ldquo;{s.gemini.quote}&rdquo;. The labelled clause above is kept; check which is right.
+                  </span>
+                )}
+                {!s.quote && !overridden && s.from !== 'gemini-embeddings' && <span className="docread-note">Matched from the document&rsquo;s wording.</span>}
               </dd>
             </div>
           );
@@ -6239,7 +6302,7 @@ function DocumentEvidence({ doc, brief, onRun, onClear, busy, disabled, onCheck,
 }
 
 function RequestPanel({
-  text, setText, onRun, onRunExtracted, onFile, sourceDoc, brief, busy, disabled, hasRun, onReset,
+  text, setText, onRun, onRunExtracted, onFile, sourceDoc, brief, busy, disabled, hasRun, onReset, googleAi,
   onCheck, onOverride, correction, templates, onSaveTemplate,
 }) {
   const fileRef = useRef(null);
@@ -6283,7 +6346,7 @@ function RequestPanel({
           <input
             ref={fileRef}
             type="file"
-            accept={ACCEPTED_DOCS}
+            accept={googleAi?.enabled ? ACCEPTED_DOCS_WITH_IMAGES : ACCEPTED_DOCS}
             className="visually-hidden"
             onChange={(e) => { take(e.target.files?.[0]); e.target.value = ''; }}
           />
@@ -6294,7 +6357,11 @@ function RequestPanel({
           >
             {busy === 'document' ? 'Reading' : 'Upload a tender'}
           </button>
-          <span className="hint">PDF, Word or text. Nothing moves on-chain until you approve.</span>
+          <span className="hint">
+            {googleAi?.enabled
+              ? 'PDF, Word, text, or a photo of the tender, read by Gemini. Nothing moves on-chain until you approve.'
+              : 'PDF, Word or text. Nothing moves on-chain until you approve.'}
+          </span>
           <span className="spacer" />
           {/* Disabled while a run is in flight. runSourcing writes state across
               several awaits, so resetting mid-run lets those later writes land
@@ -6403,6 +6470,14 @@ function BriefPanel({ brief }) {
       <div className="view-head">
         <div className="eyebrow">Step 02 &middot; Requirements</div>
         <h2>Constraints the agent will hold</h2>
+        {brief.semanticMatch && (
+          <p className={`gem-inline ${brief.semanticMatch.accepted ? 'ok' : 'warn'}`}>
+            <span className="gem-mark sm" aria-hidden="true">G</span>
+            {brief.semanticMatch.accepted
+              ? <>Gemini matched your wording to <strong>{brief.semanticMatch.material}</strong> by meaning (similarity {brief.semanticMatch.similarity.toFixed(2)}). Every requirement below is still screened.</>
+              : <>Closest catalogue material by meaning is {brief.semanticMatch.material} ({brief.semanticMatch.similarity.toFixed(2)}), below the {brief.semanticMatch.threshold} threshold, so it was not used. Name the material to continue.</>}
+          </p>
+        )}
         <p className="sub">
           Hard constraints disqualify a supplier or have to be negotiated away. Soft preferences
           only rank the survivors.
@@ -8006,13 +8081,15 @@ function PipelineMeta({ p, refused }) {
     'malformed-completion': 'model returned an unusable completion',
     'refusal-not-sent': 'refusals are never sent to the model',
     'slow': 'model was slow but answered',
+    'rate-limited': 'Gemini free-tier limit reached, answered locally',
   };
-  const reason = p.fallback && (FALLBACK_COPY[p.fallback] || `model returned ${p.fallback}`);
+  const reason = p.fallback && (FALLBACK_COPY[p.fallback]
+    || (String(p.fallback).startsWith('figures:') ? `rewrite ${String(p.fallback).slice(9)}, so the checked answer is shown` : `model returned ${p.fallback}`));
 
   return (
     <div className="rat-meta">
       <span className={`rat-mode ${p.mode}`}>
-        {refused ? 'Refused before the model' : p.mode === 'model' ? p.model : 'Local responder'}
+        {refused ? 'Refused before the model' : p.mode === 'model' ? (p.provider === 'gemini' ? `Gemini · ${p.model}` : p.model) : 'Local responder'}
       </span>
       <span className="rat-dot" aria-hidden="true">·</span>
       <span>grounded {p.localMs} ms</span>
