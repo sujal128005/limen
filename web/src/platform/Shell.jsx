@@ -5,7 +5,7 @@
  * shown a door that will refuse them.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { api, navigate, linkProps, useAccount, can, initials, ago } from './core';
+import { api, navigate, linkProps, useAccount, can, initials, ago, getTheme, setTheme } from './core';
 import { Icon, Mark } from './ui';
 
 export function navFor(account) {
@@ -50,6 +50,7 @@ function active(item, path) {
 
 export function AccountMenu({ account, compact }) {
   const [open, setOpen] = useState(false);
+  const [theme, setThemeState] = useState(getTheme);
   const ref = useRef(null);
   useEffect(() => {
     const off = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
@@ -98,6 +99,15 @@ export function AccountMenu({ account, compact }) {
               ))}
             </>
           )}
+          <div className="pf-sep" style={{ margin: '6px 0' }} />
+          <div className="pf-theme" role="group" aria-label="Theme">
+            {['light', 'dark', 'system'].map((t) => (
+              <button key={t} type="button" className={theme === t ? 'on' : ''} aria-pressed={theme === t}
+                onClick={() => { (window.__setTheme || setTheme)(t); setThemeState(t); }}>
+                {t[0].toUpperCase() + t.slice(1)}
+              </button>
+            ))}
+          </div>
           <div className="pf-sep" style={{ margin: '6px 0' }} />
           <button className="pf-mi" role="menuitem" onClick={signOut}><Icon name="out" size={16} /> Sign out</button>
         </div>

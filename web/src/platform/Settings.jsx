@@ -308,6 +308,32 @@ function AccountSecurityForms({ account }) {
   );
 }
 
+/*
+ * An audit entry's detail, as a sentence fragment rather than the raw JSON it is
+ * stored as: "Reference AWB-123 · Committed days 12" instead of
+ * {"reference":"AWB-123","committedDays":12}.
+ */
+/* "order.acknowledged" reads as "Order acknowledged"; the code stays in the tooltip. */
+function describeAction(a) {
+  const t = String(a || '').replace(/[._-]+/g, ' ').trim();
+  return t ? t.charAt(0).toUpperCase() + t.slice(1) : '';
+}
+
+function describeDetail(d) {
+  if (!d || typeof d !== 'object') return d ? String(d) : '';
+  const label = (k) => k.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ').replace(/^./, (c) => c.toUpperCase());
+  const value = (v) => {
+    if (v === true) return 'yes';
+    if (v === false) return 'no';
+    if (v == null) return '—';
+    if (Array.isArray(v)) return v.map(value).join(', ');
+    if (typeof v === 'object') return Object.entries(v).map(([k, x]) => `${label(k).toLowerCase()} ${value(x)}`).join(', ');
+    return String(v);
+  };
+  const text = Object.entries(d).map(([k, v]) => `${label(k)} ${value(v)}`).join(' · ');
+  return text.length > 120 ? `${text.slice(0, 119)}…` : text;
+}
+
 export function AuditLog() {
   const l = useLoad('/api/org/audit');
   const i = l.data && l.data.integrity;
@@ -323,8 +349,8 @@ export function AuditLog() {
           { id: 'seq', label: '#', cell: (e) => <span className="mono">{e.seq}</span>, sort: (e) => e.seq },
           { id: 'at', label: 'When', cell: (e) => date(e.at, true), sort: (e) => e.at },
           { id: 'who', label: 'Who', cell: (e) => e.actorName || 'System' },
-          { id: 'what', label: 'What', cell: (e) => <><span className="t-main">{e.action}</span>{e.target && <span className="t-sub"> · {String(e.target).slice(0, 40)}</span>}</> },
-          { id: 'detail', label: 'Detail', cell: (e) => <span className="small muted">{e.detail ? JSON.stringify(e.detail).slice(0, 90) : ''}</span> },
+          { id: 'what', label: 'What', cell: (e) => <><span className="t-main" title={e.action}>{describeAction(e.action)}</span>{e.target && <span className="t-sub"> · {String(e.target).slice(0, 40)}</span>}</> },
+          { id: 'detail', label: 'Detail', cell: (e) => <span className="small muted">{describeDetail(e.detail)}</span> },
         ]} initialSort={{ id: 'seq', dir: 'desc' }} />
     </>
   );

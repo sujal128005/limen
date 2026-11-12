@@ -1259,7 +1259,7 @@ function HeadApproval({ purchase, status, onApprove, onReject, onPublishPolicy, 
  * release route re-checks the whole chain, asks the contract, and stops there
  * if the contract refuses.
  */
-function FinancePayments({ purchase, onRelease, busy, error }) {
+function FinancePayments({ purchase, onRelease, busy, error, onTopUp, needed }) {
   const p = purchase;
 
   if (!p || !p.supplier) {
@@ -1365,7 +1365,18 @@ function FinancePayments({ purchase, onRelease, busy, error }) {
         </section>
       )}
 
-      {error && <div className="act-err">{error}</div>}
+      {error && (
+        <div className="act-err">
+          {error}
+          {/* The refusal names the float, which sits further down this page.
+              The way out is offered here, where the refusal is read. */}
+          {/float/i.test(error) && onTopUp && (
+            <div style={{ marginTop: 10 }}>
+              <button className="btn btn-secondary" onClick={() => onTopUp(needed || 0)} disabled={!!busy}>Top up the float</button>
+            </div>
+          )}
+        </div>
+      )}
 
       {ready ? (
         <div className="packet-act">
@@ -2630,7 +2641,7 @@ function DocumentsView({ purchase, summaryDoc, settlementDoc, onPreview }) {
                 <button className="btn btn-secondary" onClick={() => onPreview({ path: d.path, title: d.title })}>
                   Open
                 </button>
-                <button className="btn btn-ghost" onClick={() => downloadPdf(d.path, d.file)}>
+                <button className="btn btn-secondary" onClick={() => downloadPdf(d.path, d.file)}>
                   Download
                 </button>
               </div>
@@ -3134,7 +3145,7 @@ function AuditView({ entries, loading, onExport }) {
         <>
           <div className="row" style={{ marginBottom: 14, gap: 10 }}>
             <button className="btn btn-secondary" onClick={() => onExport('csv')}>Export CSV</button>
-            <button className="btn btn-ghost" onClick={() => onExport('pdf')}>Export PDF</button>
+            <button className="btn btn-secondary" onClick={() => onExport('pdf')}>Export PDF</button>
             <span className="hint">{entries.length} entries</span>
           </div>
           <ol className="audit">
@@ -4389,6 +4400,8 @@ function Desk() {
                 busy={actBusy}
                 error={actError}
                 onRelease={() => act('release', '/api/purchase/release', {})}
+                onTopUp={openTopUp}
+                needed={purchase && purchase.state === 'PAYMENT_READY' ? purchase.payableInr : null}
               />
               {/* Read only here. Finance is paying against these two
                   signatures, so it should see them; it cannot produce either. */}
@@ -5843,9 +5856,9 @@ function Entry({ status, onWallet, onDemo, error, ready }) {
           <span>Limen</span>
         </div>
         <nav className="hp-acct" aria-label="Account">
-          <a href="/signup?as=supplier">For suppliers</a>
-          <a href="/login">Sign in</a>
-          <a className="btn btn-primary" href="/signup">Create account</a>
+          <a className="hp-acct-wide" href="/signup?as=supplier">For suppliers</a>
+          <a className="hp-acct-signin" href="/login">Sign in</a>
+          <a className="btn btn-primary hp-acct-wide" href="/signup">Create account</a>
         </nav>
         <ThemeSwitch />
       </header>
@@ -7805,9 +7818,26 @@ function AnswerBody({ text, fresh }) {
       onClick={done ? undefined : skip}
       title={done ? undefined : 'Show the whole answer'}
     >
-      {(shown || '').split('\n').map((line, j) => <p key={j}>{line || '\u00a0'}</p>)}
+      {(shown || '').split('\n').map((line, j) => {
+        const bullet = /^\s*[-*\u2022]\s+/.test(line);
+        const body = bullet ? line.replace(/^\s*[-*\u2022]\s+/, '') : line;
+        return <p key={j} className={bullet ? 'lim-a-li' : undefined}>{body ? inlineMarks(body) : '\u00a0'}</p>;
+      })}
     </div>
   );
+}
+
+/*
+ * The responders write **bold** and `code`, and the panel printed the asterisks
+ * and backticks. Rendered as elements, never as HTML: the text is the
+ * responder's, and nothing in it should become markup.
+ */
+function inlineMarks(text) {
+  return String(text).split(/(\*\*[^*]+\*\*|`[^`]+`)/g).map((part, i) => {
+    if (/^\*\*[^*]+\*\*$/.test(part)) return <strong key={i}>{part.slice(2, -2)}</strong>;
+    if (/^`[^`]+`$/.test(part)) return <code key={i} className="mono">{part.slice(1, -1)}</code>;
+    return part;
+  });
 }
 
 /*

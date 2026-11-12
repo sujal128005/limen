@@ -55,6 +55,20 @@ export const api = {
 };
 
 /*
+ * Theme, for the platform pages. The desk has its own switch; these pages only
+ * had the choice applied at load, so a supplier could never change it. Same
+ * storage key and the same rule as the desk, so the two never disagree.
+ */
+export function getTheme() {
+  try { return localStorage.getItem('limen.theme') || 'light'; } catch (_) { return 'light'; }
+}
+export function setTheme(choice) {
+  try { localStorage.setItem('limen.theme', choice); } catch (_) { /* private mode */ }
+  const dark = choice === 'dark' || (choice === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+}
+
+/*
  * The public supplier demo: one request signs into the shared demo account,
  * then a full load of the portal, as after any sign-in.
  */
