@@ -8,7 +8,7 @@
  * here before.
  */
 import React, { useEffect, useState } from 'react';
-import { api, navigate, linkProps, useLoad } from './core';
+import { api, navigate, linkProps, useLoad, startSupplierDemo } from './core';
 import { Button, Field, Input, Icon, Mark, ErrorBox, Select } from './ui';
 
 export function landingFor(me) {
@@ -50,6 +50,25 @@ function Art({ kind }) {
         ).map((t) => <li key={t}><Icon name="check" />{t}</li>)}
       </ul>
     </aside>
+  );
+}
+
+/* The no-account demos, one per side. Hidden where LIMEN_PUBLIC_DEMO=false. */
+function PublicDemos({ onError }) {
+  const h = useLoad('/api/platform/health');
+  const [busy, setBusy] = useState(false);
+  if (h.data && h.data.publicDemo === false) return null;
+  const supplier = async (e) => {
+    e.preventDefault();
+    setBusy(true); onError(null);
+    try { await startSupplierDemo(); } catch (err) { onError(err.message); setBusy(false); }
+  };
+  return (
+    <div className="pf-auth-alt">
+      Or look around without an account:{' '}
+      <a href="/?demo=1">buyer demo</a>{' · '}
+      <a href="/supplier" onClick={supplier} aria-busy={busy}>{busy ? 'opening the supplier demo' : 'supplier demo'}</a>
+    </div>
   );
 }
 
@@ -117,7 +136,7 @@ export function Login() {
           <div className="pf-auth-alt">
             <a {...linkProps('/forgot-password')}>Forgot your password?</a> · New to Limen? <a {...linkProps('/signup')}>Create an account</a>
           </div>
-          <div className="pf-auth-alt"><a href="/?demo=1">Or try the public demo desk without an account</a></div>
+          <PublicDemos onError={setError} />
           {!mfa && <DemoAccounts onPick={(em, pw) => { setEmail(em); setPassword(pw); submit(null, { email: em, password: pw }); }} />}
         </form>
       </main>

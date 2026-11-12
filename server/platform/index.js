@@ -66,7 +66,11 @@ function createPlatform({ identity, workspace, payments, taxonomy, store: givenS
     }
   }
 
-  const auth = makeAuth({ store, mailer, audit: activity, identity, onOrgCreated });
+  const { ensurePublicSupplierDemo } = require('./seed');
+  const auth = makeAuth({
+    store, mailer, audit: activity, identity, onOrgCreated,
+    ensureSupplierDemo: () => ensurePublicSupplierDemo({ store, activity, onCatalogueChanged }),
+  });
   const org = makeOrgRoutes({ store, auth, activity, mailer, taxonomy, onOrgChanged: onCatalogueChanged });
 
   async function refreshFundAccounts() {
@@ -248,6 +252,8 @@ function createPlatform({ identity, workspace, payments, taxonomy, store: givenS
       res.json({
         ok: true, store: store.kind, mail: mailer.configured() ? 'smtp' : 'console',
         demoAccounts: !!demo, ...(demo ? { demoPassword: DEMO_PASSWORD } : {}),
+        // The no-account demos, buyer desk and supplier portal, share one switch.
+        publicDemo: process.env.LIMEN_PUBLIC_DEMO !== 'false',
       });
     });
   }

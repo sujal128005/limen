@@ -69,7 +69,9 @@ export function SupplierHome() {
         Buyers' agents find your listings when a request matches them, negotiate with your agent inside your floor, and pay through escrow once delivery is confirmed.
       </PageHeader>
 
-      {steps && steps.done < steps.total && (
+      {/* Not on the shared demo account: its remaining steps are account
+          settings that are locked there, so every "Do this" would be refused. */}
+      {steps && steps.done < steps.total && !account.user.demo && (
         <Card title="Get ready to sell" sub={`${steps.done} of ${steps.total} done`} className="pf-mb">
           <Progress done={steps.done} total={steps.total} />
           <ul className="pf-steps" style={{ marginTop: 10 }}>

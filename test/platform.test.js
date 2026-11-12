@@ -469,6 +469,92 @@ async function run() {
     ok(Array.isArray(r.body.tasks), 'tasks');
   });
 
+  group('Platform: the public supplier demo');
+
+  await test('the demo role sees and ships, and is never assignable', async () => {
+    const m = { role: 'demo', status: 'active' };
+    for (const c of ['pricing.read', 'orders.fulfil', 'audit.read']) ok(roles.can('supplier', m, c), c);
+    for (const c of ['catalogue.edit', 'pricing.edit', 'behaviour.edit', 'floor.publish', 'team.manage', 'company.edit', 'payouts.read', 'payouts.manage', 'security.manage']) {
+      ok(!roles.can('supplier', m, c), `not ${c}`);
+    }
+    ok(!roles.validRole('supplier', 'demo'), 'cannot be given to anyone');
+    ok(!roles.catalogue('supplier').roles.some((r) => r.id === 'demo'), 'not offered on the team screen');
+  });
+
+  const visitor = client();
+  await test('one request signs a visitor into the demo supplier, no password', async () => {
+    const r = await visitor.call('POST', '/api/auth/demo/supplier', {});
+    eq(r.status, 200, JSON.stringify(r.body));
+    ok(r.body.user.demo, 'flagged as the demo account');
+    eq(r.body.membership.role, 'demo', 'demo role');
+    eq(r.body.org.kind, 'supplier', 'a supplier');
+    eq(r.body.org.supplierId, 'SUP-C', 'the supplier that wins the reference purchase');
+    const again = await client().call('POST', '/api/auth/demo/supplier', {});
+    eq(again.body.user.id, r.body.user.id, 'every visitor shares one account');
+    eq(again.body.org.id, r.body.org.id, 'and one company');
+  });
+
+  await test('the demo account cannot be signed into with a password or reset', async () => {
+    const login = await client().call('POST', '/api/auth/login', { email: 'supplier-demo@limen.example', password: '' });
+    eq(login.status, 401, 'no password');
+    const before = (await platform.store.list('outbox', { refId: 'supplier-demo@limen.example', limit: 50 })).length;
+    await client().call('POST', '/api/auth/forgot', { email: 'supplier-demo@limen.example' });
+    const after = (await platform.store.list('outbox', { refId: 'supplier-demo@limen.example', limit: 50 })).length;
+    eq(after, before, 'no reset link sent');
+  });
+
+  await test('its account settings are locked, and its sessions keep no address', async () => {
+    for (const [m, p, b] of [['GET', '/api/auth/sessions'], ['POST', '/api/auth/password', { current: 'x', next: 'a sensible passphrase' }],
+      ['PATCH', '/api/auth/profile', { name: 'Someone else' }], ['POST', '/api/auth/mfa/setup', {}]]) {
+      const r = await visitor.call(m, p, b);
+      eq(r.status, 403, `${m} ${p}`);
+    }
+    const user = await platform.store.getByKey('users', 'supplier-demo@limen.example');
+    const sessions = await platform.store.list('sessions', { refId: user.id, limit: 50 });
+    ok(sessions.length > 0 && sessions.every((s) => s.ip === null && s.ua === null), 'no IP or user agent recorded');
+  });
+
+  await test('it cannot change the company, the team or the payouts', async () => {
+    eq((await visitor.call('PATCH', '/api/org', { name: 'Defaced' })).status, 403, 'company');
+    eq((await visitor.call('POST', '/api/org/invites', { email: `x-${uniq()}@x.example`, role: 'owner' })).status, 403, 'invite');
+    eq((await visitor.call('GET', '/api/sp/payouts')).status, 403, 'payouts');
+  });
+
+  await test('the owner of the demo company cannot give the demo seat a real role', async () => {
+    const owner = client();
+    eq((await owner.login('li.wei@konsheng.example')).status, 200, 'owner signs in');
+    const list = await owner.call('GET', '/api/org/members');
+    const seat = list.body.members.find((x) => x.role === 'demo');
+    ok(seat, 'the demo seat is listed');
+    const r = await owner.call('PATCH', `/api/org/members/${seat.id}`, { role: 'admin' });
+    eq(r.status, 403, JSON.stringify(r.body));
+  });
+
+  await test('a catalogue entry claimed by a real company is never borrowed', async () => {
+    const anhui = (await platform.store.list('orgs', { refId: 'SUP-C', limit: 5 }))[0];
+    anhui.demo = false;
+    await platform.store.put('orgs', anhui);
+    try {
+      const r = await client().call('POST', '/api/auth/demo/supplier', {});
+      eq(r.status, 200, JSON.stringify(r.body));
+      ok(r.body.org.supplierId !== 'SUP-C', 'moved to another demo supplier');
+    } finally {
+      const fresh = await platform.store.get('orgs', anhui.id);
+      fresh.demo = true;
+      await platform.store.put('orgs', fresh);
+    }
+  });
+
+  await test('LIMEN_PUBLIC_DEMO=false switches it off with the buyer demo', async () => {
+    const prior = process.env.LIMEN_PUBLIC_DEMO;
+    process.env.LIMEN_PUBLIC_DEMO = 'false';
+    try {
+      eq((await client().call('POST', '/api/auth/demo/supplier', {})).status, 403, 'off');
+    } finally {
+      if (prior === undefined) delete process.env.LIMEN_PUBLIC_DEMO; else process.env.LIMEN_PUBLIC_DEMO = prior;
+    }
+  });
+
   group('Platform: HTTP hardening');
 
   await test('every page carries a CSP; the API is not cached', async () => {
@@ -479,6 +565,26 @@ async function run() {
     eq(page.headers.get('x-content-type-options'), 'nosniff', 'nosniff');
     const api = await fetch(`${base}/api/health`);
     eq(api.headers.get('cache-control'), 'no-store', 'API not cached');
+  });
+
+  await test('the inline-script hash matches what a browser hashes, whatever the line endings', async () => {
+    const security = require('../server/security');
+    const crypto = require('crypto');
+    const cspFor = () => {
+      const h = {};
+      security.headers({ path: '/' }, { setHeader: (k, v) => { h[k] = v; } }, () => {});
+      return h['Content-Security-Policy'];
+    };
+    const body = '\r\n  (function () { document.documentElement.dataset.x = 1; })();\r\n';
+    security.allowInlineScriptsFrom(`<head><script>${body}</script></head>`);
+    // Browsers normalise CRLF to LF before hashing, so the LF form is what must be allowed.
+    const want = crypto.createHash('sha256').update(body.replace(/\r\n/g, '\n')).digest('base64');
+    try {
+      ok(cspFor().includes(`'sha256-${want}'`), 'LF hash allowed for a CRLF file');
+    } finally {
+      const dist = path.join(__dirname, '..', 'web', 'dist', 'index.html');
+      security.allowInlineScriptsFrom(fs.existsSync(dist) ? fs.readFileSync(dist, 'utf8') : '');
+    }
   });
 
   await test('an unknown API path is a JSON 404, not the app shell', async () => {

@@ -242,6 +242,18 @@ export function Shell({ path, children, badges = {} }) {
             <AccountMenu account={account} compact />
           </div>
         </header>
+        {account.user && account.user.demo && (
+          <div className="pf-demobar" role="note">
+            <span>
+              <b>Supplier demo.</b> You are looking around {account.org ? account.org.name : 'a demo supplier'} as a visitor.
+              {' '}Floors and orders are real; listings, team and payouts are read-only, and everyone shares this account.
+            </span>
+            <span className="pf-demobar-links">
+              <a href="/?demo=1">Send it an order from the buyer demo</a>
+              <a href="/signup?as=supplier">Open your own supplier account</a>
+            </span>
+          </div>
+        )}
         <main className="pf-content" id="main">{children}</main>
       </div>
       {palette && <Palette nav={nav} onClose={() => setPalette(false)} />}

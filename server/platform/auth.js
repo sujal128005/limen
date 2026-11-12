@@ -69,6 +69,9 @@ function publicUser(u) {
     emailVerified: !!u.emailVerifiedAt,
     mfaEnabled: !!(u.mfa && u.mfa.enabledAt),
     createdAt: u.createdAt, lastLoginAt: u.lastLoginAt || null,
+    // The shared public-demo account, so the client can say so and hide the
+    // account settings it cannot use.
+    demo: !!u.publicDemo,
   };
 }
 
@@ -83,7 +86,7 @@ function publicOrg(o) {
   };
 }
 
-function makeAuth({ store, mailer, audit, identity, onOrgCreated }) {
+function makeAuth({ store, mailer, audit, identity, onOrgCreated, ensureSupplierDemo }) {
   /* ------------------------------------------------------ session store */
 
   async function createSession(req, res, user, orgId) {
@@ -97,8 +100,10 @@ function makeAuth({ store, mailer, audit, identity, onOrgCreated }) {
       createdAt: new Date(now).toISOString(),
       lastSeenAt: now,
       expiresAt: now + ABSOLUTE_MS,
-      ip: String(req.ip || '').slice(0, 64),
-      ua: String(req.get('user-agent') || '').slice(0, 200),
+      // Not recorded for the shared demo account: every visitor signs into the
+      // same user, and its session list would show each one the others.
+      ip: user.publicDemo ? null : String(req.ip || '').slice(0, 64),
+      ua: user.publicDemo ? null : String(req.get('user-agent') || '').slice(0, 200),
       revokedAt: null,
     };
     await store.insert('sessions', session);
@@ -177,6 +182,15 @@ function makeAuth({ store, mailer, audit, identity, onOrgCreated }) {
   const requireUser = (req) => {
     if (!req.account || !req.account.user) throw httpError(401, 'Sign in to continue.');
     return req.account;
+  };
+  /* Account settings on the shared demo account would be one visitor's
+     settings imposed on every other: a password or two-step code would lock
+     them out, a name would deface it, and the session list would show them
+     each other. */
+  const requireOwnAccount = (req) => {
+    const a = requireUser(req);
+    if (a.user.publicDemo) throw httpError(403, 'This is the shared demo account, so its settings are locked. Create an account to change your own.');
+    return a;
   };
   const requireOrg = (req, kind) => {
     const a = requireUser(req);
@@ -369,7 +383,7 @@ function makeAuth({ store, mailer, audit, identity, onOrgCreated }) {
   }));
 
   r.post('/resend-verification', wrap(async (req, res) => {
-    const a = requireUser(req);
+    const a = requireOwnAccount(req);
     if (a.user.emailVerifiedAt) return res.json({ ok: true, alreadyVerified: true });
     throttle(`verify:${a.user.id}`);
     doorlock.fail(`verify:${a.user.id}`);
@@ -384,7 +398,7 @@ function makeAuth({ store, mailer, audit, identity, onOrgCreated }) {
     throttle(`forgot:${req.ip}`);
     doorlock.fail(`forgot:${req.ip}`);
     const user = EMAIL.test(email) ? await store.getByKey('users', email) : null;
-    if (user && !user.disabledAt) {
+    if (user && !user.disabledAt && !user.publicDemo) {
       const token = S.newToken();
       await store.insert('tokens', {
         id: S.newId('tok'), tokenHash: S.hashToken(token), kind: 'reset', userId: user.id,
@@ -403,7 +417,7 @@ function makeAuth({ store, mailer, audit, identity, onOrgCreated }) {
     const t = await store.getByKey('tokens', S.hashToken(String(b.token || '')));
     if (!t || t.kind !== 'reset' || t.usedAt || t.expiresAt < Date.now()) throw httpError(400, 'This reset link has expired or was already used. Request a new one.');
     const user = await store.get('users', t.userId);
-    if (!user) throw httpError(400, 'This reset link is no longer valid.');
+    if (!user || user.publicDemo) throw httpError(400, 'This reset link is no longer valid.');
     const problems = S.passwordProblems(b.password, { email: user.email });
     if (problems.length) throw httpError(422, problems[0], { extra: { problems } });
     t.usedAt = Date.now();
@@ -417,7 +431,7 @@ function makeAuth({ store, mailer, audit, identity, onOrgCreated }) {
   }));
 
   r.post('/password', wrap(async (req, res) => {
-    const a = requireUser(req);
+    const a = requireOwnAccount(req);
     const b = req.body || {};
     throttle(`pw:${a.user.id}`);
     if (!(await S.verifyPassword(String(b.current || ''), a.user.passwordHash))) {
@@ -434,7 +448,7 @@ function makeAuth({ store, mailer, audit, identity, onOrgCreated }) {
   }));
 
   r.patch('/profile', wrap(async (req, res) => {
-    const a = requireUser(req);
+    const a = requireOwnAccount(req);
     const name = cleanText((req.body || {}).name, 80);
     if (!name) throw httpError(422, 'Enter your name.');
     a.user.name = name;
@@ -443,7 +457,7 @@ function makeAuth({ store, mailer, audit, identity, onOrgCreated }) {
   }));
 
   r.get('/sessions', wrap(async (req, res) => {
-    const a = requireUser(req);
+    const a = requireOwnAccount(req);
     const all = await store.list('sessions', { refId: a.user.id, limit: 100 });
     res.json(all.filter((s) => !s.revokedAt && s.expiresAt > Date.now()).map((s) => ({
       id: s.id, current: s.id === a.session.id, createdAt: s.createdAt,
@@ -452,7 +466,7 @@ function makeAuth({ store, mailer, audit, identity, onOrgCreated }) {
   }));
 
   r.delete('/sessions/:id', wrap(async (req, res) => {
-    const a = requireUser(req);
+    const a = requireOwnAccount(req);
     const s = await store.get('sessions', req.params.id);
     if (!s || s.userId !== a.user.id) throw httpError(404, 'No such session.');
     await revokeSession(s, 'revoked-by-user');
@@ -462,7 +476,7 @@ function makeAuth({ store, mailer, audit, identity, onOrgCreated }) {
   /* ------------------------------------------------------------- 2FA */
 
   r.post('/mfa/setup', wrap(async (req, res) => {
-    const a = requireUser(req);
+    const a = requireOwnAccount(req);
     if (a.user.mfa && a.user.mfa.enabledAt) throw httpError(409, 'Two-step sign-in is already on.');
     const secret = S.totpSecret();
     a.user.mfa = { secret: S.seal(secret), enabledAt: null, recovery: [], lastStep: -1 };
@@ -471,7 +485,7 @@ function makeAuth({ store, mailer, audit, identity, onOrgCreated }) {
   }));
 
   r.post('/mfa/enable', wrap(async (req, res) => {
-    const a = requireUser(req);
+    const a = requireOwnAccount(req);
     const m = a.user.mfa;
     if (!m || m.enabledAt) throw httpError(409, 'Start setup first.');
     const step = S.totpVerify(S.open(m.secret), (req.body || {}).code, Date.now(), -1);
@@ -487,7 +501,7 @@ function makeAuth({ store, mailer, audit, identity, onOrgCreated }) {
   }));
 
   r.post('/mfa/disable', wrap(async (req, res) => {
-    const a = requireUser(req);
+    const a = requireOwnAccount(req);
     const b = req.body || {};
     if (!(await S.verifyPassword(String(b.password || ''), a.user.passwordHash))) throw httpError(401, 'Your password is not correct.');
     a.user.mfa = null;
@@ -545,6 +559,29 @@ function makeAuth({ store, mailer, audit, identity, onOrgCreated }) {
       : await createSession(req, res, user, org.id);
     if (req.account && req.account.user.id === user.id) await store.put('sessions', session);
     await audit.record(org.id, { user, action: 'member.joined', detail: { role: inv.role, desk: inv.desk || null } });
+    res.json(await describe({ user, session, org, membership }));
+  }));
+
+  /*
+   * The public supplier demo: no account, no password, the supplier-side twin
+   * of the buyer's demo desk. Switched off with the buyer one, by
+   * LIMEN_PUBLIC_DEMO=false.
+   */
+  r.post('/demo/supplier', wrap(async (req, res) => {
+    if (process.env.LIMEN_PUBLIC_DEMO === 'false' || !ensureSupplierDemo) {
+      throw httpError(403, 'The public demo is switched off on this deployment. Sign in with your account.');
+    }
+    let demo;
+    try {
+      demo = await ensureSupplierDemo();
+    } catch (e) {
+      // Two first visits at once can race to create the demo company; the
+      // loser finds it on the second look.
+      demo = await ensureSupplierDemo();
+    }
+    if (!demo) throw httpError(503, 'The supplier demo is not available on this deployment.');
+    const { user, org, membership } = demo;
+    const session = await createSession(req, res, user, org.id);
     res.json(await describe({ user, session, org, membership }));
   }));
 
