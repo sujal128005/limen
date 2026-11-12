@@ -102,15 +102,20 @@ function toMessage(parts) {
   return { role: 'user', content: text.join('\n\n'), ...(images.length ? { images } : {}) };
 }
 
+/* A photo on a laptop CPU: about 35 s warm, over a minute when the vision
+   weights load first. Measured on an i7-1260P. */
+const IMAGE_TIMEOUT_MS = Number(process.env.GEMMA_IMAGE_TIMEOUT_MS || 180000);
+
 async function chat({ system, parts, format, temperature, maxTokens, timeoutMs }) {
   const model = MODEL();
+  const message = toMessage(parts);
   const r = await post('/api/chat', {
     model, stream: false,
-    messages: [...(system ? [{ role: 'system', content: system }] : []), toMessage(parts)],
+    messages: [...(system ? [{ role: 'system', content: system }] : []), message],
     ...(format ? { format } : {}),
     options: { temperature, num_predict: maxTokens },
     keep_alive: '30m',
-  }, timeoutMs);
+  }, message.images ? Math.max(timeoutMs || 0, IMAGE_TIMEOUT_MS) : timeoutMs);
   if (!r.ok) return { ...r, model };
   const text = r.json && r.json.message && r.json.message.content;
   if (!text || !String(text).trim()) return fail('empty', r.latencyMs);

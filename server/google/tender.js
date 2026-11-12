@@ -130,6 +130,22 @@ const KEYS = ['material', 'grade', 'quantityKg', 'budgetTotal', 'deadlineDays', 
 /* Gemini's free-text material, grade and certifications, put through the same
    vocabulary the matcher uses, so "Polyethylene terephthalate (bottle grade)"
    becomes the catalogue's "PET resin". */
+/* A small model sometimes copies the words into "quote" and leaves "value"
+   null: material {value: null, quote: "HDPE resin, blow-moulding grade"}.
+   For a word field the quote IS the reading, so it stands in for the value.
+   Numbers never do: a figure still has to be stated, and found in its quote. */
+function wordsFromQuote(data) {
+  for (const key of ['material', 'grade']) {
+    const f = data[key];
+    if (f && (f.value == null || (typeof f.value === 'string' && !f.value.trim())) && typeof f.quote === 'string' && f.quote.trim()) f.value = f.quote.trim();
+  }
+  const c = data.certifications;
+  if (c && (c.value == null || (Array.isArray(c.value) && !c.value.length)) && typeof c.quote === 'string' && c.quote.trim()) {
+    c.value = [c.quote.trim()];
+  }
+  return data;
+}
+
 function canonical(data) {
   /* Each field from its own words only. Read together, "food-contact" in a
      grade became a certification the model never claimed, with no quote. */
@@ -173,6 +189,7 @@ function condense(text, limit = Number(process.env.GEMMA_TENDER_CHARS || 1800)) 
 function mergeReading(ruleBrief, data, docText, meta = {}) {
   const brief = ruleBrief || Object.assign(parseRequest(''), { fromDocument: true, sources: {} });
   brief.sources = brief.sources || {};
+  wordsFromQuote(data);
   const canon = canonical(data);
 
   const readings = {
