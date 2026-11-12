@@ -616,9 +616,14 @@ app.get('/api/status', wrap(async (req, res) => {
     googleAi: (() => {
       const g = gemini.status();
       return {
-        enabled: g.enabled, model: g.model, embedModel: g.embedModel, tier: g.tier,
+        enabled: g.enabled, provider: g.provider, label: g.label || 'Gemini',
+        model: g.model, embedModel: g.embedModel, tier: g.tier,
         coolingDown: g.coolingDown, calls: g.calls, ok: g.ok, rateLimited: g.rateLimited,
-        features: g.enabled ? ['tender reading', 'scan and photo reading', 'material matching', 'LIM AI', 'request parsing'] : [],
+        features: g.enabled
+          ? (g.provider === 'gemma'
+            ? ['tender reading (text layer)', 'photo reading', 'material matching', 'LIM AI', 'request parsing']
+            : ['tender reading', 'scan and photo reading', 'material matching', 'LIM AI', 'request parsing'])
+          : [],
       };
     })(),
     addresses,
@@ -904,7 +909,10 @@ app.post('/api/brief', wrap(async (req, res) => {
   const text = String(req.body.text || '').slice(0, 4000);
   if (!text.trim()) throw new Error('Describe what you need to source.');
   let brief = parseRequest(text);
-  const llm = await llmParse(text);
+  /* A local model on a laptop CPU takes seconds; when the rules parser already
+     has everything there is no gap for it to fill, so it is not asked. */
+  const skipModel = gemini.provider() === 'gemma' && brief.complete;
+  const llm = skipModel ? null : await llmParse(text);
   if (llm) {
     // LLM only fills gaps the deterministic parser left open; it never overrides
     // a value that was unambiguously present in the text.

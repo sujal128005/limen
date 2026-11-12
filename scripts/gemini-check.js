@@ -1,11 +1,12 @@
 'use strict';
 
 /*
- * Is the Gemini key working? `npm run check:gemini`
+ * Is the Google model working? `npm run check:gemini`
  *
- * Makes four small free-tier calls and reports each: plain text, structured
- * JSON, embeddings, and reading the sample tender PDF. Prints the models it
- * used and how long each took. Never prints the key.
+ * Works for either model Limen can use: Gemma running locally in Ollama
+ * (LIMEN_AI=gemma, no key, no cost) or Gemini on Google AI Studio's free tier
+ * (GEMINI_API_KEY). Makes four small calls and reports each: plain text,
+ * structured JSON, embeddings, and reading the sample tender. Never prints a key.
  */
 
 require('../server/env').loadEnv();
@@ -14,14 +15,20 @@ const path = require('path');
 const gemini = require('../server/google/gemini');
 const googleTender = require('../server/google/tender');
 const googleMatch = require('../server/google/match');
+const { readDocument } = require('../server/intake/document');
+const { parseDocument } = require('../server/engine/parse');
 
 const line = (ok, name, detail) => console.log(`  ${ok ? 'OK  ' : 'FAIL'} ${name}${detail ? `  ${detail}` : ''}`);
 
 (async () => {
-  console.log('\nGemini (Google AI Studio, free tier)\n');
+  const st = gemini.status();
+  console.log(`\n${st.label || 'Google AI'} (${st.tier || 'not configured'})\n`);
   if (!gemini.isEnabled()) {
-    console.log('  No GEMINI_API_KEY set. Get a free key at https://aistudio.google.com/apikey');
-    console.log('  and put it in .env as GEMINI_API_KEY=... (never commit it).\n');
+    console.log('  No model configured. Either:');
+    console.log('    - Gemma, local and free: install Ollama, run `ollama pull gemma3:4b` and');
+    console.log('      `ollama pull embeddinggemma`, then add LIMEN_AI=gemma to .env');
+    console.log('    - Gemini, free tier: put a key from https://aistudio.google.com/apikey in .env');
+    console.log('      as GEMINI_API_KEY=... (never commit it)\n');
     process.exit(1);
   }
   console.log(`  model ${gemini.MODEL()} · embeddings ${gemini.EMBED_MODEL()}\n`);
@@ -43,11 +50,9 @@ const line = (ok, name, detail) => console.log(`  ${ok ? 'OK  ' : 'FAIL'} ${name
   if (!m.ok) failed++;
 
   const buf = fs.readFileSync(path.join(__dirname, '..', 'docs', 'samples', 'sample-tender-pet-resin.pdf'));
-  const r = await googleTender.readWithGemini({ buf, kind: 'pdf', text: '' });
+  const doc = readDocument(buf);
+  const r = await googleTender.readWithGemini({ buf, kind: 'pdf', text: doc.text });
   if (r.ok) {
-    const { readDocument } = require('../server/intake/document');
-    const { parseDocument } = require('../server/engine/parse');
-    const doc = readDocument(buf);
     const brief = googleTender.mergeReading(parseDocument(doc.text), r.data, doc.text, { model: r.model, latencyMs: r.latencyMs });
     const g = brief.gemini;
     line(true, 'tender PDF', `${r.latencyMs} ms · agreed ${g.agreed.length}, filled ${g.filled.length}, disagreed ${g.disagreed.length}, rejected ${g.rejected.length}`);
@@ -56,6 +61,12 @@ const line = (ok, name, detail) => console.log(`  ${ok ? 'OK  ' : 'FAIL'} ${name
     failed++;
   }
 
-  console.log(failed ? `\n  ${failed} check(s) failed. A 404 usually means the model name: set GEMINI_MODEL.\n` : '\n  All good. Gemini is live.\n');
+  if (failed) {
+    console.log(st.provider === 'gemma'
+      ? `\n  ${failed} check(s) failed. Is Ollama running, and are both models pulled?\n    ollama pull ${gemini.MODEL()}\n    ollama pull ${gemini.EMBED_MODEL()}\n`
+      : `\n  ${failed} check(s) failed. A 404 usually means the model name: set GEMINI_MODEL.\n`);
+  } else {
+    console.log(`\n  All good. ${st.label || 'Google AI'} is live.\n`);
+  }
   process.exit(failed ? 1 : 0);
 })();

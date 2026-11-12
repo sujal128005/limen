@@ -89,9 +89,9 @@ async function polishWithGemini(question, groundedAnswer) {
     maxTokens: 320,
     timeoutMs: TIMEOUT_MS,
   });
-  if (!r.ok) return { ok: false, reason: r.reason, latencyMs: r.latencyMs || 0, model: r.model, detail: r.detail || null, provider: 'gemini' };
-  if (r.text.length < 10) return { ok: false, reason: 'malformed-completion', latencyMs: r.latencyMs, model: r.model, provider: 'gemini' };
-  return { ok: true, text: normalise(r.text), latencyMs: r.latencyMs, slow: r.latencyMs > SLOW_MS, model: r.model, usage: r.usage, provider: 'gemini' };
+  if (!r.ok) return { ok: false, reason: r.reason, latencyMs: r.latencyMs || 0, model: r.model, detail: r.detail || null, provider: gemini.provider() };
+  if (r.text.length < 10) return { ok: false, reason: 'malformed-completion', latencyMs: r.latencyMs, model: r.model, provider: gemini.provider() };
+  return { ok: true, text: normalise(r.text), latencyMs: r.latencyMs, slow: r.latencyMs > SLOW_MS, model: r.model, usage: r.usage, provider: gemini.provider() };
 }
 
 async function polish(question, groundedAnswer) {
@@ -163,4 +163,4 @@ async function polish(question, groundedAnswer) {
 module.exports = { polish, isEnabled, TIMEOUT_MS, SLOW_MS, ENDPOINT, BASE_URL };
 /* The model in use, read at call time: Gemini when its key is set. */
 Object.defineProperty(module.exports, 'MODEL', { enumerable: true, get: () => (gemini.isEnabled() ? gemini.MODEL() : MODEL) });
-Object.defineProperty(module.exports, 'PROVIDER', { enumerable: true, get: () => (gemini.isEnabled() ? 'gemini' : (apiKey() ? 'openai-compatible' : 'none')) });
+Object.defineProperty(module.exports, 'PROVIDER', { enumerable: true, get: () => (gemini.isEnabled() ? gemini.provider() : (apiKey() ? 'openai-compatible' : 'none')) });
