@@ -6153,11 +6153,12 @@ function CorrectionBox({ onCheck, onOverride, result, busy }) {
  */
 function GeminiReading({ report }) {
   if (!report) return null;
+  const who = report.label || (/gemma/i.test(report.model || '') ? 'Gemma' : 'Gemini');
   if (report.error) {
     return (
       <div className="gem-box quiet">
         <span className="gem-mark" aria-hidden="true">G</span>
-        <span>Gemini did not read this one ({report.error === 'rate-limited' ? 'free-tier limit reached' : report.error}). The rules reader&rsquo;s result is shown.</span>
+        <span>{who} did not read this one ({report.error === 'rate-limited' ? 'free-tier limit reached' : report.error === 'unavailable' || report.error === 'network' ? `${who} is not running` : report.error === 'scan-needs-gemini' ? 'a scan with no text needs Gemini' : report.error}). The rules reader&rsquo;s result is shown.</span>
       </div>
     );
   }
@@ -6167,18 +6168,18 @@ function GeminiReading({ report }) {
     <div className="gem-box">
       <span className="gem-mark" aria-hidden="true">G</span>
       <div className="gem-body">
-        <strong>Read by Gemini</strong>
+        <strong>Read by {who}</strong>
         <span className="hint"> · {report.model}{report.latencyMs ? ` · ${(report.latencyMs / 1000).toFixed(1)} s` : ''} · every figure checked against the document</span>
         <ul className="gem-list">
           {report.agreed?.length > 0 && <li>Agrees with the clause reader on {names(report.agreed)}.</li>}
           {report.filled?.length > 0 && <li>Found what the clause reader missed: {names(report.filled)}.</li>}
           {report.unverified?.length > 0 && <li className="warn">Read from an image, so not checkable against text: {names(report.unverified)}. Confirm before running.</li>}
           {report.disagreed?.map((d) => (
-            <li key={d.field} className="warn">Disagrees on {label[d.field] || d.field}: the clause says {String(d.rules)}, Gemini read {String(d.gemini)}. The clause is kept.</li>
+            <li key={d.field} className="warn">Disagrees on {label[d.field] || d.field}: the clause says {String(d.rules)}, {who} read {String(d.gemini)}. The clause is kept.</li>
           ))}
           {report.rejected?.map((r) => (
             <li key={r.field} className="bad">
-              Rejected Gemini&rsquo;s {label[r.field] || r.field} ({String(r.value)}): {r.why === 'quote-not-found' ? 'the quoted words are not in the document' : 'the figure is not in the words it quoted'}.
+              Rejected {who}&rsquo;s {label[r.field] || r.field} ({String(r.value)}): {r.why === 'quote-not-found' ? 'the quoted words are not in the document' : 'the figure is not in the words it quoted'}.
             </li>
           ))}
           {report.notes?.map((n) => <li key={n} className="warn">{n}</li>)}
@@ -6202,6 +6203,7 @@ function DocumentEvidence({ doc, brief, onRun, onClear, busy, disabled, onCheck,
   ];
   const src = brief.sources || {};
   const found = ROWS.filter((r) => r.show(brief) != null);
+  const who = (brief.gemini && brief.gemini.label) || 'Gemini';
 
   return (
     <div className="docread">
@@ -6255,16 +6257,16 @@ function DocumentEvidence({ doc, brief, onRun, onClear, busy, disabled, onCheck,
                 )}
                 {s.from === 'gemini' && (
                   <span className={`gem-badge ${s.verified ? 'ok' : 'warn'}`}>
-                    {s.verified ? 'Read by Gemini · checked against the document' : 'Read by Gemini from an image · confirm it'}
+                    {s.verified ? `Read by ${who} · checked against the document` : `Read by ${who} from an image · confirm it`}
                   </span>
                 )}
                 {s.from === 'gemini-embeddings' && (
-                  <span className="gem-badge ok">Matched by meaning · Gemini embeddings {Number(s.similarity).toFixed(2)}</span>
+                  <span className="gem-badge ok">Matched by meaning · {who} embeddings {Number(s.similarity).toFixed(2)}</span>
                 )}
-                {s.gemini && s.gemini.agrees && <span className="gem-badge ok">Gemini agrees</span>}
+                {s.gemini && s.gemini.agrees && <span className="gem-badge ok">{who} agrees</span>}
                 {s.gemini && !s.gemini.agrees && (
                   <span className="docread-note">
-                    Gemini read {Array.isArray(s.gemini.value) ? s.gemini.value.join(', ') : String(s.gemini.value)} from
+                    {who} read {Array.isArray(s.gemini.value) ? s.gemini.value.join(', ') : String(s.gemini.value)} from
                     {' '}&ldquo;{s.gemini.quote}&rdquo;. The labelled clause above is kept; check which is right.
                   </span>
                 )}
@@ -6359,7 +6361,7 @@ function RequestPanel({
           </button>
           <span className="hint">
             {googleAi?.enabled
-              ? 'PDF, Word, text, or a photo of the tender, read by Gemini. Nothing moves on-chain until you approve.'
+              ? `PDF, Word, text, or a photo of the tender, read by ${googleAi.label || 'Gemini'}. Nothing moves on-chain until you approve.`
               : 'PDF, Word or text. Nothing moves on-chain until you approve.'}
           </span>
           <span className="spacer" />
@@ -6474,7 +6476,7 @@ function BriefPanel({ brief }) {
           <p className={`gem-inline ${brief.semanticMatch.accepted ? 'ok' : 'warn'}`}>
             <span className="gem-mark sm" aria-hidden="true">G</span>
             {brief.semanticMatch.accepted
-              ? <>Gemini matched your wording to <strong>{brief.semanticMatch.material}</strong> by meaning (similarity {brief.semanticMatch.similarity.toFixed(2)}). Every requirement below is still screened.</>
+              ? <>{brief.semanticMatch.label || 'Gemini'} matched your wording to <strong>{brief.semanticMatch.material}</strong> by meaning (similarity {brief.semanticMatch.similarity.toFixed(2)}). Every requirement below is still screened.</>
               : <>Closest catalogue material by meaning is {brief.semanticMatch.material} ({brief.semanticMatch.similarity.toFixed(2)}), below the {brief.semanticMatch.threshold} threshold, so it was not used. Name the material to continue.</>}
           </p>
         )}
@@ -8082,6 +8084,7 @@ function PipelineMeta({ p, refused }) {
     'refusal-not-sent': 'refusals are never sent to the model',
     'slow': 'model was slow but answered',
     'rate-limited': 'Gemini free-tier limit reached, answered locally',
+    'unavailable': 'Gemma is not running, answered locally',
   };
   const reason = p.fallback && (FALLBACK_COPY[p.fallback]
     || (String(p.fallback).startsWith('figures:') ? `rewrite ${String(p.fallback).slice(9)}, so the checked answer is shown` : `model returned ${p.fallback}`));
@@ -8089,7 +8092,7 @@ function PipelineMeta({ p, refused }) {
   return (
     <div className="rat-meta">
       <span className={`rat-mode ${p.mode}`}>
-        {refused ? 'Refused before the model' : p.mode === 'model' ? (p.provider === 'gemini' ? `Gemini · ${p.model}` : p.model) : 'Local responder'}
+        {refused ? 'Refused before the model' : p.mode === 'model' ? (p.provider === 'gemini' ? `Gemini · ${p.model}` : p.provider === 'gemma' ? `Gemma · ${p.model} · local` : p.model) : 'Local responder'}
       </span>
       <span className="rat-dot" aria-hidden="true">·</span>
       <span>grounded {p.localMs} ms</span>

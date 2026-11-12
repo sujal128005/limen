@@ -221,6 +221,108 @@ async function run() {
       } finally { fake.restore(); }
     });
   });
+
+  /* ----------------------------------------------------- Gemma, local */
+
+  group('Google AI: Gemma running locally in Ollama, no key, same checks');
+
+  const gemmaMod = require('../server/google/gemma');
+
+  function withFakeOllama(handler) {
+    const real = global.fetch;
+    const seen = [];
+    global.fetch = async (url, init = {}) => {
+      const u = String(url);
+      if (!u.startsWith('http://127.0.0.1:11434/')) return real(url, init);
+      const body = init.body ? JSON.parse(init.body) : null;
+      seen.push({ url: u, body });
+      const r = await handler(u, body);
+      if (r === 'refused') { const e = new Error('connect ECONNREFUSED'); e.name = 'TypeError'; throw e; }
+      return { ok: (r.status || 200) < 300, status: r.status || 200, json: async () => r.json, text: async () => JSON.stringify(r.json || {}) };
+    };
+    return { seen, restore: () => { global.fetch = real; } };
+  }
+
+  async function withGemma(fn) {
+    const prior = process.env.LIMEN_AI;
+    process.env.LIMEN_AI = 'gemma';
+    gemini._reset(); googleMatch._resetCache();
+    try { return await fn(); } finally {
+      if (prior === undefined) delete process.env.LIMEN_AI; else process.env.LIMEN_AI = prior;
+      gemini._reset(); googleMatch._resetCache();
+    }
+  }
+
+  await test('LIMEN_AI=gemma selects Gemma, with no key at all', async () => {
+    await withGemma(async () => {
+      delete process.env.GEMINI_API_KEY;
+      ok(gemini.isEnabled(), 'enabled without a key');
+      eq(gemini.provider(), 'gemma', 'provider');
+      eq(gemini.label(), 'Gemma', 'label');
+      ok(!gemini.canReadPdf(), 'PDFs go as text');
+      ok(/^gemma/.test(gemini.MODEL()), gemini.MODEL());
+      eq(grok.PROVIDER, 'gemma', 'LIM AI provider');
+    });
+  });
+
+  await test("Gemini's schema becomes JSON Schema for Ollama", async () => {
+    const js = gemmaMod.toJsonSchema(googleTender.SCHEMA);
+    eq(js.type, 'object', 'object');
+    eq(JSON.stringify(js.properties.quantityKg.properties.value.type), '["number","null"]', 'nullable');
+    eq(js.properties.certifications.properties.value.items.type, 'string', 'array items');
+  });
+
+  await test('a tender PDF reaches Gemma as its text, a photo as an image', async () => {
+    await withGemma(async () => {
+      const fake = withFakeOllama(() => ({ json: { message: { content: JSON.stringify(GOOD) } } }));
+      try {
+        const r = await googleTender.readWithGemini({ buf: fs.readFileSync(SAMPLE), kind: 'pdf', text: doc.text });
+        ok(r.ok, JSON.stringify(r));
+        const sent = fake.seen[0].body;
+        ok(fake.seen[0].url.endsWith('/api/chat'), 'chat endpoint');
+        ok(!sent.messages.some((m) => m.images), 'no PDF bytes sent');
+        ok(/Delivery: Material shall be delivered within 14 days/.test(sent.messages.at(-1).content), 'the text layer is sent');
+        ok(sent.format && sent.format.properties && sent.format.properties.deadlineDays, 'schema sent as format');
+        const merged = googleTender.mergeReading(parseDocument(doc.text), r.data, doc.text, { model: r.model });
+        eq(merged.gemini.label, 'Gemma', 'labelled Gemma');
+        eq(merged.gemini.agreed.length, 6, 'and checked the same way');
+
+        const png = Buffer.from([0x89, 0x50, 0x4E, 0x47, 1, 2, 3]);
+        await googleTender.readWithGemini({ buf: png, kind: 'image', mime: 'image/png', text: '' });
+        eq(fake.seen[1].body.messages.at(-1).images[0], png.toString('base64'), 'photo attached as an image');
+
+        const scan = await googleTender.readWithGemini({ buf: fs.readFileSync(SAMPLE), kind: 'pdf', text: '' });
+        eq(scan.reason, 'scan-needs-gemini', 'a PDF with no text layer is not guessed at');
+      } finally { fake.restore(); }
+    });
+  });
+
+  await test('EmbeddingGemma gets its task prompts and still maps PETE pellets to PET resin', async () => {
+    await withGemma(async () => {
+      const fake = withFakeOllama((url, body) => ({ json: { embeddings: body.input.map((t) => fakeVector(t.replace(/^.*\| (query|text): /, ''))) } }));
+      try {
+        const r = await googleMatch.resolveMaterial('500 kg PETE pellets for water bottles');
+        ok(r.ok && r.accepted, JSON.stringify(r));
+        eq(r.material, 'PET resin', 'material');
+        ok(fake.seen.some((s) => s.body.input.some((t) => t.startsWith('title: none | text: '))), 'document prompt');
+        ok(fake.seen.some((s) => s.body.input.some((t) => t.startsWith('task: search result | query: '))), 'query prompt');
+      } finally { fake.restore(); }
+    });
+  });
+
+  await test('Ollama not running: one failed call, then a cool-down, and LIM AI answers locally', async () => {
+    await withGemma(async () => {
+      const fake = withFakeOllama(() => 'refused');
+      try {
+        const a = await gemini.generateText({ prompt: 'x' });
+        eq(a.reason, 'network', 'first call');
+        const b = await grok.polish('why?', 'Anhui won at $1,175.');
+        eq(b.ok, false, 'no rewrite');
+        eq(b.reason, 'unavailable', 'cooling down');
+        eq(fake.seen.length, 1, 'only one connection attempted');
+      } finally { fake.restore(); }
+    });
+  });
 }
 
 module.exports = { run };

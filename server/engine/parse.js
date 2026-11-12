@@ -228,7 +228,7 @@ async function geminiParse(text) {
   if (!r.ok || !r.data) return null;
   const typed = (String(text).match(/\d[\d,]*(?:\.\d+)?/g) || []).map((x) => parseFloat(x.replace(/,/g, '')));
   const inText = (v, ...divisors) => [1, ...divisors].some((d) => typed.some((n) => Math.abs(n - v / d) < 1e-6));
-  const out = { ...r.data, provider: 'gemini' };
+  const out = { ...r.data, provider: require('../google/gemini').provider() };
   if (out.quantityKg != null && !inText(out.quantityKg, 1000)) out.quantityKg = null;
   if (out.budgetTotal != null && !inText(out.budgetTotal)) out.budgetTotal = null;
   if (out.deadlineDays != null && !inText(out.deadlineDays, 7)) out.deadlineDays = null;

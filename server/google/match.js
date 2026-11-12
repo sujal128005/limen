@@ -102,7 +102,7 @@ async function fillMaterial(brief, requestText, recompute) {
   const r = await resolveMaterial(requestText);
   if (!r.ok) return brief;
   brief.semanticMatch = {
-    query: String(requestText).slice(0, 200),
+    query: String(requestText).slice(0, 200), label: gemini.label(),
     material: r.material, similarity: r.similarity, threshold: r.threshold,
     accepted: r.accepted, runnerUp: r.runnerUp, model: r.model,
   };

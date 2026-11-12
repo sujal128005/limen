@@ -1,6 +1,12 @@
 'use strict';
 const { summary } = require('./harness');
 
+/* Tests never reach a real model. Set before the server loads .env, whose
+   loader leaves an already-defined variable alone, so a developer's own Gemini
+   key or local Gemma in .env stays out of the suite. The Gemini tests set their
+   own stand-ins. */
+for (const k of ['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'LIMEN_AI', 'GEMMA_MODEL', 'OLLAMA_HOST']) process.env[k] = '';
+
 (async () => {
   console.log('\n\x1b[1mLimen test suite\x1b[0m');
   await require('./contracts.test').run();

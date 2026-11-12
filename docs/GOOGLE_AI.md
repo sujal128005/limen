@@ -1,6 +1,35 @@
-# Google AI in Limen: Gemini on the free tier
+# Google AI in Limen: Gemma locally, or Gemini on the free tier
 
-Limen uses **Gemini, from Google DeepMind, through the Gemini API on Google AI Studio's free tier**. One free key turns it on; nothing here needs a Google Cloud project, a billing account or a card.
+Limen uses Google DeepMind's models in one of two free ways, chosen in `.env`:
+
+| | Gemma, local | Gemini, free tier |
+|---|---|---|
+| Model | `gemma3:4b` (reads text and photos) and `embeddinggemma`, through [Ollama](https://ollama.com) | `gemini-2.5-flash` and `gemini-embedding-001`, through Google AI Studio |
+| Setting | `LIMEN_AI=gemma` | `GEMINI_API_KEY=...` |
+| Cost and key | Free, no key, nothing leaves the machine | Free tier; some Google projects are refused it |
+| Tender PDFs | Reads the PDF's text layer | Reads the PDF itself, scans included |
+| Speed on a laptop CPU | 10 to 40 seconds a tender | 1 to 3 seconds |
+
+Every check below applies to both: the code does not care which model answered.
+
+## Gemma, local (no key)
+
+```bash
+# 1. Install Ollama from https://ollama.com/download (Windows, macOS or Linux)
+# 2. Download the two models, about 4 GB together:
+ollama pull gemma3:4b
+ollama pull embeddinggemma
+# 3. In .env:
+LIMEN_AI=gemma
+# 4. Check:
+npm run check:gemini
+```
+
+Ollama runs in the background after install. `GEMMA_MODEL`, `GEMMA_EMBED_MODEL` and `OLLAMA_HOST` override the defaults; `gemma3:1b` is faster but cannot read photos. Gemma runs where Ollama runs, so the free Render instance stays on Limen's own logic; the demo laptop shows Gemma.
+
+## Gemini, free tier (key)
+
+Limen can also use **Gemini through the Gemini API on Google AI Studio's free tier**. One free key turns it on; nothing here needs a Google Cloud project, a billing account or a card. If Google answers "The Gemini API free tier is not available for this project", create the key with a personal Gmail account and **Create API key in new project**, or use Gemma.
 
 ```bash
 # 1. Get a free key: https://aistudio.google.com/apikey

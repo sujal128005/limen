@@ -112,7 +112,12 @@ function checkReading(key, reading, docText) {
 async function readWithGemini(doc) {
   if (!gemini.isEnabled()) return { ok: false, reason: 'no-key' };
   const parts = [];
-  if (doc.kind === 'pdf') parts.push({ inlineData: { mimeType: 'application/pdf', data: doc.buf.toString('base64') } });
+  /* Gemini reads the PDF itself. Gemma (local) takes no PDF input, so it gets
+     the PDF's text layer; a scan with no text layer it cannot read. */
+  const pdfAsText = doc.kind === 'pdf' && !gemini.canReadPdf();
+  if (pdfAsText && !String(doc.text || '').trim()) return { ok: false, reason: 'scan-needs-gemini', model: gemini.MODEL() };
+  if (doc.kind === 'pdf' && !pdfAsText) parts.push({ inlineData: { mimeType: 'application/pdf', data: doc.buf.toString('base64') } });
+  else if (pdfAsText) parts.push({ text: `Tender document:\n\n${String(doc.text).slice(0, 60000)}` });
   else if (doc.kind === 'image') parts.push({ inlineData: { mimeType: doc.mime || 'image/jpeg', data: doc.buf.toString('base64') } });
   else parts.push({ text: `Tender document:\n\n${String(doc.text || '').slice(0, 60000)}` });
   parts.push({ text: 'Extract the purchase requirement from this tender as JSON.' });
@@ -157,7 +162,7 @@ function mergeReading(ruleBrief, data, docText, meta = {}) {
     budgetTotal: data.budget && { value: data.budget.value, quote: data.budget.quote, currency: (data.budget.currency || '').toUpperCase() || null },
   };
 
-  const report = { model: meta.model || gemini.MODEL(), latencyMs: meta.latencyMs || null, agreed: [], filled: [], disagreed: [], rejected: [], unverified: [], notes: [] };
+  const report = { model: meta.model || gemini.MODEL(), label: gemini.label(), latencyMs: meta.latencyMs || null, agreed: [], filled: [], disagreed: [], rejected: [], unverified: [], notes: [] };
 
   for (const key of KEYS) {
     const r = readings[key];

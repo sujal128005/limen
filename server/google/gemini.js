@@ -41,8 +41,22 @@ const COOL_DOWN_MS = Number(process.env.GEMINI_COOLDOWN_MS || 30000);
 function apiKey() {
   return process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '';
 }
+
+/*
+ * Which Google model answers. LIMEN_AI=gemma (or a GEMMA_MODEL / OLLAMA_HOST
+ * setting) sends every call to Gemma running locally in Ollama: no key, no
+ * cost. Otherwise a Gemini key is used. LIMEN_AI=off turns both off.
+ */
+const gemma = require('./gemma');
+function provider() {
+  const p = String(process.env.LIMEN_AI || '').toLowerCase();
+  if (p === 'off' || process.env.LIMEN_GEMINI === 'off') return 'off';
+  if (p === 'gemma' || p === 'gemini') return p === 'gemini' && !apiKey() ? 'off' : p;
+  if (process.env.GEMMA_MODEL || process.env.OLLAMA_HOST) return 'gemma';
+  return apiKey() ? 'gemini' : 'off';
+}
 function isEnabled() {
-  return !!apiKey() && process.env.LIMEN_GEMINI !== 'off';
+  return provider() !== 'off';
 }
 
 /* Rate-limit cool-down and a small record of how the model path is doing, for
@@ -51,12 +65,15 @@ let coolUntil = 0;
 const stats = { calls: 0, ok: 0, failed: 0, rateLimited: 0, lastError: null, lastOkAt: null };
 
 function status() {
+  if (provider() === 'gemma') return gemma.status();
   return {
     enabled: isEnabled(),
-    provider: 'gemini',
+    provider: isEnabled() ? 'gemini' : 'off',
+    label: 'Gemini',
     model: MODEL(),
     embedModel: EMBED_MODEL(),
     tier: 'free (Google AI Studio)',
+    canReadPdf: true,
     coolingDown: Date.now() < coolUntil,
     ...stats,
   };
@@ -193,6 +210,18 @@ function cosine(a, b) {
 function _reset() {
   coolUntil = 0;
   Object.assign(stats, { calls: 0, ok: 0, failed: 0, rateLimited: 0, lastError: null, lastOkAt: null });
+  gemma._reset();
 }
 
-module.exports = { isEnabled, status, generateText, generateJson, embed, cosine, MODEL, EMBED_MODEL, _reset };
+/* One interface, two Google models. Callers never branch on which one. */
+const local = () => provider() === 'gemma';
+module.exports = {
+  isEnabled, status, cosine, _reset, provider,
+  label: () => (local() ? 'Gemma' : 'Gemini'),
+  canReadPdf: () => !local(),
+  generateText: (o) => (local() ? gemma.generateText(o) : generateText(o)),
+  generateJson: (o) => (local() ? gemma.generateJson(o) : generateJson(o)),
+  embed: (t, k, ms) => (local() ? gemma.embed(t, k, ms) : embed(t, k, ms)),
+  MODEL: () => (local() ? gemma.MODEL() : MODEL()),
+  EMBED_MODEL: () => (local() ? gemma.EMBED_MODEL() : EMBED_MODEL()),
+};
