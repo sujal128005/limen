@@ -111,6 +111,9 @@
   /* lines */
   --hair:        #E4E1D9;
   --hair-strong: #D2CEC4;
+  /* The adversary report was written against a --border token that was never
+     defined, so its card and table borders silently disappeared. */
+  --border:      var(--hair-strong);
 
   /* accent: deep pine. Action, focus, success. */
   --pine:       #0B5F52;
@@ -522,6 +525,17 @@ button { font: inherit; color: inherit; }
   .tb-who-name { display: none; }
   .tb-env { padding: 6px; gap: 0; }
   .tb-env-label { display: none; }
+  /* The bar needed about 530px on a 375px phone, so the whole desk scrolled
+     sideways. The wordmark becomes the mark, the environment pill goes (the
+     sign-in door says it is a test environment), the theme switch tightens,
+     and the purchase name is what gives way, with an ellipsis. */
+  .tb-name { display: none; }
+  .topbar > .tb-env { display: none; }
+  .topbar { gap: 8px; padding-inline: 10px; }
+  .topbar .themeswitch .ts-opt { padding-inline: 6px; min-width: 0; }
+  .topbar .tsw { flex: 1 1 auto; min-width: 0; }
+  .topbar .tsw-chip { max-width: 100%; padding-left: 8px; }
+  .topbar .tsw-chip-k { display: none; }
 }
 
 .tb-env {
@@ -3897,6 +3911,14 @@ button.handover:focus-visible { outline: 2px solid var(--pine); outline-offset: 
 .msg-body { font-size: 13.5px; line-height: 1.55; color: var(--ink); white-space: pre-wrap; }
 
 .composer { border-top: 1px solid var(--hair-strong); padding: 14px 16px; display: grid; gap: 10px; }
+/* The sourcing composer shares this class. An implicit grid column sizes to its
+   content, which on a phone made the box 430px wide inside 339px of space and
+   cut "Run again" off at the edge. One column that may shrink. */
+.composer { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 560px) {
+  .composer-foot { flex-wrap: wrap; padding-left: 12px; row-gap: 8px; }
+  .composer-foot > .hint { flex-basis: 100%; order: 3; }
+}
 .composer textarea { resize: vertical; min-height: 46px; width: 100%; }
 .composer-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .composer-to { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-3); }
@@ -4726,7 +4748,13 @@ h1, h2, h3 { text-wrap: balance; }
 /* The assistant sits in the same corner, so the toast takes the space above it
    rather than landing on top of it. */
 @media (max-width: 560px) {
-  .toast { left: 12px; right: 12px; max-width: none; bottom: 88px; }
+  .toast { left: 12px; right: 12px; max-width: none; }
+}
+/* At 720px and below the assistant moves up to 96px to clear the dock, and the
+   toast was left at 88-96px, on top of it: the orb covered the first words.
+   Above the orb instead: 96px + its 54px + a 12px gap. */
+@media (max-width: 720px) {
+  .toast { bottom: 162px; }
 }
 
 /* ---- the line between read and unread */
@@ -5710,3 +5738,11 @@ tr.clickable:focus-visible { outline: 2px solid var(--pine); outline-offset: -2p
   50%      { transform: scale(1.08); opacity: .72; }
 }
 @keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+/* Status dots (waiting, live network, the landing eyebrow) pulse with this.
+   The keyframes were dropped in 148c2e7 while four rules kept using them. */
+@keyframes breathe { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+
+/* LIM AI answers: "- " lines render as bullets (see inlineMarks in App.jsx). */
+.lim-a-text p.lim-a-li { position: relative; padding-left: 16px; }
+.lim-a-text p.lim-a-li::before { content: ""; position: absolute; left: 4px; top: .7em; width: 4px; height: 4px; border-radius: 50%; background: var(--ink-3); }
+.lim-a-text code { font-size: .92em; padding: 1px 5px; border-radius: 4px; background: var(--sunk); }

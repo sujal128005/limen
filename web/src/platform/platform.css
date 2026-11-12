@@ -218,7 +218,13 @@ a.pf-kpi:hover { border-color: var(--pine-line); }
 .pf-path > div.done { background: var(--pine-wash); color: var(--pine); }
 .pf-path > div.cur { background: var(--pine); color: var(--on-accent); }
 .pf-path > div.bad { background: var(--crimson); color: #fff; }
-@media (max-width: 720px) { .pf-path { flex-direction: column; border-radius: var(--r-md); } .pf-path > div::after { display: none; } .pf-path > div { text-align: left; } }
+@media (max-width: 720px) {
+  .pf-path { flex-direction: column; border-radius: var(--r-md); }
+  .pf-path > div::after { display: none; }
+  /* Stacked, the first stage kept the narrower padding it needs as the left
+     end of the row of arrows, so it sat further left than the rest. */
+  .pf-path > div, .pf-path > div:first-child { text-align: left; padding-left: 16px; }
+}
 
 .pf-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--hair); margin-bottom: 16px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
 .pf-tabs button { border: 0; background: none; font: inherit; font-weight: 600; color: var(--ink-3); padding: 10px 14px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
@@ -361,7 +367,18 @@ a.pf-kpi:hover { border-color: var(--pine-line); }
 .pf-demobar-links a { color: var(--pine); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
 
 .hp-note a, .hp-note .hp-linkbtn { color: var(--invert-fg); text-decoration: underline; text-underline-offset: 2px; }
-@media (max-width: 720px) { .hp-acct a:not(.btn) { display: none; } }
+/* On a phone the bar keeps one way in, Sign in. It used to keep only "Create
+   account", which left a returning user with no way to sign in from here and
+   still pushed the theme switch 13px past the edge of a 375px screen. The
+   hero links to both kinds of sign-up. */
+@media (max-width: 720px) {
+  .hp-acct .hp-acct-wide { display: none; }
+  .hp-acct { gap: 12px; margin-right: 10px; }
+  .hp-acct .hp-acct-signin {
+    opacity: 1; padding: 6px 12px; border-radius: 100px;
+    border: 1px solid var(--invert-line); font-size: 13.5px;
+  }
+}
 .pf-acct .pf-pop a { color: var(--ink); }
 
 /* narrow screens: nothing may push the page wider than the viewport */
@@ -377,3 +394,13 @@ a.pf-kpi:hover { border-color: var(--pine-line); }
   .pf-highlights > div { border-bottom: 1px solid var(--hair); }
   .pf-notif { width: min(360px, calc(100vw - 24px)); }
 }
+
+/* Theme choice in the account menu: the platform pages had no switch at all. */
+.pf-theme { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px 8px; }
+.pf-theme button {
+  font: inherit; font-size: 12.5px; padding: 6px 0; border-radius: var(--r-sm); cursor: pointer;
+  background: transparent; border: 1px solid var(--hair); color: var(--ink-2);
+}
+.pf-theme button:hover { background: var(--sunk); }
+.pf-theme button.on { background: var(--pine-wash); border-color: var(--pine-line); color: var(--pine); font-weight: 600; }
+.pf-theme button:focus-visible { outline: 2px solid var(--pine); outline-offset: 1px; }
