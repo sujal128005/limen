@@ -1,0 +1,194 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BuildProfileRequest",
+  "$ref": "#/$defs/BuildProfileRequest",
+  "$defs": {
+    "BuildProfileRequest": {
+      "type": "object",
+      "properties": {
+        "actor": {
+          "$ref": "#/$defs/Actor"
+        },
+        "supplier_id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "city": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "products": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Product"
+          }
+        }
+      },
+      "required": [
+        "actor",
+        "supplier_id",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "Actor": {
+      "type": "object",
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": [
+            "BUYER_SALES",
+            "BUYER_HEAD",
+            "BUYER_FINANCE",
+            "SUPPLIER_OWNER",
+            "SUPPLIER_STAFF",
+            "PLATFORM"
+          ]
+        },
+        "org_id": {
+          "type": "string"
+        },
+        "user_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "org_id",
+        "user_id"
+      ],
+      "additionalProperties": false
+    },
+    "Product": {
+      "type": "object",
+      "properties": {
+        "product_id": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "material": {
+          "type": "string"
+        },
+        "specs": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/SpecOffered"
+          }
+        },
+        "uom": {
+          "type": "string"
+        },
+        "unit_weight_kg": {
+          "type": "number",
+          "minimum": 0
+        },
+        "moq": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "minimum": 1
+        },
+        "monthly_capacity": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "minimum": 0
+        },
+        "standard_lead_time_days": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "minimum": 0
+        },
+        "gst_rate_bps": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4000
+        }
+      },
+      "required": [
+        "product_id",
+        "category",
+        "material"
+      ],
+      "additionalProperties": false
+    },
+    "SpecOffered": {
+      "type": "object",
+      "properties": {
+        "min": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "max": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "USER_STATED",
+            "DOCUMENT_EXTRACTED",
+            "SUPPLIER_DECLARED",
+            "VERIFIED",
+            "LIMEN_TRANSACTION",
+            "ESTIMATED",
+            "DEFAULT_ASSUMPTION"
+          ]
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    }
+  }
+}

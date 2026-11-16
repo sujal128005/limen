@@ -1,0 +1,72 @@
+{
+  "/v1/buyer/requirements/parse": {
+    "method": "POST",
+    "request": "ParseRequirementRequest.schema.json",
+    "response": "ParseRequirementResponse.schema.json",
+    "audience": "BUYER",
+    "permission": "buyer.parse_requirement"
+  },
+  "/v1/buyer/suppliers/shortlist": {
+    "method": "POST",
+    "request": "ShortlistRequest.schema.json",
+    "response": "ShortlistResponse.schema.json",
+    "audience": "BUYER",
+    "permission": "buyer.shortlist"
+  },
+  "/v1/buyer/rfqs": {
+    "method": "POST",
+    "request": "CreateRfqRequest.schema.json",
+    "response": "CreateRfqResponse.schema.json",
+    "audience": "BUYER",
+    "permission": "buyer.create_rfq"
+  },
+  "/v1/buyer/quotes/evaluate": {
+    "method": "POST",
+    "request": "EvaluateQuotesRequest.schema.json",
+    "response": "EvaluateQuotesResponse.schema.json",
+    "audience": "BUYER",
+    "permission": "buyer.evaluate_quotes"
+  },
+  "/v1/buyer/negotiation/next-move": {
+    "method": "POST",
+    "request": "BuyerNextMoveRequest.schema.json",
+    "response": "NextMoveResponse.schema.json",
+    "audience": "BUYER",
+    "permission": "buyer.negotiate"
+  },
+  "/v1/supplier/profile/build": {
+    "method": "POST",
+    "request": "BuildProfileRequest.schema.json",
+    "response": "BuildProfileResponse.schema.json",
+    "audience": "SUPPLIER",
+    "permission": "supplier.build_profile"
+  },
+  "/v1/supplier/rfqs/assess": {
+    "method": "POST",
+    "request": "AssessRfqRequest.schema.json",
+    "response": "AssessRfqResponse.schema.json",
+    "audience": "SUPPLIER",
+    "permission": "supplier.assess_rfq"
+  },
+  "/v1/supplier/quotes/prepare": {
+    "method": "POST",
+    "request": "PrepareQuoteRequest.schema.json",
+    "response": "PrepareQuoteResponse.schema.json",
+    "audience": "SUPPLIER",
+    "permission": "supplier.prepare_quote"
+  },
+  "/v1/supplier/negotiation/next-move": {
+    "method": "POST",
+    "request": "SupplierNextMoveRequest.schema.json",
+    "response": "NextMoveResponse.schema.json",
+    "audience": "SUPPLIER",
+    "permission": "supplier.negotiate"
+  },
+  "/v1/core/deal-zone/check": {
+    "method": "POST",
+    "request": "DealZoneRequest.schema.json",
+    "response": "DealZoneResponse.schema.json",
+    "audience": "BUYER_AND_SUPPLIER",
+    "permission": "core.deal_zone_check"
+  }
+}

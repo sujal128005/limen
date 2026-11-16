@@ -1,0 +1,25 @@
+All 108 tests pass on the new contract rules. Updating the docs and building the zip now.
+
+The updated zip is attached (`/home/user/limen-core/limen-core.zip`, 74 files). Download this one and discard the earlier two. From a fresh unpack, all 108 tests pass and the example output matches.
+
+## What changed
+
+- **Guards now follow `createDeal`.** Every award, quote and negotiation offer is checked against all seven rules before it is recommended:
+  - buyer: per-deal limit, cumulative limit minus spent, expiry;
+  - seller: minimum unit price, per-deal quantity, total quantity minus committed, expiry.
+- **Escrow amount = total payable** (basic + freight + GST). Each award in a recommendation carries `escrow_amount_units`, the exact `amount` to pass to `createDeal`.
+- **Conversion in one place:** `limen/chain.py`. Token-unit amounts cross the API as decimal strings, so use `BigInt` in Node.js.
+- **Floor: I chose (a).** The engine enforces the minimum unit price on the ex-GST price, which is stricter than the chain. Everything the engine approves therefore passes the on-chain check, and it needs no contract change. The looser on-chain floor is documented with an example in `docs/DESIGN.md` section 2.
+- **API field changes for the Node app:** `ceiling` is now `buyer_policy`, and the supplier mandate's `floor` is now `seller_policy`. The deal-zone check also takes an `rfq_id`.
+- **Docs and tests updated:** `DESIGN.md` section 2 is rewritten, and `tests/test_contract_rules.py` has one test per contract rule.
+- **Handoff note added:** `docs/HANDOFF.md` is the write-up you asked for, for the other Claude: what was built, how to verify it, what to review, and the open items.
+
+## Things I assumed or added — please confirm
+
+1. **Token peg:** I assumed the token is rupee-pegged (1 paisa = 10,000 units). If it is a USD stablecoin, `chain.py` needs an exchange rate.
+2. **Quantity unit:** I assumed on-chain `quantity` is a whole number in the RFQ's unit (kg or pieces).
+3. **Expiry boundary:** the engine treats a policy as expired at its expiry second; check which comparison the contract uses.
+4. **No per-RFQ budget any more:** the contract only has per-deal and cumulative limits, so a tight per-deal limit now forces a split rather than blocking the order. Say if the Head also needs a per-RFQ cap.
+5. **Pending amounts (my addition):** both policies accept an optional `pending` figure for deals approved but not yet on chain, so two RFQs running at once cannot both use the same headroom. It defaults to zero.
+
+The Gemini and Gemma adapters are still untested against a live model; the steps are in `docs/LLM_TESTING.md`.

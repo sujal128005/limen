@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DealZoneResponse",
+  "$ref": "#/$defs/DealZoneResponse",
+  "$defs": {
+    "DealZoneResponse": {
+      "type": "object",
+      "properties": {
+        "audience": {
+          "type": "string"
+        },
+        "rfq_id": {
+          "type": "string"
+        },
+        "supplier_id": {
+          "type": "string"
+        },
+        "deal_zone": {
+          "type": "string"
+        },
+        "checks_used": {
+          "type": "integer"
+        },
+        "checks_remaining": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "audience",
+        "rfq_id",
+        "supplier_id",
+        "deal_zone",
+        "checks_used",
+        "checks_remaining"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

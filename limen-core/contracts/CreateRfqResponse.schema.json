@@ -1,0 +1,198 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CreateRfqResponse",
+  "$ref": "#/$defs/CreateRfqResponse",
+  "$defs": {
+    "CreateRfqResponse": {
+      "type": "object",
+      "properties": {
+        "audience": {
+          "type": "string"
+        },
+        "rfq_id": {
+          "type": "string"
+        },
+        "recipients": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "withheld": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "rfq_for_supplier": {
+          "$ref": "#/$defs/RfqForSupplier"
+        }
+      },
+      "required": [
+        "audience",
+        "rfq_id",
+        "recipients",
+        "withheld",
+        "rfq_for_supplier"
+      ],
+      "additionalProperties": false
+    },
+    "RfqForSupplier": {
+      "type": "object",
+      "properties": {
+        "rfq_id": {
+          "type": "string"
+        },
+        "buyer_label": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "material": {
+          "type": "string"
+        },
+        "specs": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/SpecConstraint"
+          }
+        },
+        "quantity": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "uom": {
+          "type": "string"
+        },
+        "delivery_state": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "delivery_city": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "need_by_days": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "required_certifications": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "preferred_credit_days": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "rfq_id",
+        "buyer_label",
+        "category",
+        "material",
+        "specs",
+        "quantity"
+      ],
+      "additionalProperties": false
+    },
+    "SpecConstraint": {
+      "type": "object",
+      "properties": {
+        "min": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "max": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "one_of": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "USER_STATED",
+            "DOCUMENT_EXTRACTED",
+            "SUPPLIER_DECLARED",
+            "VERIFIED",
+            "LIMEN_TRANSACTION",
+            "ESTIMATED",
+            "DEFAULT_ASSUMPTION"
+          ]
+        },
+        "evidence": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    }
+  }
+}

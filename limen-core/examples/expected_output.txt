@@ -1,0 +1,102 @@
+SYNTHETIC DATA. All companies, prices, costs, capacities, certifications and histories are invented.
+
+=== 1. Buyer Agent: tender text -> validated requirement ======================
+material=HDPE quantity=40,000 KG deliver=Pune need_by=21d certs=['BIS'] credit=45d
+specs: density_g_cc=[0.95, 0.956], grade_type=['blow_moulding'], mfi_g_10min=[0.3, 0.5]
+rfq_ready=True
+  [WARNING] BUDGET_IN_TEXT: A budget or target price appears in the text. It is kept private, is not shared in the RFQ and is not used as a limit; the Head sets the policy limits separately.
+
+A short, incomplete request ('Want 20000 pcs corrugated boxes 5 ply for our Nashik unit.') -> rfq_ready=False; asks:
+  ? By when do you need delivery?
+  ? What are the box dimensions (L x W x H in mm)?
+
+=== 2. Core matching: shortlist from 18 suppliers =============================
+  SUP-RES-01  eligible=True   score=0.950  conf=1.00    534 km  p_late=0.07 (PRIOR_PLUS_LIMEN_HISTORY)  all checks pass
+  SUP-RES-04  eligible=True   score=0.946  conf=1.00    659 km  p_late=0.03 (PRIOR_PLUS_LIMEN_HISTORY)  all checks pass
+  SUP-RES-08  eligible=True   score=0.929  conf=1.00    775 km  p_late=0.09 (PRIOR_PLUS_LIMEN_HISTORY)  all checks pass
+  SUP-RES-02  eligible=True   score=0.914  conf=0.93    151 km  p_late=0.20 (PRIOR_ONLY)  capacity=PARTIAL
+  SUP-RES-03  eligible=True   score=0.900  conf=1.00    632 km  p_late=0.35 (PRIOR_PLUS_LIMEN_HISTORY)  all checks pass
+  SUP-RES-06  eligible=True   score=0.842  conf=0.93   1143 km  p_late=0.15 (PRIOR_PLUS_LIMEN_HISTORY)  cert:BIS=PARTIAL
+  SUP-RES-05  eligible=False  score=0.731  conf=1.00    639 km  p_late=0.14 (PRIOR_PLUS_LIMEN_HISTORY)  spec:grade_type=FAIL; spec:mfi_g_10min=FAIL
+  (11 suppliers list no HDPE and are not shown)
+
+=== 3. Buyer Agent: RFQ with controlled disclosure ============================
+recipients (buyer-private): ['SUP-RES-01', 'SUP-RES-02', 'SUP-RES-03', 'SUP-RES-04', 'SUP-RES-06', 'SUP-RES-08']
+each supplier receives exactly: {"rfq_id":"RFQ-1001","buyer_label":"Verified Limen buyer","category":"RESIN","material":"HDPE","specs":{"density_g_cc":{"min":0.95,"max":0.956,"one_of":null,"unit":"g/cc","source":"DOCUMENT_EXTRACTED","evidence":null},"grade_type"...
+withheld: buyer policy limits (per-deal and cumulative); budget or target price mentioned in the request; cost of capital; shortage and rejection cost parameters; list of suppliers invited; other suppliers' quotes; buyer name
+
+=== 4. Supplier Agents: assess RFQ and draft quotations (each sees only its own data) 
+  SUP-RES-01: quote Rs 110.91 @ 45d credit, 40,000 KG, 9d, FOR_DESTINATION; [private] margin 9.0%, needs SUPPLIER_OWNER
+  SUP-RES-02: quote Rs 108.27 @ 45d credit, 29,333 KG, 6d, FOR_DESTINATION; [private] margin 8.0%, needs SUPPLIER_OWNER; Part quantity: 29333 of 40000 KG.
+  SUP-RES-03: quote Rs 105.03 @ 45d credit, 40,000 KG, 10d, FOR_DESTINATION; [private] margin 8.0%, needs SUPPLIER_OWNER
+  SUP-RES-04: quote Rs 118.84 @ 45d credit, 40,000 KG, 4d, FOR_DESTINATION; [private] margin 10.0%, needs SUPPLIER_OWNER
+  SUP-RES-06: quote Rs 110.08 @ 45d credit, 40,000 KG, 10d, FOR_DESTINATION; [private] margin 9.0%, needs SUPPLIER_OWNER
+  SUP-RES-08: quote Rs 126.38 @ 45d credit, 40,000 KG, 8d, FOR_DESTINATION; [private] margin 8.0%, needs SUPPLIER_OWNER
+
+=== 5. Buyer Agent: landed-cost comparison and recommendation within the buyer's on-chain policy 
+buyer policy (Head-approved, escrow = payable incl. GST): per deal Rs 55,00,000.00, cumulative headroom Rs 55,00,000.00 (limit Rs 2,00,00,000.00, spent Rs 1,45,00,000.00)
+  supplier     price/kg  landed/kg  exp.delay   exp.reject  ETC/kg    payable       status
+  SUP-RES-01    110.91     109.31      44,828       3,914   110.53   Rs 52,34,952.00  eligible
+  SUP-RES-02    108.27     106.71     150,000       9,528   112.15   Rs 37,47,543.01  eligible, part qty 29,333
+  SUP-RES-03    105.03     103.52     378,151      43,922   114.07   Rs 49,57,416.00  eligible, lowest price
+  SUP-RES-04    118.84     117.13      21,429       3,565   117.75   Rs 56,09,248.00  eligible, OVER BUYER LIMITS
+  SUP-RES-08    126.38     124.56      52,174       5,416   126.00   Rs 59,65,136.00  eligible, OVER BUYER LIMITS
+  SUP-RES-06    110.08     108.49      90,000      22,897   111.31   Rs 51,95,776.00  EXCLUDED
+
+RECOMMENDATION (decision support only; requires ['BUYER_HEAD', 'BUYER_FINANCE'])
+  - Award 20,000 KG to SUP-RES-01 at Rs 110.91/KG, 45 days credit, delivered in about 9 days (landed Rs 109.31/KG).
+  - Award 20,000 KG to SUP-RES-03 at Rs 105.03/KG, 45 days credit, delivered in about 10 days (landed Rs 103.52/KG).
+  - Total payable Rs 50,96,184.00 is within the buyer policy (per-deal and cumulative limits). Expected total cost Rs 43,21,713.22 including Rs 26,079.40 expected delay cost.
+  - Splitting saves enough to justify a second supplier.
+  createDeal parameters per award (amount in 6-decimal token units):
+  - SUP-RES-01: amount=2617476000000 (Rs 26,17,476.00), quantity=20000
+  - SUP-RES-03: amount=2478708000000 (Rs 24,78,708.00), quantity=20000
+  trade-offs:
+  - SUP-RES-06 is excluded: BIS is claimed but not verified; verify the certificate before any award.
+  - Best split is Rs 99,654.08 cheaper in expected total cost than the best single supplier.
+  - The lowest unit price is SUP-RES-03 at Rs 105.03/KG. Giving it the whole order would cost Rs 2,41,165.99 more in expected total cost: its landed cost is Rs 41,40,806.31, but it carries Rs 3,78,151.26 of expected delay cost (late on about 35% of orders) and Rs 43,921.64 of expected rejection cost.
+  assumptions:
+  - Supplier delays are treated as independent of each other
+  - Suppliers with no Limen delivery history are scored on a neutral prior
+
+=== 6. Core deal-zone oracle: is negotiating with an over-budget supplier worthwhile? 
+  SUP-RES-04: quoted Rs 118.84 (over buyer limits) -> both parties are told only: {"deal_zone": "POSSIBLE", "checks_used": 1, "checks_remaining": 1}
+  SUP-RES-08: quoted Rs 126.38 (over buyer limits) -> both parties are told only: {"deal_zone": "NONE", "checks_used": 1, "checks_remaining": 1}
+
+=== 7. Negotiation with SUP-RES-01 for its 20,000 KG share (limits stay private) 
+  seq 0  SUPPLIER quote      Rs 110.91 @ 45d credit
+  seq 1  BUYER    OFFER      Rs 102.03 @ 45d credit  |  Rs 100.40 @ 0d credit
+          [private to buyer] Round 1 of 6: you have moved 0% of the way from your opening aim to your walk-away (set by your best alternative without this supplier).
+  seq 2  SUPPLIER OFFER      Rs 107.79 @ 0d credit
+          [private to supplier] Round 1 of 6: you have moved 20% of the way from your quote to your lowest acceptable price.
+  seq 3  BUYER    OFFER      Rs 101.29 @ 0d credit
+          [private to buyer] Round 2 of 6: you have moved 10% of the way from your opening aim to your walk-away (set by your best alternative without this supplier).
+  seq 4  SUPPLIER OFFER      Rs 106.72 @ 0d credit
+          [private to supplier] Round 2 of 6: you have moved 40% of the way from your quote to your lowest acceptable price.
+  seq 5  BUYER    OFFER      Rs 102.79 @ 0d credit
+          [private to buyer] Round 3 of 6: you have moved 27% of the way from your opening aim to your walk-away (set by your best alternative without this supplier).
+  seq 6  SUPPLIER OFFER      Rs 105.64 @ 0d credit
+          [private to supplier] Round 3 of 6: you have moved 60% of the way from your quote to your lowest acceptable price.
+  seq 7  BUYER    OFFER      Rs 104.66 @ 0d credit
+          [private to buyer] Round 4 of 6: you have moved 48% of the way from your opening aim to your walk-away (set by your best alternative without this supplier).
+  seq 8  SUPPLIER ACCEPT     Rs 104.66 @ 0d credit
+          [private to supplier] The buyer's offer nets Rs 104.66 per unit after credit cost, at or above your current aim.
+  seq 9  BUYER    ACCEPT     Rs 104.66 @ 0d credit
+          [private to buyer] The counterparty accepted our offer; confirming on the same terms.
+  outcome: AGREED
+
+=== 8. Final recommendation with the negotiated terms =========================
+  - Award 20,000 KG to SUP-RES-01 at Rs 104.66/KG, 0 days credit, delivered in about 9 days (landed Rs 104.83/KG).
+  - Award 20,000 KG to SUP-RES-03 at Rs 105.03/KG, 45 days credit, delivered in about 10 days (landed Rs 103.52/KG).
+  - Total payable Rs 49,48,684.00 is within the buyer policy (per-deal and cumulative limits). Expected total cost Rs 42,31,896.78 including Rs 26,079.40 expected delay cost.
+  expected total cost: Rs 43,21,713.22 -> Rs 42,31,896.78  (saving Rs 89,816.44)
+  total escrow Rs 49,48,684.00 <= cumulative headroom Rs 55,00,000.00, each award <= per-deal limit Rs 55,00,000.00
+  agreed price Rs 104.66 >= seller minimum unit price and quantity within the seller's limits (verified by the supplier's guard; the buyer never saw them)
+  next: [('APPROVE_AWARD_AND_FUND', 'BUYER_HEAD'), ('RELEASE_PAYMENT', 'BUYER_FINANCE')]
+
+=== 9. Role and limit enforcement =============================================
+  Head tries to run sourcing (create RFQ)      -> 403 FORBIDDEN
+  Policy stamped by Sales instead of the Head  -> 403 LIMIT_NOT_AUTHORISED
+  Buyer policy expired                         -> 403 LIMIT_EXPIRED
+  Seller policy sent to a buyer endpoint       -> 400 INVALID_REQUEST
+  Per-deal limit cut to Rs 30,00,000           -> no single award fits; engine recommends [('SUP-RES-01', 20000, 'Rs 24,69,976.00'), ('SUP-RES-03', 20000, 'Rs 24,78,708.00')]

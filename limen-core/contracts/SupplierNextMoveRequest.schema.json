@@ -1,0 +1,679 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SupplierNextMoveRequest",
+  "$ref": "#/$defs/SupplierNextMoveRequest",
+  "$defs": {
+    "SupplierNextMoveRequest": {
+      "type": "object",
+      "properties": {
+        "actor": {
+          "$ref": "#/$defs/Actor"
+        },
+        "rfq": {
+          "$ref": "#/$defs/RfqForSupplier"
+        },
+        "listing": {
+          "$ref": "#/$defs/SupplierListing"
+        },
+        "private": {
+          "$ref": "#/$defs/SupplierPrivate"
+        },
+        "mandate": {
+          "$ref": "#/$defs/SupplierMandate"
+        },
+        "product_id": {
+          "type": "string"
+        },
+        "transcript": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NegotiationEvent"
+          }
+        }
+      },
+      "required": [
+        "actor",
+        "rfq",
+        "listing",
+        "private",
+        "mandate",
+        "product_id",
+        "transcript"
+      ],
+      "additionalProperties": false
+    },
+    "Actor": {
+      "type": "object",
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": [
+            "BUYER_SALES",
+            "BUYER_HEAD",
+            "BUYER_FINANCE",
+            "SUPPLIER_OWNER",
+            "SUPPLIER_STAFF",
+            "PLATFORM"
+          ]
+        },
+        "org_id": {
+          "type": "string"
+        },
+        "user_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "org_id",
+        "user_id"
+      ],
+      "additionalProperties": false
+    },
+    "RfqForSupplier": {
+      "type": "object",
+      "properties": {
+        "rfq_id": {
+          "type": "string"
+        },
+        "buyer_label": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "material": {
+          "type": "string"
+        },
+        "specs": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/SpecConstraint"
+          }
+        },
+        "quantity": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "uom": {
+          "type": "string"
+        },
+        "delivery_state": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "delivery_city": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "need_by_days": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "required_certifications": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "preferred_credit_days": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "rfq_id",
+        "buyer_label",
+        "category",
+        "material",
+        "specs",
+        "quantity"
+      ],
+      "additionalProperties": false
+    },
+    "SpecConstraint": {
+      "type": "object",
+      "properties": {
+        "min": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "max": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "one_of": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "USER_STATED",
+            "DOCUMENT_EXTRACTED",
+            "SUPPLIER_DECLARED",
+            "VERIFIED",
+            "LIMEN_TRANSACTION",
+            "ESTIMATED",
+            "DEFAULT_ASSUMPTION"
+          ]
+        },
+        "evidence": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "SupplierListing": {
+      "type": "object",
+      "properties": {
+        "supplier_id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "city": {
+          "type": "string"
+        },
+        "gst_registration": {
+          "type": "string",
+          "enum": [
+            "REGULAR",
+            "COMPOSITION",
+            "UNREGISTERED"
+          ]
+        },
+        "is_msme": {
+          "type": "boolean"
+        },
+        "products": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Product"
+          }
+        },
+        "certifications": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Certification"
+          }
+        }
+      },
+      "required": [
+        "supplier_id",
+        "name",
+        "city"
+      ],
+      "additionalProperties": false
+    },
+    "Product": {
+      "type": "object",
+      "properties": {
+        "product_id": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "material": {
+          "type": "string"
+        },
+        "specs": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/SpecOffered"
+          }
+        },
+        "uom": {
+          "type": "string"
+        },
+        "unit_weight_kg": {
+          "type": "number",
+          "minimum": 0
+        },
+        "moq": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "minimum": 1
+        },
+        "monthly_capacity": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "minimum": 0
+        },
+        "standard_lead_time_days": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "minimum": 0
+        },
+        "gst_rate_bps": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4000
+        }
+      },
+      "required": [
+        "product_id",
+        "category",
+        "material"
+      ],
+      "additionalProperties": false
+    },
+    "SpecOffered": {
+      "type": "object",
+      "properties": {
+        "min": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "max": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "USER_STATED",
+            "DOCUMENT_EXTRACTED",
+            "SUPPLIER_DECLARED",
+            "VERIFIED",
+            "LIMEN_TRANSACTION",
+            "ESTIMATED",
+            "DEFAULT_ASSUMPTION"
+          ]
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "Certification": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "verified": {
+          "type": "boolean"
+        },
+        "valid_until": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "SupplierPrivate": {
+      "type": "object",
+      "properties": {
+        "supplier_id": {
+          "type": "string"
+        },
+        "cost_of_capital_bps": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "freight_cost_paise_per_tonne_km": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "products": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/ProductPrivate"
+          }
+        }
+      },
+      "required": [
+        "supplier_id"
+      ],
+      "additionalProperties": false
+    },
+    "ProductPrivate": {
+      "type": "object",
+      "properties": {
+        "unit_cost_paise": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "inventory": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "committed_next_30d": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "target_margin_bps": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "unit_cost_paise"
+      ],
+      "additionalProperties": false
+    },
+    "SupplierMandate": {
+      "type": "object",
+      "properties": {
+        "seller_policy": {
+          "$ref": "#/$defs/SellerPolicy"
+        },
+        "min_margin_bps": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "allowed_credit_days": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "max_rounds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20
+        },
+        "quote_validity_days": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "seller_policy"
+      ],
+      "additionalProperties": false
+    },
+    "SellerPolicy": {
+      "type": "object",
+      "properties": {
+        "policy_id": {
+          "type": "string"
+        },
+        "supplier_id": {
+          "type": "string"
+        },
+        "min_unit_price_units": {
+          "type": "string",
+          "pattern": "(0|[1-9][0-9]{0,38})"
+        },
+        "max_per_deal_quantity": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_total_quantity": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "expires_at_unix": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "committed_quantity": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pending_quantity": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "approved_by": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Approval"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "policy_id",
+        "supplier_id",
+        "min_unit_price_units",
+        "max_per_deal_quantity",
+        "max_total_quantity",
+        "expires_at_unix"
+      ],
+      "additionalProperties": false
+    },
+    "Approval": {
+      "type": "object",
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": [
+            "BUYER_SALES",
+            "BUYER_HEAD",
+            "BUYER_FINANCE",
+            "SUPPLIER_OWNER",
+            "SUPPLIER_STAFF",
+            "PLATFORM"
+          ]
+        },
+        "user_id": {
+          "type": "string"
+        },
+        "at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "user_id",
+        "at"
+      ],
+      "additionalProperties": false
+    },
+    "NegotiationEvent": {
+      "type": "object",
+      "properties": {
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by": {
+          "type": "string",
+          "enum": [
+            "BUYER",
+            "SUPPLIER"
+          ]
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "OFFER",
+            "ACCEPT",
+            "WALK_AWAY"
+          ]
+        },
+        "packages": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OfferTerms"
+          },
+          "maxItems": 3
+        }
+      },
+      "required": [
+        "seq"
+      ],
+      "additionalProperties": false
+    },
+    "OfferTerms": {
+      "type": "object",
+      "properties": {
+        "unit_price_paise": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "quantity": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "credit_days": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 365
+        },
+        "delivery_basis": {
+          "type": "string",
+          "enum": [
+            "FOR_DESTINATION",
+            "EX_WORKS"
+          ]
+        },
+        "freight_per_unit_paise": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "gst_rate_bps": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4000
+        },
+        "gst_registration": {
+          "type": "string",
+          "enum": [
+            "REGULAR",
+            "COMPOSITION",
+            "UNREGISTERED"
+          ]
+        },
+        "lead_time_days": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "advance_bps": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        }
+      },
+      "required": [
+        "unit_price_paise",
+        "quantity"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

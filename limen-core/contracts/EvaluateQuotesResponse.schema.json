@@ -1,0 +1,485 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EvaluateQuotesResponse",
+  "$ref": "#/$defs/EvaluateQuotesResponse",
+  "$defs": {
+    "EvaluateQuotesResponse": {
+      "type": "object",
+      "properties": {
+        "audience": {
+          "type": "string"
+        },
+        "comparison": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/QuoteEvaluationView"
+          }
+        },
+        "recommendation": {
+          "$ref": "#/$defs/RecommendationView"
+        }
+      },
+      "required": [
+        "audience",
+        "comparison",
+        "recommendation"
+      ],
+      "additionalProperties": false
+    },
+    "QuoteEvaluationView": {
+      "type": "object",
+      "properties": {
+        "quote_id": {
+          "type": "string"
+        },
+        "supplier_id": {
+          "type": "string"
+        },
+        "eligible": {
+          "type": "boolean"
+        },
+        "within_buyer_limits": {
+          "type": "boolean"
+        },
+        "covers_full_quantity": {
+          "type": "boolean"
+        },
+        "evaluated_quantity": {
+          "type": "integer"
+        },
+        "unit_price_paise": {
+          "type": "integer"
+        },
+        "landed": {
+          "$ref": "#/$defs/LandedCost"
+        },
+        "freight_basis": {
+          "type": "string"
+        },
+        "delivery_days": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expected_reject_cost_paise": {
+          "type": "integer"
+        },
+        "expected_late_cost_paise": {
+          "type": "integer"
+        },
+        "expected_total_cost_paise": {
+          "type": "integer"
+        },
+        "expected_cost_per_unit_paise": {
+          "type": "integer"
+        },
+        "reliability": {
+          "$ref": "#/$defs/RiskView"
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CheckView"
+          }
+        },
+        "flags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "on_pareto_front": {
+          "type": "boolean"
+        },
+        "is_lowest_unit_price": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "quote_id",
+        "supplier_id",
+        "eligible",
+        "within_buyer_limits",
+        "covers_full_quantity",
+        "evaluated_quantity",
+        "unit_price_paise",
+        "landed",
+        "freight_basis",
+        "delivery_days",
+        "expected_reject_cost_paise",
+        "expected_late_cost_paise",
+        "expected_total_cost_paise",
+        "expected_cost_per_unit_paise",
+        "reliability",
+        "checks",
+        "flags",
+        "on_pareto_front",
+        "is_lowest_unit_price"
+      ],
+      "additionalProperties": false
+    },
+    "LandedCost": {
+      "type": "object",
+      "properties": {
+        "basic_paise": {
+          "type": "integer"
+        },
+        "freight_billed_paise": {
+          "type": "integer"
+        },
+        "freight_buyer_arranged_paise": {
+          "type": "integer"
+        },
+        "gst_charged_paise": {
+          "type": "integer"
+        },
+        "gst_cost_paise": {
+          "type": "integer"
+        },
+        "credit_benefit_paise": {
+          "type": "integer"
+        },
+        "advance_cost_paise": {
+          "type": "integer"
+        },
+        "payable_paise": {
+          "type": "integer"
+        },
+        "total_paise": {
+          "type": "integer"
+        },
+        "per_unit_paise": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "basic_paise",
+        "freight_billed_paise",
+        "freight_buyer_arranged_paise",
+        "gst_charged_paise",
+        "gst_cost_paise",
+        "credit_benefit_paise",
+        "advance_cost_paise",
+        "payable_paise",
+        "total_paise",
+        "per_unit_paise"
+      ],
+      "additionalProperties": false
+    },
+    "RiskView": {
+      "type": "object",
+      "properties": {
+        "p_late": {
+          "type": "number"
+        },
+        "p_reject": {
+          "type": "number"
+        },
+        "expected_days_late_if_late": {
+          "type": "number"
+        },
+        "observations": {
+          "type": "integer"
+        },
+        "basis": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "p_late",
+        "p_reject",
+        "expected_days_late_if_late",
+        "observations",
+        "basis"
+      ],
+      "additionalProperties": false
+    },
+    "CheckView": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "PASS",
+            "PARTIAL",
+            "FAIL",
+            "UNKNOWN"
+          ]
+        },
+        "detail": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "status",
+        "detail"
+      ],
+      "additionalProperties": false
+    },
+    "RecommendationView": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string"
+        },
+        "decision_support_only": {
+          "type": "boolean"
+        },
+        "allocation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GuardedAllocationView"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expected_total_cost_paise": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "split_worthwhile": {
+          "type": "boolean"
+        },
+        "split_saving_paise": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "explanation": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "trade_offs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "negotiation_candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NegotiationCandidate"
+          }
+        },
+        "assumptions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "blockers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "requires_approval": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ApprovalStep"
+          }
+        }
+      },
+      "required": [
+        "status",
+        "decision_support_only",
+        "allocation",
+        "expected_total_cost_paise",
+        "split_worthwhile",
+        "split_saving_paise",
+        "explanation",
+        "trade_offs",
+        "negotiation_candidates",
+        "assumptions",
+        "blockers",
+        "requires_approval"
+      ],
+      "additionalProperties": false
+    },
+    "GuardedAllocationView": {
+      "type": "object",
+      "properties": {
+        "guarded_by": {
+          "type": "string"
+        },
+        "limit_version": {
+          "type": "integer"
+        },
+        "awards": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AwardView"
+          }
+        },
+        "total_payable_paise": {
+          "type": "integer"
+        },
+        "total_escrow_units": {
+          "type": "string",
+          "pattern": "(0|[1-9][0-9]{0,38})"
+        }
+      },
+      "required": [
+        "guarded_by",
+        "limit_version",
+        "awards",
+        "total_payable_paise",
+        "total_escrow_units"
+      ],
+      "additionalProperties": false
+    },
+    "AwardView": {
+      "type": "object",
+      "properties": {
+        "supplier_id": {
+          "type": "string"
+        },
+        "quote_id": {
+          "type": "string"
+        },
+        "terms": {
+          "$ref": "#/$defs/OfferTerms"
+        },
+        "payable_paise": {
+          "type": "integer"
+        },
+        "escrow_amount_units": {
+          "type": "string",
+          "pattern": "(0|[1-9][0-9]{0,38})"
+        }
+      },
+      "required": [
+        "supplier_id",
+        "quote_id",
+        "terms",
+        "payable_paise",
+        "escrow_amount_units"
+      ],
+      "additionalProperties": false
+    },
+    "OfferTerms": {
+      "type": "object",
+      "properties": {
+        "unit_price_paise": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "quantity": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "credit_days": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 365
+        },
+        "delivery_basis": {
+          "type": "string",
+          "enum": [
+            "FOR_DESTINATION",
+            "EX_WORKS"
+          ]
+        },
+        "freight_per_unit_paise": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "gst_rate_bps": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4000
+        },
+        "gst_registration": {
+          "type": "string",
+          "enum": [
+            "REGULAR",
+            "COMPOSITION",
+            "UNREGISTERED"
+          ]
+        },
+        "lead_time_days": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "advance_bps": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        }
+      },
+      "required": [
+        "unit_price_paise",
+        "quantity"
+      ],
+      "additionalProperties": false
+    },
+    "NegotiationCandidate": {
+      "type": "object",
+      "properties": {
+        "supplier_id": {
+          "type": "string"
+        },
+        "quote_id": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "supplier_id",
+        "quote_id",
+        "reason"
+      ],
+      "additionalProperties": false
+    },
+    "ApprovalStep": {
+      "type": "object",
+      "properties": {
+        "step": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "BUYER_SALES",
+            "BUYER_HEAD",
+            "BUYER_FINANCE",
+            "SUPPLIER_OWNER",
+            "SUPPLIER_STAFF",
+            "PLATFORM"
+          ]
+        }
+      },
+      "required": [
+        "step",
+        "role"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

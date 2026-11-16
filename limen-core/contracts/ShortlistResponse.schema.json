@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ShortlistResponse",
+  "$ref": "#/$defs/ShortlistResponse",
+  "$defs": {
+    "ShortlistResponse": {
+      "type": "object",
+      "properties": {
+        "audience": {
+          "type": "string"
+        },
+        "matches": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MatchView"
+          }
+        }
+      },
+      "required": [
+        "audience",
+        "matches"
+      ],
+      "additionalProperties": false
+    },
+    "MatchView": {
+      "type": "object",
+      "properties": {
+        "supplier_id": {
+          "type": "string"
+        },
+        "product_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "eligible": {
+          "type": "boolean"
+        },
+        "score": {
+          "type": "number"
+        },
+        "confidence": {
+          "type": "number"
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CheckView"
+          }
+        },
+        "questions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "distance_km": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "serviceable_quantity": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reliability": {
+          "$ref": "#/$defs/RiskView"
+        }
+      },
+      "required": [
+        "supplier_id",
+        "product_id",
+        "eligible",
+        "score",
+        "confidence",
+        "checks",
+        "questions",
+        "distance_km",
+        "serviceable_quantity",
+        "reliability"
+      ],
+      "additionalProperties": false
+    },
+    "CheckView": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "PASS",
+            "PARTIAL",
+            "FAIL",
+            "UNKNOWN"
+          ]
+        },
+        "detail": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "status",
+        "detail"
+      ],
+      "additionalProperties": false
+    },
+    "RiskView": {
+      "type": "object",
+      "properties": {
+        "p_late": {
+          "type": "number"
+        },
+        "p_reject": {
+          "type": "number"
+        },
+        "expected_days_late_if_late": {
+          "type": "number"
+        },
+        "observations": {
+          "type": "integer"
+        },
+        "basis": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "p_late",
+        "p_reject",
+        "expected_days_late_if_late",
+        "observations",
+        "basis"
+      ],
+      "additionalProperties": false
+    }
+  }
+}
