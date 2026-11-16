@@ -1,0 +1,262 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DealZoneRequest",
+  "$ref": "#/$defs/DealZoneRequest",
+  "$defs": {
+    "DealZoneRequest": {
+      "type": "object",
+      "properties": {
+        "actor": {
+          "$ref": "#/$defs/Actor"
+        },
+        "rfq_id": {
+          "type": "string"
+        },
+        "buyer_policy": {
+          "$ref": "#/$defs/BuyerPolicy"
+        },
+        "seller_policy": {
+          "$ref": "#/$defs/SellerPolicy"
+        },
+        "template": {
+          "$ref": "#/$defs/OfferTerms"
+        },
+        "reserved_paise": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "actor",
+        "rfq_id",
+        "buyer_policy",
+        "seller_policy",
+        "template"
+      ],
+      "additionalProperties": false
+    },
+    "Actor": {
+      "type": "object",
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": [
+            "BUYER_SALES",
+            "BUYER_HEAD",
+            "BUYER_FINANCE",
+            "SUPPLIER_OWNER",
+            "SUPPLIER_STAFF",
+            "PLATFORM"
+          ]
+        },
+        "org_id": {
+          "type": "string"
+        },
+        "user_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "org_id",
+        "user_id"
+      ],
+      "additionalProperties": false
+    },
+    "BuyerPolicy": {
+      "type": "object",
+      "properties": {
+        "policy_id": {
+          "type": "string"
+        },
+        "buyer_org_id": {
+          "type": "string"
+        },
+        "max_per_deal_units": {
+          "type": "string",
+          "pattern": "(0|[1-9][0-9]{0,38})"
+        },
+        "max_total_units": {
+          "type": "string",
+          "pattern": "(0|[1-9][0-9]{0,38})"
+        },
+        "expires_at_unix": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "spent_units": {
+          "type": "string",
+          "pattern": "(0|[1-9][0-9]{0,38})"
+        },
+        "pending_units": {
+          "type": "string",
+          "pattern": "(0|[1-9][0-9]{0,38})"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "approved_by": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Approval"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "policy_id",
+        "buyer_org_id",
+        "max_per_deal_units",
+        "max_total_units",
+        "expires_at_unix"
+      ],
+      "additionalProperties": false
+    },
+    "Approval": {
+      "type": "object",
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": [
+            "BUYER_SALES",
+            "BUYER_HEAD",
+            "BUYER_FINANCE",
+            "SUPPLIER_OWNER",
+            "SUPPLIER_STAFF",
+            "PLATFORM"
+          ]
+        },
+        "user_id": {
+          "type": "string"
+        },
+        "at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "user_id",
+        "at"
+      ],
+      "additionalProperties": false
+    },
+    "SellerPolicy": {
+      "type": "object",
+      "properties": {
+        "policy_id": {
+          "type": "string"
+        },
+        "supplier_id": {
+          "type": "string"
+        },
+        "min_unit_price_units": {
+          "type": "string",
+          "pattern": "(0|[1-9][0-9]{0,38})"
+        },
+        "max_per_deal_quantity": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_total_quantity": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "expires_at_unix": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "committed_quantity": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pending_quantity": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "approved_by": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Approval"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "policy_id",
+        "supplier_id",
+        "min_unit_price_units",
+        "max_per_deal_quantity",
+        "max_total_quantity",
+        "expires_at_unix"
+      ],
+      "additionalProperties": false
+    },
+    "OfferTerms": {
+      "type": "object",
+      "properties": {
+        "unit_price_paise": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "quantity": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "credit_days": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 365
+        },
+        "delivery_basis": {
+          "type": "string",
+          "enum": [
+            "FOR_DESTINATION",
+            "EX_WORKS"
+          ]
+        },
+        "freight_per_unit_paise": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "gst_rate_bps": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4000
+        },
+        "gst_registration": {
+          "type": "string",
+          "enum": [
+            "REGULAR",
+            "COMPOSITION",
+            "UNREGISTERED"
+          ]
+        },
+        "lead_time_days": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "advance_bps": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        }
+      },
+      "required": [
+        "unit_price_paise",
+        "quantity"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ParseRequirementRequest",
+  "$ref": "#/$defs/ParseRequirementRequest",
+  "$defs": {
+    "ParseRequirementRequest": {
+      "type": "object",
+      "properties": {
+        "actor": {
+          "$ref": "#/$defs/Actor"
+        },
+        "requirement_id": {
+          "type": "string"
+        },
+        "buyer_org_id": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "default_delivery_city": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "actor",
+        "requirement_id",
+        "buyer_org_id",
+        "text"
+      ],
+      "additionalProperties": false
+    },
+    "Actor": {
+      "type": "object",
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": [
+            "BUYER_SALES",
+            "BUYER_HEAD",
+            "BUYER_FINANCE",
+            "SUPPLIER_OWNER",
+            "SUPPLIER_STAFF",
+            "PLATFORM"
+          ]
+        },
+        "org_id": {
+          "type": "string"
+        },
+        "user_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "org_id",
+        "user_id"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

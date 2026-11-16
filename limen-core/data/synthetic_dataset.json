@@ -1,0 +1,1712 @@
+{
+ "_notice": "SYNTHETIC DATA. All companies, prices, costs, capacities, certifications and histories are invented.",
+ "buyer": {
+  "org_id": "BUY-001",
+  "name": "Indrayani Containers Pvt Ltd (synthetic)",
+  "profile": {
+   "buyer_org_id": "BUY-001",
+   "plant_city": "Pune",
+   "cost_of_capital_bps": 1100,
+   "itc_eligible_bps": 10000,
+   "itc_lag_days": 30,
+   "freight_rate_paise_per_tonne_km": 350,
+   "late_cost_per_day_paise": 15000000,
+   "min_ontime_fraction_bps": 5000,
+   "rejection_cost_bps": 1000,
+   "extra_supplier_admin_cost_paise": 1500000,
+   "assumed_fields": []
+  },
+  "policy": {
+   "policy_id": "BP-BUY-001-1",
+   "buyer_org_id": "BUY-001",
+   "max_per_deal_units": "5500000000000",
+   "max_total_units": "20000000000000",
+   "spent_units": "14500000000000",
+   "expires_at_unix": 4102444800
+  }
+ },
+ "suppliers": [
+  {
+   "listing": {
+    "supplier_id": "SUP-RES-01",
+    "name": "Narmada Polymers (synthetic)",
+    "city": "Vadodara",
+    "gst_registration": "REGULAR",
+    "is_msme": false,
+    "products": [
+     {
+      "product_id": "RES01-HDPE-BM",
+      "category": "RESIN",
+      "material": "HDPE",
+      "specs": {
+       "grade_type": {
+        "min": null,
+        "max": null,
+        "value": "blow_moulding",
+        "source": "SUPPLIER_DECLARED"
+       },
+       "mfi_g_10min": {
+        "min": 0.32,
+        "max": 0.48,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       },
+       "density_g_cc": {
+        "min": 0.951,
+        "max": 0.955,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       }
+      },
+      "uom": "KG",
+      "unit_weight_kg": 1.0,
+      "moq": 5000,
+      "monthly_capacity": 400000,
+      "standard_lead_time_days": 7,
+      "gst_rate_bps": 1800
+     }
+    ],
+    "certifications": [
+     {
+      "name": "BIS",
+      "verified": true,
+      "valid_until": null
+     },
+     {
+      "name": "ISO 9001",
+      "verified": true,
+      "valid_until": null
+     }
+    ]
+   },
+   "private": {
+    "supplier_id": "SUP-RES-01",
+    "cost_of_capital_bps": 1500,
+    "freight_cost_paise_per_tonne_km": 350,
+    "products": {
+     "RES01-HDPE-BM": {
+      "unit_cost_paise": 9800,
+      "inventory": 15000,
+      "committed_next_30d": 200000,
+      "target_margin_bps": 900
+     }
+    }
+   },
+   "history": {
+    "orders": 24,
+    "on_time": 23,
+    "late_days_total": 3,
+    "lots_inspected": 24,
+    "lots_rejected": 0
+   },
+   "owner_limits": {
+    "min_unit_price_units": {
+     "RES01-HDPE-BM": "103500000"
+    },
+    "max_per_deal_quantity": {
+     "RES01-HDPE-BM": 400000
+    },
+    "max_total_quantity": {
+     "RES01-HDPE-BM": 1200000
+    },
+    "committed_quantity": {
+     "RES01-HDPE-BM": 200000
+    },
+    "expires_at_unix": 4102444800,
+    "min_margin_bps": 300,
+    "allowed_credit_days": [
+     0,
+     15,
+     30,
+     45
+    ]
+   }
+  },
+  {
+   "listing": {
+    "supplier_id": "SUP-RES-02",
+    "name": "Konkan Petrochem Traders (synthetic)",
+    "city": "Mumbai",
+    "gst_registration": "REGULAR",
+    "is_msme": true,
+    "products": [
+     {
+      "product_id": "RES02-HDPE-BM",
+      "category": "RESIN",
+      "material": "HDPE",
+      "specs": {
+       "grade_type": {
+        "min": null,
+        "max": null,
+        "value": "blow_moulding",
+        "source": "SUPPLIER_DECLARED"
+       },
+       "mfi_g_10min": {
+        "min": 0.3,
+        "max": 0.5,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       },
+       "density_g_cc": {
+        "min": 0.951,
+        "max": 0.955,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       }
+      },
+      "uom": "KG",
+      "unit_weight_kg": 1.0,
+      "moq": 2000,
+      "monthly_capacity": 40000,
+      "standard_lead_time_days": 5,
+      "gst_rate_bps": 1800
+     }
+    ],
+    "certifications": [
+     {
+      "name": "BIS",
+      "verified": true,
+      "valid_until": null
+     }
+    ]
+   },
+   "private": {
+    "supplier_id": "SUP-RES-02",
+    "cost_of_capital_bps": 1800,
+    "freight_cost_paise_per_tonne_km": 350,
+    "products": {
+     "RES02-HDPE-BM": {
+      "unit_cost_paise": 9750,
+      "inventory": 6000,
+      "committed_next_30d": 5000,
+      "target_margin_bps": 800
+     }
+    }
+   },
+   "history": {
+    "orders": 0,
+    "on_time": 0,
+    "late_days_total": 0,
+    "lots_inspected": 0,
+    "lots_rejected": 0
+   },
+   "owner_limits": {
+    "min_unit_price_units": {
+     "RES02-HDPE-BM": "101000000"
+    },
+    "max_per_deal_quantity": {
+     "RES02-HDPE-BM": 40000
+    },
+    "max_total_quantity": {
+     "RES02-HDPE-BM": 120000
+    },
+    "committed_quantity": {
+     "RES02-HDPE-BM": 5000
+    },
+    "expires_at_unix": 4102444800,
+    "min_margin_bps": 300,
+    "allowed_credit_days": [
+     0,
+     15,
+     30,
+     45
+    ]
+   }
+  },
+  {
+   "listing": {
+    "supplier_id": "SUP-RES-03",
+    "name": "Deccan Resins (synthetic)",
+    "city": "Hyderabad",
+    "gst_registration": "REGULAR",
+    "is_msme": true,
+    "products": [
+     {
+      "product_id": "RES03-HDPE-BM",
+      "category": "RESIN",
+      "material": "HDPE",
+      "specs": {
+       "grade_type": {
+        "min": null,
+        "max": null,
+        "value": "blow_moulding",
+        "source": "SUPPLIER_DECLARED"
+       },
+       "mfi_g_10min": {
+        "min": 0.35,
+        "max": 0.45,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       },
+       "density_g_cc": {
+        "min": 0.951,
+        "max": 0.955,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       }
+      },
+      "uom": "KG",
+      "unit_weight_kg": 1.0,
+      "moq": 5000,
+      "monthly_capacity": 300000,
+      "standard_lead_time_days": 8,
+      "gst_rate_bps": 1800
+     }
+    ],
+    "certifications": [
+     {
+      "name": "BIS",
+      "verified": true,
+      "valid_until": null
+     }
+    ]
+   },
+   "private": {
+    "supplier_id": "SUP-RES-03",
+    "cost_of_capital_bps": 1700,
+    "freight_cost_paise_per_tonne_km": 350,
+    "products": {
+     "RES03-HDPE-BM": {
+      "unit_cost_paise": 9300,
+      "inventory": 0,
+      "committed_next_30d": 120000,
+      "target_margin_bps": 800
+     }
+    }
+   },
+   "history": {
+    "orders": 12,
+    "on_time": 7,
+    "late_days_total": 40,
+    "lots_inspected": 12,
+    "lots_rejected": 2
+   },
+   "owner_limits": {
+    "min_unit_price_units": {
+     "RES03-HDPE-BM": "99000000"
+    },
+    "max_per_deal_quantity": {
+     "RES03-HDPE-BM": 300000
+    },
+    "max_total_quantity": {
+     "RES03-HDPE-BM": 900000
+    },
+    "committed_quantity": {
+     "RES03-HDPE-BM": 120000
+    },
+    "expires_at_unix": 4102444800,
+    "min_margin_bps": 300,
+    "allowed_credit_days": [
+     0,
+     15,
+     30,
+     45
+    ]
+   }
+  },
+  {
+   "listing": {
+    "supplier_id": "SUP-RES-04",
+    "name": "Kutch Polyplast (synthetic)",
+    "city": "Rajkot",
+    "gst_registration": "REGULAR",
+    "is_msme": false,
+    "products": [
+     {
+      "product_id": "RES04-HDPE-BM",
+      "category": "RESIN",
+      "material": "HDPE",
+      "specs": {
+       "grade_type": {
+        "min": null,
+        "max": null,
+        "value": "blow_moulding",
+        "source": "SUPPLIER_DECLARED"
+       },
+       "mfi_g_10min": {
+        "min": 0.33,
+        "max": 0.47,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       },
+       "density_g_cc": {
+        "min": 0.951,
+        "max": 0.955,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       }
+      },
+      "uom": "KG",
+      "unit_weight_kg": 1.0,
+      "moq": 10000,
+      "monthly_capacity": 500000,
+      "standard_lead_time_days": 6,
+      "gst_rate_bps": 1800
+     }
+    ],
+    "certifications": [
+     {
+      "name": "BIS",
+      "verified": true,
+      "valid_until": null
+     },
+     {
+      "name": "ISO 9001",
+      "verified": true,
+      "valid_until": null
+     },
+     {
+      "name": "ISO 14001",
+      "verified": true,
+      "valid_until": null
+     }
+    ]
+   },
+   "private": {
+    "supplier_id": "SUP-RES-04",
+    "cost_of_capital_bps": 1300,
+    "freight_cost_paise_per_tonne_km": 350,
+    "products": {
+     "RES04-HDPE-BM": {
+      "unit_cost_paise": 10400,
+      "inventory": 40000,
+      "committed_next_30d": 300000,
+      "target_margin_bps": 1000
+     }
+    }
+   },
+   "history": {
+    "orders": 30,
+    "on_time": 30,
+    "late_days_total": 0,
+    "lots_inspected": 30,
+    "lots_rejected": 0
+   },
+   "owner_limits": {
+    "min_unit_price_units": {
+     "RES04-HDPE-BM": "111000000"
+    },
+    "max_per_deal_quantity": {
+     "RES04-HDPE-BM": 500000
+    },
+    "max_total_quantity": {
+     "RES04-HDPE-BM": 1500000
+    },
+    "committed_quantity": {
+     "RES04-HDPE-BM": 300000
+    },
+    "expires_at_unix": 4102444800,
+    "min_margin_bps": 300,
+    "allowed_credit_days": [
+     0,
+     15,
+     30,
+     45
+    ]
+   }
+  },
+  {
+   "listing": {
+    "supplier_id": "SUP-RES-05",
+    "name": "Malwa Plastics (synthetic)",
+    "city": "Indore",
+    "gst_registration": "REGULAR",
+    "is_msme": false,
+    "products": [
+     {
+      "product_id": "RES05-HDPE-IM",
+      "category": "RESIN",
+      "material": "HDPE",
+      "specs": {
+       "grade_type": {
+        "min": null,
+        "max": null,
+        "value": "injection_moulding",
+        "source": "SUPPLIER_DECLARED"
+       },
+       "mfi_g_10min": {
+        "min": 7.0,
+        "max": 9.0,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       },
+       "density_g_cc": {
+        "min": 0.951,
+        "max": 0.955,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       }
+      },
+      "uom": "KG",
+      "unit_weight_kg": 1.0,
+      "moq": 3000,
+      "monthly_capacity": 200000,
+      "standard_lead_time_days": 7,
+      "gst_rate_bps": 1800
+     }
+    ],
+    "certifications": [
+     {
+      "name": "BIS",
+      "verified": true,
+      "valid_until": null
+     }
+    ]
+   },
+   "private": {
+    "supplier_id": "SUP-RES-05",
+    "cost_of_capital_bps": 1600,
+    "freight_cost_paise_per_tonne_km": 350,
+    "products": {
+     "RES05-HDPE-IM": {
+      "unit_cost_paise": 9600,
+      "inventory": 10000,
+      "committed_next_30d": 60000,
+      "target_margin_bps": 900
+     }
+    }
+   },
+   "history": {
+    "orders": 9,
+    "on_time": 8,
+    "late_days_total": 4,
+    "lots_inspected": 9,
+    "lots_rejected": 0
+   },
+   "owner_limits": {
+    "min_unit_price_units": {
+     "RES05-HDPE-IM": "102000000"
+    },
+    "max_per_deal_quantity": {
+     "RES05-HDPE-IM": 200000
+    },
+    "max_total_quantity": {
+     "RES05-HDPE-IM": 600000
+    },
+    "committed_quantity": {
+     "RES05-HDPE-IM": 60000
+    },
+    "expires_at_unix": 4102444800,
+    "min_margin_bps": 300,
+    "allowed_credit_days": [
+     0,
+     15,
+     30,
+     45
+    ]
+   }
+  },
+  {
+   "listing": {
+    "supplier_id": "SUP-RES-06",
+    "name": "Coromandel Polymers (synthetic)",
+    "city": "Chennai",
+    "gst_registration": "REGULAR",
+    "is_msme": false,
+    "products": [
+     {
+      "product_id": "RES06-HDPE-BM",
+      "category": "RESIN",
+      "material": "HDPE",
+      "specs": {
+       "grade_type": {
+        "min": null,
+        "max": null,
+        "value": "blow_moulding",
+        "source": "SUPPLIER_DECLARED"
+       },
+       "mfi_g_10min": {
+        "min": 0.3,
+        "max": 0.5,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       },
+       "density_g_cc": {
+        "min": 0.951,
+        "max": 0.955,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       }
+      },
+      "uom": "KG",
+      "unit_weight_kg": 1.0,
+      "moq": 5000,
+      "monthly_capacity": 250000,
+      "standard_lead_time_days": 7,
+      "gst_rate_bps": 1800
+     }
+    ],
+    "certifications": [
+     {
+      "name": "BIS",
+      "verified": false,
+      "valid_until": null
+     },
+     {
+      "name": "ISO 9001",
+      "verified": true,
+      "valid_until": null
+     }
+    ]
+   },
+   "private": {
+    "supplier_id": "SUP-RES-06",
+    "cost_of_capital_bps": 1600,
+    "freight_cost_paise_per_tonne_km": 350,
+    "products": {
+     "RES06-HDPE-BM": {
+      "unit_cost_paise": 9500,
+      "inventory": 0,
+      "committed_next_30d": 100000,
+      "target_margin_bps": 900
+     }
+    }
+   },
+   "history": {
+    "orders": 15,
+    "on_time": 13,
+    "late_days_total": 6,
+    "lots_inspected": 15,
+    "lots_rejected": 1
+   },
+   "owner_limits": {
+    "min_unit_price_units": {
+     "RES06-HDPE-BM": "101000000"
+    },
+    "max_per_deal_quantity": {
+     "RES06-HDPE-BM": 250000
+    },
+    "max_total_quantity": {
+     "RES06-HDPE-BM": 750000
+    },
+    "committed_quantity": {
+     "RES06-HDPE-BM": 100000
+    },
+    "expires_at_unix": 4102444800,
+    "min_margin_bps": 300,
+    "allowed_credit_days": [
+     0,
+     15,
+     30,
+     45
+    ]
+   }
+  },
+  {
+   "listing": {
+    "supplier_id": "SUP-RES-07",
+    "name": "Aravalli Polychem (synthetic)",
+    "city": "Jaipur",
+    "gst_registration": "REGULAR",
+    "is_msme": false,
+    "products": [
+     {
+      "product_id": "RES07-PP-RF",
+      "category": "RESIN",
+      "material": "PP",
+      "specs": {
+       "grade_type": {
+        "min": null,
+        "max": null,
+        "value": "raffia",
+        "source": "SUPPLIER_DECLARED"
+       },
+       "mfi_g_10min": {
+        "min": 3.0,
+        "max": 3.6,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       }
+      },
+      "uom": "KG",
+      "unit_weight_kg": 1.0,
+      "moq": 5000,
+      "monthly_capacity": 300000,
+      "standard_lead_time_days": 9,
+      "gst_rate_bps": 1800
+     }
+    ],
+    "certifications": [
+     {
+      "name": "BIS",
+      "verified": true,
+      "valid_until": null
+     }
+    ]
+   },
+   "private": {
+    "supplier_id": "SUP-RES-07",
+    "cost_of_capital_bps": 1600,
+    "freight_cost_paise_per_tonne_km": 350,
+    "products": {
+     "RES07-PP-RF": {
+      "unit_cost_paise": 10100,
+      "inventory": 20000,
+      "committed_next_30d": 150000,
+      "target_margin_bps": 800
+     }
+    }
+   },
+   "history": {
+    "orders": 6,
+    "on_time": 6,
+    "late_days_total": 0,
+    "lots_inspected": 6,
+    "lots_rejected": 0
+   },
+   "owner_limits": {
+    "min_unit_price_units": {
+     "RES07-PP-RF": "106000000"
+    },
+    "max_per_deal_quantity": {
+     "RES07-PP-RF": 300000
+    },
+    "max_total_quantity": {
+     "RES07-PP-RF": 900000
+    },
+    "committed_quantity": {
+     "RES07-PP-RF": 150000
+    },
+    "expires_at_unix": 4102444800,
+    "min_margin_bps": 300,
+    "allowed_credit_days": [
+     0,
+     15,
+     30,
+     45
+    ]
+   }
+  },
+  {
+   "listing": {
+    "supplier_id": "SUP-RES-08",
+    "name": "Vidarbha Speciality Resins (synthetic)",
+    "city": "Nagpur",
+    "gst_registration": "REGULAR",
+    "is_msme": false,
+    "products": [
+     {
+      "product_id": "RES08-HDPE-BM",
+      "category": "RESIN",
+      "material": "HDPE",
+      "specs": {
+       "grade_type": {
+        "min": null,
+        "max": null,
+        "value": "blow_moulding",
+        "source": "SUPPLIER_DECLARED"
+       },
+       "mfi_g_10min": {
+        "min": 0.34,
+        "max": 0.46,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       },
+       "density_g_cc": {
+        "min": 0.951,
+        "max": 0.955,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       }
+      },
+      "uom": "KG",
+      "unit_weight_kg": 1.0,
+      "moq": 5000,
+      "monthly_capacity": 150000,
+      "standard_lead_time_days": 6,
+      "gst_rate_bps": 1800
+     }
+    ],
+    "certifications": [
+     {
+      "name": "BIS",
+      "verified": true,
+      "valid_until": null
+     },
+     {
+      "name": "ISO 9001",
+      "verified": true,
+      "valid_until": null
+     }
+    ]
+   },
+   "private": {
+    "supplier_id": "SUP-RES-08",
+    "cost_of_capital_bps": 1600,
+    "freight_cost_paise_per_tonne_km": 350,
+    "products": {
+     "RES08-HDPE-BM": {
+      "unit_cost_paise": 11200,
+      "inventory": 30000,
+      "committed_next_30d": 40000,
+      "target_margin_bps": 800
+     }
+    }
+   },
+   "history": {
+    "orders": 18,
+    "on_time": 17,
+    "late_days_total": 2,
+    "lots_inspected": 18,
+    "lots_rejected": 0
+   },
+   "owner_limits": {
+    "min_unit_price_units": {
+     "RES08-HDPE-BM": "118000000"
+    },
+    "max_per_deal_quantity": {
+     "RES08-HDPE-BM": 150000
+    },
+    "max_total_quantity": {
+     "RES08-HDPE-BM": 450000
+    },
+    "committed_quantity": {
+     "RES08-HDPE-BM": 40000
+    },
+    "expires_at_unix": 4102444800,
+    "min_margin_bps": 300,
+    "allowed_credit_days": [
+     0,
+     15,
+     30,
+     45
+    ]
+   }
+  },
+  {
+   "listing": {
+    "supplier_id": "SUP-MET-01",
+    "name": "Subarnarekha Steel Processors (synthetic)",
+    "city": "Jamshedpur",
+    "gst_registration": "REGULAR",
+    "is_msme": false,
+    "products": [
+     {
+      "product_id": "MET01-HR-E250",
+      "category": "METAL",
+      "material": "HR_COIL",
+      "specs": {
+       "steel_grade": {
+        "min": null,
+        "max": null,
+        "value": "IS2062_E250",
+        "source": "SUPPLIER_DECLARED"
+       },
+       "thickness_mm": {
+        "min": 2.0,
+        "max": 6.0,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       },
+       "width_mm": {
+        "min": 1250,
+        "max": 1250,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       }
+      },
+      "uom": "KG",
+      "unit_weight_kg": 1.0,
+      "moq": 10000,
+      "monthly_capacity": 2000000,
+      "standard_lead_time_days": 6,
+      "gst_rate_bps": 1800
+     }
+    ],
+    "certifications": [
+     {
+      "name": "BIS",
+      "verified": true,
+      "valid_until": null
+     },
+     {
+      "name": "ISO 9001",
+      "verified": true,
+      "valid_until": null
+     }
+    ]
+   },
+   "private": {
+    "supplier_id": "SUP-MET-01",
+    "cost_of_capital_bps": 1200,
+    "freight_cost_paise_per_tonne_km": 350,
+    "products": {
+     "MET01-HR-E250": {
+      "unit_cost_paise": 5250,
+      "inventory": 300000,
+      "committed_next_30d": 900000,
+      "target_margin_bps": 600
+     }
+    }
+   },
+   "history": {
+    "orders": 40,
+    "on_time": 37,
+    "late_days_total": 9,
+    "lots_inspected": 40,
+    "lots_rejected": 1
+   },
+   "owner_limits": {
+    "min_unit_price_units": {
+     "MET01-HR-E250": "54500000"
+    },
+    "max_per_deal_quantity": {
+     "MET01-HR-E250": 2000000
+    },
+    "max_total_quantity": {
+     "MET01-HR-E250": 6000000
+    },
+    "committed_quantity": {
+     "MET01-HR-E250": 900000
+    },
+    "expires_at_unix": 4102444800,
+    "min_margin_bps": 300,
+    "allowed_credit_days": [
+     0,
+     15,
+     30,
+     45
+    ]
+   }
+  },
+  {
+   "listing": {
+    "supplier_id": "SUP-MET-02",
+    "name": "Mahanadi Coils (synthetic)",
+    "city": "Raipur",
+    "gst_registration": "REGULAR",
+    "is_msme": true,
+    "products": [
+     {
+      "product_id": "MET02-HR-E250",
+      "category": "METAL",
+      "material": "HR_COIL",
+      "specs": {
+       "steel_grade": {
+        "min": null,
+        "max": null,
+        "value": "IS2062_E250",
+        "source": "SUPPLIER_DECLARED"
+       },
+       "thickness_mm": {
+        "min": 1.6,
+        "max": 4.0,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       },
+       "width_mm": {
+        "min": 1000,
+        "max": 1250,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       }
+      },
+      "uom": "KG",
+      "unit_weight_kg": 1.0,
+      "moq": 5000,
+      "monthly_capacity": 800000,
+      "standard_lead_time_days": 5,
+      "gst_rate_bps": 1800
+     }
+    ],
+    "certifications": [
+     {
+      "name": "BIS",
+      "verified": true,
+      "valid_until": null
+     },
+     {
+      "name": "ISO 9001",
+      "verified": false,
+      "valid_until": null
+     }
+    ]
+   },
+   "private": {
+    "supplier_id": "SUP-MET-02",
+    "cost_of_capital_bps": 1600,
+    "freight_cost_paise_per_tonne_km": 350,
+    "products": {
+     "MET02-HR-E250": {
+      "unit_cost_paise": 5180,
+      "inventory": 60000,
+      "committed_next_30d": 400000,
+      "target_margin_bps": 700
+     }
+    }
+   },
+   "history": {
+    "orders": 14,
+    "on_time": 11,
+    "late_days_total": 12,
+    "lots_inspected": 14,
+    "lots_rejected": 1
+   },
+   "owner_limits": {
+    "min_unit_price_units": {
+     "MET02-HR-E250": "54000000"
+    },
+    "max_per_deal_quantity": {
+     "MET02-HR-E250": 800000
+    },
+    "max_total_quantity": {
+     "MET02-HR-E250": 2400000
+    },
+    "committed_quantity": {
+     "MET02-HR-E250": 400000
+    },
+    "expires_at_unix": 4102444800,
+    "min_margin_bps": 300,
+    "allowed_credit_days": [
+     0,
+     15,
+     30,
+     45
+    ]
+   }
+  },
+  {
+   "listing": {
+    "supplier_id": "SUP-MET-03",
+    "name": "Eastern Ghats Steel (synthetic)",
+    "city": "Visakhapatnam",
+    "gst_registration": "REGULAR",
+    "is_msme": false,
+    "products": [
+     {
+      "product_id": "MET03-HR-E350",
+      "category": "METAL",
+      "material": "HR_COIL",
+      "specs": {
+       "steel_grade": {
+        "min": null,
+        "max": null,
+        "value": "IS2062_E350",
+        "source": "SUPPLIER_DECLARED"
+       },
+       "thickness_mm": {
+        "min": 3.0,
+        "max": 12.0,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       },
+       "width_mm": {
+        "min": 1500,
+        "max": 1500,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       }
+      },
+      "uom": "KG",
+      "unit_weight_kg": 1.0,
+      "moq": 20000,
+      "monthly_capacity": 3000000,
+      "standard_lead_time_days": 8,
+      "gst_rate_bps": 1800
+     }
+    ],
+    "certifications": [
+     {
+      "name": "BIS",
+      "verified": true,
+      "valid_until": null
+     },
+     {
+      "name": "ISO 9001",
+      "verified": true,
+      "valid_until": null
+     }
+    ]
+   },
+   "private": {
+    "supplier_id": "SUP-MET-03",
+    "cost_of_capital_bps": 1200,
+    "freight_cost_paise_per_tonne_km": 350,
+    "products": {
+     "MET03-HR-E350": {
+      "unit_cost_paise": 5500,
+      "inventory": 500000,
+      "committed_next_30d": 1500000,
+      "target_margin_bps": 600
+     }
+    }
+   },
+   "history": {
+    "orders": 22,
+    "on_time": 21,
+    "late_days_total": 2,
+    "lots_inspected": 22,
+    "lots_rejected": 0
+   },
+   "owner_limits": {
+    "min_unit_price_units": {
+     "MET03-HR-E350": "57500000"
+    },
+    "max_per_deal_quantity": {
+     "MET03-HR-E350": 3000000
+    },
+    "max_total_quantity": {
+     "MET03-HR-E350": 9000000
+    },
+    "committed_quantity": {
+     "MET03-HR-E350": 1500000
+    },
+    "expires_at_unix": 4102444800,
+    "min_margin_bps": 300,
+    "allowed_credit_days": [
+     0,
+     15,
+     30,
+     45
+    ]
+   }
+  },
+  {
+   "listing": {
+    "supplier_id": "SUP-MET-04",
+    "name": "Yamuna Cold Rolled (synthetic)",
+    "city": "Faridabad",
+    "gst_registration": "REGULAR",
+    "is_msme": false,
+    "products": [
+     {
+      "product_id": "MET04-CR-CR2",
+      "category": "METAL",
+      "material": "CR_SHEET",
+      "specs": {
+       "steel_grade": {
+        "min": null,
+        "max": null,
+        "value": "IS513_CR2",
+        "source": "SUPPLIER_DECLARED"
+       },
+       "thickness_mm": {
+        "min": 0.6,
+        "max": 2.0,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       },
+       "width_mm": {
+        "min": 1000,
+        "max": 1250,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       }
+      },
+      "uom": "KG",
+      "unit_weight_kg": 1.0,
+      "moq": 3000,
+      "monthly_capacity": 500000,
+      "standard_lead_time_days": 7,
+      "gst_rate_bps": 1800
+     }
+    ],
+    "certifications": [
+     {
+      "name": "BIS",
+      "verified": true,
+      "valid_until": null
+     },
+     {
+      "name": "IATF 16949",
+      "verified": true,
+      "valid_until": null
+     }
+    ]
+   },
+   "private": {
+    "supplier_id": "SUP-MET-04",
+    "cost_of_capital_bps": 1600,
+    "freight_cost_paise_per_tonne_km": 350,
+    "products": {
+     "MET04-CR-CR2": {
+      "unit_cost_paise": 6100,
+      "inventory": 80000,
+      "committed_next_30d": 250000,
+      "target_margin_bps": 800
+     }
+    }
+   },
+   "history": {
+    "orders": 11,
+    "on_time": 10,
+    "late_days_total": 3,
+    "lots_inspected": 11,
+    "lots_rejected": 0
+   },
+   "owner_limits": {
+    "min_unit_price_units": {
+     "MET04-CR-CR2": "64000000"
+    },
+    "max_per_deal_quantity": {
+     "MET04-CR-CR2": 500000
+    },
+    "max_total_quantity": {
+     "MET04-CR-CR2": 1500000
+    },
+    "committed_quantity": {
+     "MET04-CR-CR2": 250000
+    },
+    "expires_at_unix": 4102444800,
+    "min_margin_bps": 300,
+    "allowed_credit_days": [
+     0,
+     15,
+     30,
+     45
+    ]
+   }
+  },
+  {
+   "listing": {
+    "supplier_id": "SUP-MET-05",
+    "name": "Western Aluminium Alloys (synthetic)",
+    "city": "Ahmedabad",
+    "gst_registration": "REGULAR",
+    "is_msme": false,
+    "products": [
+     {
+      "product_id": "MET05-AL-997",
+      "category": "METAL",
+      "material": "ALUMINIUM_INGOT",
+      "specs": {
+       "purity_pct": {
+        "min": 99.7,
+        "max": 99.7,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       }
+      },
+      "uom": "KG",
+      "unit_weight_kg": 1.0,
+      "moq": 2000,
+      "monthly_capacity": 400000,
+      "standard_lead_time_days": 5,
+      "gst_rate_bps": 1800
+     }
+    ],
+    "certifications": [
+     {
+      "name": "ISO 9001",
+      "verified": true,
+      "valid_until": null
+     }
+    ]
+   },
+   "private": {
+    "supplier_id": "SUP-MET-05",
+    "cost_of_capital_bps": 1600,
+    "freight_cost_paise_per_tonne_km": 350,
+    "products": {
+     "MET05-AL-997": {
+      "unit_cost_paise": 22800,
+      "inventory": 50000,
+      "committed_next_30d": 150000,
+      "target_margin_bps": 500
+     }
+    }
+   },
+   "history": {
+    "orders": 0,
+    "on_time": 0,
+    "late_days_total": 0,
+    "lots_inspected": 0,
+    "lots_rejected": 0
+   },
+   "owner_limits": {
+    "min_unit_price_units": {
+     "MET05-AL-997": "236000000"
+    },
+    "max_per_deal_quantity": {
+     "MET05-AL-997": 400000
+    },
+    "max_total_quantity": {
+     "MET05-AL-997": 1200000
+    },
+    "committed_quantity": {
+     "MET05-AL-997": 150000
+    },
+    "expires_at_unix": 4102444800,
+    "min_margin_bps": 300,
+    "allowed_credit_days": [
+     0,
+     15,
+     30,
+     45
+    ]
+   }
+  },
+  {
+   "listing": {
+    "supplier_id": "SUP-PKG-01",
+    "name": "Mula-Mutha Packaging (synthetic)",
+    "city": "Pune",
+    "gst_registration": "REGULAR",
+    "is_msme": true,
+    "products": [
+     {
+      "product_id": "PKG01-BOX-5PLY",
+      "category": "PACKAGING",
+      "material": "CORRUGATED_BOX",
+      "specs": {
+       "ply": {
+        "min": 5,
+        "max": 5,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       },
+       "length_mm": {
+        "min": 450,
+        "max": 450,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       },
+       "width_mm": {
+        "min": 300,
+        "max": 300,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       },
+       "height_mm": {
+        "min": 250,
+        "max": 250,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       },
+       "bursting_strength_kg_cm2": {
+        "min": 12,
+        "max": 14,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       }
+      },
+      "uom": "PCS",
+      "unit_weight_kg": 0.65,
+      "moq": 2000,
+      "monthly_capacity": 150000,
+      "standard_lead_time_days": 6,
+      "gst_rate_bps": 1800
+     }
+    ],
+    "certifications": [
+     {
+      "name": "ISO 9001",
+      "verified": true,
+      "valid_until": null
+     },
+     {
+      "name": "FSC",
+      "verified": false,
+      "valid_until": null
+     }
+    ]
+   },
+   "private": {
+    "supplier_id": "SUP-PKG-01",
+    "cost_of_capital_bps": 1800,
+    "freight_cost_paise_per_tonne_km": 350,
+    "products": {
+     "PKG01-BOX-5PLY": {
+      "unit_cost_paise": 3100,
+      "inventory": 5000,
+      "committed_next_30d": 60000,
+      "target_margin_bps": 1200
+     }
+    }
+   },
+   "history": {
+    "orders": 26,
+    "on_time": 24,
+    "late_days_total": 5,
+    "lots_inspected": 26,
+    "lots_rejected": 1
+   },
+   "owner_limits": {
+    "min_unit_price_units": {
+     "PKG01-BOX-5PLY": "33000000"
+    },
+    "max_per_deal_quantity": {
+     "PKG01-BOX-5PLY": 150000
+    },
+    "max_total_quantity": {
+     "PKG01-BOX-5PLY": 450000
+    },
+    "committed_quantity": {
+     "PKG01-BOX-5PLY": 60000
+    },
+    "expires_at_unix": 4102444800,
+    "min_margin_bps": 300,
+    "allowed_credit_days": [
+     0,
+     15,
+     30,
+     45
+    ]
+   }
+  },
+  {
+   "listing": {
+    "supplier_id": "SUP-PKG-02",
+    "name": "Daman Ganga Cartons (synthetic)",
+    "city": "Vapi",
+    "gst_registration": "REGULAR",
+    "is_msme": true,
+    "products": [
+     {
+      "product_id": "PKG02-BOX-5PLY",
+      "category": "PACKAGING",
+      "material": "CORRUGATED_BOX",
+      "specs": {
+       "ply": {
+        "min": 5,
+        "max": 5,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       },
+       "length_mm": {
+        "min": 450,
+        "max": 450,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       },
+       "width_mm": {
+        "min": 300,
+        "max": 300,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       },
+       "height_mm": {
+        "min": 250,
+        "max": 250,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       },
+       "bursting_strength_kg_cm2": {
+        "min": 10,
+        "max": 12,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       }
+      },
+      "uom": "PCS",
+      "unit_weight_kg": 0.62,
+      "moq": 5000,
+      "monthly_capacity": 300000,
+      "standard_lead_time_days": 8,
+      "gst_rate_bps": 1800
+     }
+    ],
+    "certifications": [
+     {
+      "name": "ISO 9001",
+      "verified": true,
+      "valid_until": null
+     }
+    ]
+   },
+   "private": {
+    "supplier_id": "SUP-PKG-02",
+    "cost_of_capital_bps": 1900,
+    "freight_cost_paise_per_tonne_km": 350,
+    "products": {
+     "PKG02-BOX-5PLY": {
+      "unit_cost_paise": 2850,
+      "inventory": 0,
+      "committed_next_30d": 120000,
+      "target_margin_bps": 1000
+     }
+    }
+   },
+   "history": {
+    "orders": 8,
+    "on_time": 6,
+    "late_days_total": 9,
+    "lots_inspected": 8,
+    "lots_rejected": 1
+   },
+   "owner_limits": {
+    "min_unit_price_units": {
+     "PKG02-BOX-5PLY": "30500000"
+    },
+    "max_per_deal_quantity": {
+     "PKG02-BOX-5PLY": 300000
+    },
+    "max_total_quantity": {
+     "PKG02-BOX-5PLY": 900000
+    },
+    "committed_quantity": {
+     "PKG02-BOX-5PLY": 120000
+    },
+    "expires_at_unix": 4102444800,
+    "min_margin_bps": 300,
+    "allowed_credit_days": [
+     0,
+     15,
+     30,
+     45
+    ]
+   }
+  },
+  {
+   "listing": {
+    "supplier_id": "SUP-PKG-03",
+    "name": "Godavari Corrugators (synthetic)",
+    "city": "Nashik",
+    "gst_registration": "COMPOSITION",
+    "is_msme": true,
+    "products": [
+     {
+      "product_id": "PKG03-BOX-3PLY",
+      "category": "PACKAGING",
+      "material": "CORRUGATED_BOX",
+      "specs": {
+       "ply": {
+        "min": 3,
+        "max": 3,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       },
+       "length_mm": {
+        "min": 450,
+        "max": 450,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       },
+       "width_mm": {
+        "min": 300,
+        "max": 300,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       },
+       "height_mm": {
+        "min": 250,
+        "max": 250,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       }
+      },
+      "uom": "PCS",
+      "unit_weight_kg": 0.4,
+      "moq": 1000,
+      "monthly_capacity": 100000,
+      "standard_lead_time_days": 5,
+      "gst_rate_bps": 1800
+     }
+    ],
+    "certifications": []
+   },
+   "private": {
+    "supplier_id": "SUP-PKG-03",
+    "cost_of_capital_bps": 1600,
+    "freight_cost_paise_per_tonne_km": 350,
+    "products": {
+     "PKG03-BOX-3PLY": {
+      "unit_cost_paise": 1900,
+      "inventory": 8000,
+      "committed_next_30d": 30000,
+      "target_margin_bps": 1200
+     }
+    }
+   },
+   "history": {
+    "orders": 0,
+    "on_time": 0,
+    "late_days_total": 0,
+    "lots_inspected": 0,
+    "lots_rejected": 0
+   },
+   "owner_limits": {
+    "min_unit_price_units": {
+     "PKG03-BOX-3PLY": "20500000"
+    },
+    "max_per_deal_quantity": {
+     "PKG03-BOX-3PLY": 100000
+    },
+    "max_total_quantity": {
+     "PKG03-BOX-3PLY": 300000
+    },
+    "committed_quantity": {
+     "PKG03-BOX-3PLY": 30000
+    },
+    "expires_at_unix": 4102444800,
+    "min_margin_bps": 300,
+    "allowed_credit_days": [
+     0,
+     15,
+     30,
+     45
+    ]
+   }
+  },
+  {
+   "listing": {
+    "supplier_id": "SUP-PKG-04",
+    "name": "Sabarmati Flexifilms (synthetic)",
+    "city": "Ahmedabad",
+    "gst_registration": "REGULAR",
+    "is_msme": false,
+    "products": [
+     {
+      "product_id": "PKG04-BOPP-20",
+      "category": "PACKAGING",
+      "material": "BOPP_FILM",
+      "specs": {
+       "thickness_micron": {
+        "min": 20,
+        "max": 20,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       },
+       "width_mm": {
+        "min": 600,
+        "max": 1200,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       }
+      },
+      "uom": "KG",
+      "unit_weight_kg": 1.0,
+      "moq": 1000,
+      "monthly_capacity": 200000,
+      "standard_lead_time_days": 7,
+      "gst_rate_bps": 1800
+     }
+    ],
+    "certifications": [
+     {
+      "name": "ISO 9001",
+      "verified": true,
+      "valid_until": null
+     }
+    ]
+   },
+   "private": {
+    "supplier_id": "SUP-PKG-04",
+    "cost_of_capital_bps": 1600,
+    "freight_cost_paise_per_tonne_km": 350,
+    "products": {
+     "PKG04-BOPP-20": {
+      "unit_cost_paise": 14800,
+      "inventory": 12000,
+      "committed_next_30d": 90000,
+      "target_margin_bps": 900
+     }
+    }
+   },
+   "history": {
+    "orders": 10,
+    "on_time": 10,
+    "late_days_total": 0,
+    "lots_inspected": 10,
+    "lots_rejected": 0
+   },
+   "owner_limits": {
+    "min_unit_price_units": {
+     "PKG04-BOPP-20": "155000000"
+    },
+    "max_per_deal_quantity": {
+     "PKG04-BOPP-20": 200000
+    },
+    "max_total_quantity": {
+     "PKG04-BOPP-20": 600000
+    },
+    "committed_quantity": {
+     "PKG04-BOPP-20": 90000
+    },
+    "expires_at_unix": 4102444800,
+    "min_margin_bps": 300,
+    "allowed_credit_days": [
+     0,
+     15,
+     30,
+     45
+    ]
+   }
+  },
+  {
+   "listing": {
+    "supplier_id": "SUP-PKG-05",
+    "name": "Kshipra Films (synthetic)",
+    "city": "Indore",
+    "gst_registration": "REGULAR",
+    "is_msme": true,
+    "products": [
+     {
+      "product_id": "PKG05-BOPP-25",
+      "category": "PACKAGING",
+      "material": "BOPP_FILM",
+      "specs": {
+       "thickness_micron": {
+        "min": 25,
+        "max": 25,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       },
+       "width_mm": {
+        "min": 500,
+        "max": 1000,
+        "value": null,
+        "source": "SUPPLIER_DECLARED"
+       }
+      },
+      "uom": "KG",
+      "unit_weight_kg": 1.0,
+      "moq": 500,
+      "monthly_capacity": 80000,
+      "standard_lead_time_days": 6,
+      "gst_rate_bps": 1800
+     }
+    ],
+    "certifications": []
+   },
+   "private": {
+    "supplier_id": "SUP-PKG-05",
+    "cost_of_capital_bps": 1600,
+    "freight_cost_paise_per_tonne_km": 350,
+    "products": {
+     "PKG05-BOPP-25": {
+      "unit_cost_paise": 15100,
+      "inventory": 4000,
+      "committed_next_30d": 30000,
+      "target_margin_bps": 900
+     }
+    }
+   },
+   "history": {
+    "orders": 5,
+    "on_time": 4,
+    "late_days_total": 3,
+    "lots_inspected": 5,
+    "lots_rejected": 0
+   },
+   "owner_limits": {
+    "min_unit_price_units": {
+     "PKG05-BOPP-25": "158000000"
+    },
+    "max_per_deal_quantity": {
+     "PKG05-BOPP-25": 80000
+    },
+    "max_total_quantity": {
+     "PKG05-BOPP-25": 240000
+    },
+    "committed_quantity": {
+     "PKG05-BOPP-25": 30000
+    },
+    "expires_at_unix": 4102444800,
+    "min_margin_bps": 300,
+    "allowed_credit_days": [
+     0,
+     15,
+     30,
+     45
+    ]
+   }
+  }
+ ],
+ "requests": {
+  "hdpe_tender": "TENDER NOTICE No. ICPL/PUR/117 (synthetic example)\nIndrayani Containers Pvt Ltd invites quotations for supply of HDPE granules.\nItem: HDPE blow moulding grade, MFI 0.3-0.5 g/10 min, density 0.950 to 0.956 g/cc.\nQuantity: 40 MT.\nCertification: material must be BIS certified.\nDelivery: deliver to our Pune plant within 21 days of purchase order.\nPayment terms: 45 days credit from date of delivery.\nInternal note (not for suppliers): budget not to exceed Rs 55 lakh including GST.\n",
+  "hr_coil_short": "Need 25 MT HR coil IS 2062 E250, 3 mm thick, width 1250 mm. Deliver to Pune in 14 days. ISO 9001 suppliers only. 30 days credit.",
+  "boxes_incomplete": "Want 20000 pcs corrugated boxes 5 ply for our Nashik unit.",
+  "hdpe_conflicting": "Require 40 MT HDPE blow moulding grade MFI 0.3-0.5, BIS certified, deliver to Pune within 21 days. Please quote for 45 MT."
+ }
+}

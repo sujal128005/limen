@@ -1,0 +1,15 @@
+Recommendation (400 simulated RFQs per row, 40,000 kg each; mean true cost per RFQ)
+  cost of a late day   lowest price (L1)    engine (ETC)         oracle               engine vs L1
+        Rs 25,000.00      Rs 42,98,160.16      Rs 42,93,964.91      Rs 42,93,165.70   +0.10%
+      Rs 1,50,000.00      Rs 45,13,959.91      Rs 44,96,557.78      Rs 44,68,336.23   +0.39%
+      Rs 4,00,000.00      Rs 49,65,739.57      Rs 47,43,891.28      Rs 46,34,225.02   +4.47%
+  Reading: when delay is cheap the lowest price is right and the engine ties it; the gain grows with the
+  cost of delay. The gap between engine and oracle is what more delivery history on Limen would close.
+
+Negotiation (500 simulated buyer-supplier pairs)
+  hard limits overlap in                : 84% of pairs
+  baseline (take the quote if in budget): 42% deals
+  engine                                : 79% deals, 188 of them over-budget quotes rescued
+  mean buyer landed-cost saving vs quote: 4.53%
+  mean supplier margin kept after credit: 7.23%
+  offers breaking a buyer/seller policy : 0

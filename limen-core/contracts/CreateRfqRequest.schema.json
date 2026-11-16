@@ -1,0 +1,355 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CreateRfqRequest",
+  "$ref": "#/$defs/CreateRfqRequest",
+  "$defs": {
+    "CreateRfqRequest": {
+      "type": "object",
+      "properties": {
+        "actor": {
+          "$ref": "#/$defs/Actor"
+        },
+        "rfq_id": {
+          "type": "string"
+        },
+        "requirement": {
+          "$ref": "#/$defs/Requirement"
+        },
+        "supplier_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "disclosure": {
+          "$ref": "#/$defs/DisclosurePolicy"
+        },
+        "buyer_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "actor",
+        "rfq_id",
+        "requirement",
+        "supplier_ids"
+      ],
+      "additionalProperties": false
+    },
+    "Actor": {
+      "type": "object",
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": [
+            "BUYER_SALES",
+            "BUYER_HEAD",
+            "BUYER_FINANCE",
+            "SUPPLIER_OWNER",
+            "SUPPLIER_STAFF",
+            "PLATFORM"
+          ]
+        },
+        "org_id": {
+          "type": "string"
+        },
+        "user_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "org_id",
+        "user_id"
+      ],
+      "additionalProperties": false
+    },
+    "Requirement": {
+      "type": "object",
+      "properties": {
+        "requirement_id": {
+          "type": "string"
+        },
+        "buyer_org_id": {
+          "type": "string"
+        },
+        "category": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "material": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "specs": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/SpecConstraint"
+          }
+        },
+        "quantity": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "minimum": 1
+        },
+        "uom": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "delivery_city": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "need_by_days": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "minimum": 0
+        },
+        "required_certifications": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "preferred_credit_days": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "minimum": 0
+        },
+        "provenance": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/Sourced"
+          }
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Issue"
+          }
+        }
+      },
+      "required": [
+        "requirement_id",
+        "buyer_org_id"
+      ],
+      "additionalProperties": false
+    },
+    "SpecConstraint": {
+      "type": "object",
+      "properties": {
+        "min": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "max": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "one_of": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "USER_STATED",
+            "DOCUMENT_EXTRACTED",
+            "SUPPLIER_DECLARED",
+            "VERIFIED",
+            "LIMEN_TRANSACTION",
+            "ESTIMATED",
+            "DEFAULT_ASSUMPTION"
+          ]
+        },
+        "evidence": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "Sourced": {
+      "type": "object",
+      "properties": {
+        "value": {},
+        "source": {
+          "type": "string",
+          "enum": [
+            "USER_STATED",
+            "DOCUMENT_EXTRACTED",
+            "SUPPLIER_DECLARED",
+            "VERIFIED",
+            "LIMEN_TRANSACTION",
+            "ESTIMATED",
+            "DEFAULT_ASSUMPTION"
+          ]
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "evidence": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "value",
+        "source"
+      ],
+      "additionalProperties": false
+    },
+    "Issue": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "BLOCKING",
+            "WARNING"
+          ]
+        },
+        "field": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "question": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "field",
+        "message"
+      ],
+      "additionalProperties": false
+    },
+    "DisclosurePolicy": {
+      "type": "object",
+      "properties": {
+        "share_buyer_name": {
+          "type": "boolean"
+        },
+        "share_exact_city": {
+          "type": "boolean"
+        },
+        "share_need_by": {
+          "type": "boolean"
+        },
+        "share_payment_preference": {
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    }
+  }
+}

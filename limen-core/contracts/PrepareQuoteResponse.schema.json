@@ -1,0 +1,302 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PrepareQuoteResponse",
+  "$ref": "#/$defs/PrepareQuoteResponse",
+  "$defs": {
+    "PrepareQuoteResponse": {
+      "type": "object",
+      "properties": {
+        "audience": {
+          "type": "string"
+        },
+        "decision_support_only": {
+          "type": "boolean"
+        },
+        "quote_for_buyer": {
+          "$ref": "#/$defs/Quote"
+        },
+        "guard": {
+          "$ref": "#/$defs/GuardedOfferView"
+        },
+        "economics": {
+          "$ref": "#/$defs/SupplierEconomicsView"
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "requires_approval": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ApprovalStep"
+          }
+        }
+      },
+      "required": [
+        "audience",
+        "decision_support_only",
+        "quote_for_buyer",
+        "guard",
+        "economics",
+        "notes",
+        "requires_approval"
+      ],
+      "additionalProperties": false
+    },
+    "Quote": {
+      "type": "object",
+      "properties": {
+        "quote_id": {
+          "type": "string"
+        },
+        "rfq_id": {
+          "type": "string"
+        },
+        "supplier_id": {
+          "type": "string"
+        },
+        "product_id": {
+          "type": "string"
+        },
+        "terms": {
+          "$ref": "#/$defs/OfferTerms"
+        },
+        "moq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_quantity": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "validity_days": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "spec_declared": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/SpecOffered"
+          }
+        },
+        "certifications": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "quote_id",
+        "rfq_id",
+        "supplier_id",
+        "product_id",
+        "terms"
+      ],
+      "additionalProperties": false
+    },
+    "OfferTerms": {
+      "type": "object",
+      "properties": {
+        "unit_price_paise": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "quantity": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "credit_days": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 365
+        },
+        "delivery_basis": {
+          "type": "string",
+          "enum": [
+            "FOR_DESTINATION",
+            "EX_WORKS"
+          ]
+        },
+        "freight_per_unit_paise": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "gst_rate_bps": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4000
+        },
+        "gst_registration": {
+          "type": "string",
+          "enum": [
+            "REGULAR",
+            "COMPOSITION",
+            "UNREGISTERED"
+          ]
+        },
+        "lead_time_days": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "advance_bps": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        }
+      },
+      "required": [
+        "unit_price_paise",
+        "quantity"
+      ],
+      "additionalProperties": false
+    },
+    "SpecOffered": {
+      "type": "object",
+      "properties": {
+        "min": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "max": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "USER_STATED",
+            "DOCUMENT_EXTRACTED",
+            "SUPPLIER_DECLARED",
+            "VERIFIED",
+            "LIMEN_TRANSACTION",
+            "ESTIMATED",
+            "DEFAULT_ASSUMPTION"
+          ]
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "GuardedOfferView": {
+      "type": "object",
+      "properties": {
+        "guarded_by": {
+          "type": "string"
+        },
+        "limit_version": {
+          "type": "integer"
+        },
+        "terms": {
+          "$ref": "#/$defs/OfferTerms"
+        },
+        "payable_paise": {
+          "type": "integer"
+        },
+        "escrow_amount_units": {
+          "type": "string",
+          "pattern": "(0|[1-9][0-9]{0,38})"
+        }
+      },
+      "required": [
+        "guarded_by",
+        "limit_version",
+        "terms",
+        "payable_paise",
+        "escrow_amount_units"
+      ],
+      "additionalProperties": false
+    },
+    "SupplierEconomicsView": {
+      "type": "object",
+      "properties": {
+        "unit_cost_all_in_paise": {
+          "type": "integer"
+        },
+        "freight_per_unit_paise": {
+          "type": "integer"
+        },
+        "net_realisation_per_unit_paise": {
+          "type": "integer"
+        },
+        "margin_bps": {
+          "type": "integer"
+        },
+        "target_margin_bps": {
+          "type": "integer"
+        },
+        "capacity_utilisation_bps": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "from_stock": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "unit_cost_all_in_paise",
+        "freight_per_unit_paise",
+        "net_realisation_per_unit_paise",
+        "margin_bps",
+        "target_margin_bps",
+        "capacity_utilisation_bps",
+        "from_stock"
+      ],
+      "additionalProperties": false
+    },
+    "ApprovalStep": {
+      "type": "object",
+      "properties": {
+        "step": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "BUYER_SALES",
+            "BUYER_HEAD",
+            "BUYER_FINANCE",
+            "SUPPLIER_OWNER",
+            "SUPPLIER_STAFF",
+            "PLATFORM"
+          ]
+        }
+      },
+      "required": [
+        "step",
+        "role"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,221 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NextMoveResponse",
+  "$ref": "#/$defs/NextMoveResponse",
+  "$defs": {
+    "NextMoveResponse": {
+      "type": "object",
+      "properties": {
+        "audience": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "decision_support_only": {
+          "type": "boolean"
+        },
+        "move": {
+          "$ref": "#/$defs/MoveView"
+        },
+        "public_event": {
+          "$ref": "#/$defs/NegotiationEvent"
+        },
+        "requires_approval": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ApprovalStep"
+          }
+        }
+      },
+      "required": [
+        "audience",
+        "status",
+        "decision_support_only",
+        "move",
+        "public_event",
+        "requires_approval"
+      ],
+      "additionalProperties": false
+    },
+    "MoveView": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "OFFER",
+            "ACCEPT",
+            "WALK_AWAY"
+          ]
+        },
+        "offers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GuardedOfferView"
+          }
+        },
+        "rationale": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "concession": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "action",
+        "offers",
+        "rationale",
+        "concession"
+      ],
+      "additionalProperties": false
+    },
+    "GuardedOfferView": {
+      "type": "object",
+      "properties": {
+        "guarded_by": {
+          "type": "string"
+        },
+        "limit_version": {
+          "type": "integer"
+        },
+        "terms": {
+          "$ref": "#/$defs/OfferTerms"
+        },
+        "payable_paise": {
+          "type": "integer"
+        },
+        "escrow_amount_units": {
+          "type": "string",
+          "pattern": "(0|[1-9][0-9]{0,38})"
+        }
+      },
+      "required": [
+        "guarded_by",
+        "limit_version",
+        "terms",
+        "payable_paise",
+        "escrow_amount_units"
+      ],
+      "additionalProperties": false
+    },
+    "OfferTerms": {
+      "type": "object",
+      "properties": {
+        "unit_price_paise": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "quantity": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "credit_days": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 365
+        },
+        "delivery_basis": {
+          "type": "string",
+          "enum": [
+            "FOR_DESTINATION",
+            "EX_WORKS"
+          ]
+        },
+        "freight_per_unit_paise": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "gst_rate_bps": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4000
+        },
+        "gst_registration": {
+          "type": "string",
+          "enum": [
+            "REGULAR",
+            "COMPOSITION",
+            "UNREGISTERED"
+          ]
+        },
+        "lead_time_days": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "advance_bps": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        }
+      },
+      "required": [
+        "unit_price_paise",
+        "quantity"
+      ],
+      "additionalProperties": false
+    },
+    "NegotiationEvent": {
+      "type": "object",
+      "properties": {
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by": {
+          "type": "string",
+          "enum": [
+            "BUYER",
+            "SUPPLIER"
+          ]
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "OFFER",
+            "ACCEPT",
+            "WALK_AWAY"
+          ]
+        },
+        "packages": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OfferTerms"
+          },
+          "maxItems": 3
+        }
+      },
+      "required": [
+        "seq"
+      ],
+      "additionalProperties": false
+    },
+    "ApprovalStep": {
+      "type": "object",
+      "properties": {
+        "step": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "BUYER_SALES",
+            "BUYER_HEAD",
+            "BUYER_FINANCE",
+            "SUPPLIER_OWNER",
+            "SUPPLIER_STAFF",
+            "PLATFORM"
+          ]
+        }
+      },
+      "required": [
+        "step",
+        "role"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

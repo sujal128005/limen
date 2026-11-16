@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AssessRfqResponse",
+  "$ref": "#/$defs/AssessRfqResponse",
+  "$defs": {
+    "AssessRfqResponse": {
+      "type": "object",
+      "properties": {
+        "audience": {
+          "type": "string"
+        },
+        "feasible": {
+          "type": "boolean"
+        },
+        "product_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "feasible_quantity": {
+          "type": "integer"
+        },
+        "lead_time_days": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "from_stock": {
+          "type": "boolean"
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CheckView"
+          }
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "questions_for_buyer": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "audience",
+        "feasible",
+        "product_id",
+        "feasible_quantity",
+        "lead_time_days",
+        "from_stock",
+        "checks",
+        "reasons",
+        "questions_for_buyer"
+      ],
+      "additionalProperties": false
+    },
+    "CheckView": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "PASS",
+            "PARTIAL",
+            "FAIL",
+            "UNKNOWN"
+          ]
+        },
+        "detail": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "status",
+        "detail"
+      ],
+      "additionalProperties": false
+    }
+  }
+}
