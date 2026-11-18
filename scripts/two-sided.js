@@ -65,7 +65,7 @@ const assert = (c, m) => { if (!c) { throw new Error(`assertion failed: ${m}`); 
   step(`sales signed in as ${me.user.name} at ${me.org.name} (desk ${me.membership.desk})`);
   await head.login('priya@aarav.example');
   await finance.login('imran@aarav.example');
-  await supplier.login('li.wei@konsheng.example');
+  await supplier.login('lakshmi@kaveri.example');
   step('head, finance and the supplier signed in');
 
   // A fresh purchase for this run.

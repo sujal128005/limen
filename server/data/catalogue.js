@@ -23,6 +23,11 @@
  * sees them. `floor` is the minimum unit price the supplier's owner has set,
  * which the escrow contract also enforces on chain.
  *
+ * gstinBase is the first fourteen characters of the supplier's (invented) GSTIN;
+ * the check digit is computed, so the verification screen shows a real pass.
+ * Narmada Polymers deliberately has none: a supplier that has not supplied a
+ * number is unverified, never failed.
+ *
  * walletIndex is the on-chain account that receives the supplier's payment. It
  * must be unique, must not be 10 (the agent) and must be under the account
  * count the in-process chain starts with; suppliers.js checks all three.
@@ -76,6 +81,7 @@ const CATALOGUE = [
     ],
   },
   {
+    gstinBase: '27AAFCK4821M1Z',
     id: 'SUP-B', walletIndex: 3, name: 'Konkan Petrochem Traders', city: 'Mumbai', yearsActive: 6,
     gst: 'REGULAR', msme: true,
     certifications: [['BIS', true]],
@@ -90,6 +96,7 @@ const CATALOGUE = [
   },
   {
     // The supplier demo account signs in as this company.
+    gstinBase: '33AACCK7305P1Z',
     id: 'SUP-C', walletIndex: 4, name: 'Kaveri Polymers', city: 'Chennai', yearsActive: 11,
     gst: 'REGULAR', msme: false,
     certifications: [['BIS', true], ['ISO 9001', true], ['FOOD CONTACT', true]],
@@ -105,6 +112,7 @@ const CATALOGUE = [
     ],
   },
   {
+    gstinBase: '24AAACK2290Q1Z',
     id: 'SUP-D', walletIndex: 5, name: 'Kutch Polyplast', city: 'Rajkot', yearsActive: 18,
     gst: 'REGULAR', msme: false,
     certifications: [['BIS', true], ['ISO 9001', true], ['ISO 14001', true]],
@@ -120,6 +128,7 @@ const CATALOGUE = [
     ],
   },
   {
+    gstinBase: '23AAKFM6614R1Z',
     id: 'SUP-E', walletIndex: 6, name: 'Malwa Plastics', city: 'Indore', yearsActive: 9,
     gst: 'REGULAR', msme: true,
     certifications: [['BIS', true]],
@@ -135,6 +144,7 @@ const CATALOGUE = [
     ],
   },
   {
+    gstinBase: '36AAGFD3157S1Z',
     id: 'SUP-F', walletIndex: 7, name: 'Deccan Resins', city: 'Hyderabad', yearsActive: 7,
     gst: 'REGULAR', msme: true,
     certifications: [['BIS', true]],
@@ -148,6 +158,7 @@ const CATALOGUE = [
     ],
   },
   {
+    gstinBase: '27AAACV5582T1Z',
     id: 'SUP-G', walletIndex: 8, name: 'Vidarbha Speciality Resins', city: 'Nagpur', yearsActive: 12,
     gst: 'REGULAR', msme: false,
     certifications: [['BIS', true], ['ISO 9001', true]],
@@ -161,6 +172,7 @@ const CATALOGUE = [
     ],
   },
   {
+    gstinBase: '24AAKCS9046U1Z',
     id: 'SUP-H', walletIndex: 9, name: 'Sabarmati Flexifilms', city: 'Ahmedabad', yearsActive: 10,
     gst: 'REGULAR', msme: false,
     certifications: [['ISO 9001', true], ['FOOD CONTACT', true]],
@@ -174,6 +186,7 @@ const CATALOGUE = [
     ],
   },
   {
+    gstinBase: '27AAEFM1179V1Z',
     id: 'SUP-I', walletIndex: 11, name: 'Mula-Mutha Packaging', city: 'Pune', yearsActive: 15,
     gst: 'REGULAR', msme: true,
     certifications: [['ISO 9001', true], ['FSC', true]],
@@ -189,6 +202,7 @@ const CATALOGUE = [
     ],
   },
   {
+    gstinBase: '24AAHFD4433W1Z',
     id: 'SUP-J', walletIndex: 12, name: 'Daman Ganga Cartons', city: 'Vapi', yearsActive: 8,
     gst: 'REGULAR', msme: true,
     certifications: [['ISO 9001', true]],
@@ -204,6 +218,7 @@ const CATALOGUE = [
     ],
   },
   {
+    gstinBase: '20AAACS8812X1Z',
     id: 'SUP-K', walletIndex: 13, name: 'Subarnarekha Steel Processors', city: 'Jamshedpur', yearsActive: 22,
     gst: 'REGULAR', msme: false,
     certifications: [['BIS', true], ['ISO 9001', true]],
@@ -217,6 +232,7 @@ const CATALOGUE = [
     ],
   },
   {
+    gstinBase: '22AAACM2765Y1Z',
     id: 'SUP-L', walletIndex: 14, name: 'Mahanadi Coils', city: 'Raipur', yearsActive: 9,
     gst: 'REGULAR', msme: false,
     certifications: [['BIS', true], ['ISO 9001', true]],
@@ -230,6 +246,7 @@ const CATALOGUE = [
     ],
   },
   {
+    gstinBase: '06AAACY4408A1Z',
     id: 'SUP-M', walletIndex: 15, name: 'Yamuna Cold Rolled', city: 'Faridabad', yearsActive: 16,
     gst: 'REGULAR', msme: false,
     certifications: [['BIS', true], ['IATF 16949', true], ['ISO 9001', true]],
@@ -243,6 +260,7 @@ const CATALOGUE = [
     ],
   },
   {
+    gstinBase: '24AAACW7731B1Z',
     id: 'SUP-N', walletIndex: 16, name: 'Western Aluminium Alloys', city: 'Ahmedabad', yearsActive: 13,
     gst: 'REGULAR', msme: false,
     certifications: [['ISO 9001', true]],
@@ -256,6 +274,7 @@ const CATALOGUE = [
     ],
   },
   {
+    gstinBase: '37AAACE5520C1Z',
     id: 'SUP-O', walletIndex: 17, name: 'Eastern Ghats Steel', city: 'Visakhapatnam', yearsActive: 25,
     gst: 'REGULAR', msme: false,
     certifications: [['BIS', true], ['ISO 9001', true], ['ISO 14001', true]],

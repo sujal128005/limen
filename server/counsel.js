@@ -1,5 +1,7 @@
 'use strict';
-const { inr } = require('./money');
+/* Rupees with Indian grouping. Inlined rather than imported: this module is
+   tested to import nothing at all, which is what makes it capability-free. */
+const inr = (n) => `\u20B9${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: Math.abs(Number(n || 0)) < 1000 ? 2 : 0 })}`;
 // Counsel: explains a sourcing run in plain language.
 // Deliberately has zero imports: no chain, no signer, no network. It takes a
 // frozen snapshot and returns text, so "it cannot move money" holds even if

@@ -23,12 +23,9 @@ const profile = require('./profile');
 const verification = require('./verification');
 const trust = require('./trust');
 const outcomes = require('./outcomes');
-const { evaluateCandidates, selectForNegotiation } = require('./engine/match');
 const engine = require('./core/engine');
 const { inr, inr2 } = require('./money');
 const bridge = require('./core/bridge');
-const { negotiateAll } = require('./engine/negotiate');
-const { recommend } = require('./engine/recommend');
 const workspace = require('./workspace');
 const { sessionFor } = workspace;
 const counsel = require('./counsel');
@@ -56,7 +53,7 @@ const security = require('./security');
  * Accounts, companies and the supplier portal. Created here so the purchase
  * routes below can consult it, and initialised in boot() once the chain exists.
  */
-const platform = createPlatform({ identity, workspace, payments, taxonomy: parse.taxonomy });
+const platform = createPlatform({ identity, workspace, payments, taxonomy: require('./core/taxonomy').taxonomy });
 
 /*
  * One rail client for the process. Held in a variable rather than required

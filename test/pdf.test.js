@@ -2,22 +2,14 @@
 const { test, group, eq, ok } = require('./harness');
 const documents = require('../server/documents');
 const pdf = require('../server/pdf');
-const { parseRequest } = require('../server/engine/parse');
-const { evaluateCandidates, selectForNegotiation } = require('../server/engine/match');
-const { negotiateAll } = require('../server/engine/negotiate');
-const { recommend } = require('../server/engine/recommend');
+const { sourcingRun, REQ_BUDGET } = require('./fixtures');
 
-const REQ = 'I need 500 kg of bottle-grade PET resin. Budget is $1,200 total. Delivery within 14 days. Must be FDA food-contact certified.';
-
-function buildSession() {
-  const brief = parseRequest(REQ);
-  const rows = evaluateCandidates(brief);
-  const negs = negotiateAll(selectForNegotiation(rows), brief);
-  const rec = recommend(negs, rows, brief);
-  return { id: 'testworkspace0001', brief, candidates: rows, negotiations: negs, recommendation: rec, dealId: null };
+async function buildSession() {
+  const r = await sourcingRun();
+  return { id: 'testworkspace0001', brief: r.brief, candidates: r.candidates, negotiations: r.negotiations, recommendation: r.recommendation, dealId: null };
 }
 
-const CTX = { buyer: '0xBUYER', supplierWallet: '0xSUPPLIER', policy: { maxPerDeal: 1200 }, settled: false };
+const CTX = { buyer: '0xBUYER', supplierWallet: '0xSUPPLIER', policy: { maxPerDeal: REQ_BUDGET }, settled: false };
 
 // pdftotext is not guaranteed here, so assert on the PDF structure directly.
 // This sees the whole file including object dictionaries and metadata, so it is
@@ -59,7 +51,7 @@ function pdfDrawnText(buf) {
 async function run() {
   group('PDF generation');
 
-  const session = buildSession();
+  const session = await buildSession();
   const doc = documents.purchaseSummary(session, CTX);
   const unsigned = await pdf.agreementPdf(doc, null);
 
