@@ -1,5 +1,6 @@
 'use strict';
-const { inr } = require('../money');
+/* Inlined: the correction path is tested to import only the document reader. */
+const inr = (n) => `\u20B9${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
 
 /*
  * "That's wrong - it should be 7 days."

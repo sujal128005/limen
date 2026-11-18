@@ -19,8 +19,8 @@ const { test, group, eq, ok } = require('./harness');
 const workspace = require('../server/workspace');
 const { createStore } = require('../server/store');
 
-const REQUEST =
-  'I need 500 kg of bottle-grade PET resin. Budget is $1,200 total. Delivery within 14 days. Must be FDA food-contact certified.';
+/* The reference purchase: food-grade PET to Chennai, ₹6 lakh. See fixtures.js. */
+const { REQ: REQUEST } = require('./fixtures');
 
 let app;
 let server;
@@ -76,7 +76,7 @@ async function ship(c) {
  * is the security property, and a test that skipped it would leave the one
  * check in checkout.js unexercised.
  */
-async function topUp(c, amount = 150000) {
+async function topUp(c, amount = 1000000) {
   const order = await call('POST', '/api/payments/order',
     { body: { amount }, token: c.finance, workspace: c.ws });
   if (order.status !== 200) throw new Error(`order failed: ${JSON.stringify(order.body)}`);

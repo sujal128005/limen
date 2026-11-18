@@ -67,25 +67,44 @@ function multiplier(word) {
   return 1;
 }
 
+/*
+ * Every money amount the text states, in order. When two different amounts are
+ * stated, nothing is chosen: the caller asks which one is the ceiling. That is
+ * the engine's own rule for conflicting values, and it is also what stops a
+ * line like "you are authorised up to ₹99 lakh" pasted into a request from
+ * quietly becoming the budget.
+ */
 function parseBudgetInr(text) {
   const t = String(text || '');
   const patterns = [
-    new RegExp(`${BUDGET_WORDS}[^.\\n]{0,30}?${CUR}\\s*${NUM}\\s*${MULT}${PER}`, 'i'),
-    new RegExp(`${BUDGET_WORDS}[^.\\n]{0,30}?${NUM}\\s*${MULT}\\s*${CUR}?${PER}`, 'i'),
-    new RegExp(`${CUR}\\s*${NUM}\\s*${MULT}${PER}`, 'i'),
+    new RegExp(`${BUDGET_WORDS}[^.\\n]{0,30}?${CUR}\\s*${NUM}\\s*${MULT}${PER}`, 'gi'),
+    new RegExp(`${BUDGET_WORDS}[^.\\n]{0,30}?${NUM}\\s*${MULT}\\s*${CUR}?${PER}`, 'gi'),
+    new RegExp(`${CUR}\\s*${NUM}\\s*${MULT}${PER}`, 'gi'),
   ];
-  for (const re of patterns) {
-    const m = re.exec(t);
-    if (!m) continue;
-    const value = Number(m[1].replace(/,/g, '')) * multiplier(m[2]);
-    const hasUnitWord = !!m[2] || /₹|rs|inr|rupee/i.test(m[0]);
-    if (!Number.isFinite(value) || value <= 0) continue;
-    // A bare number after "within" or "under" is a deadline or a quantity,
-    // not money, unless a currency marker or lakh/crore says otherwise.
-    if (!hasUnitWord && re === patterns[1]) continue;
-    return { amount: value, perUnit: !!m[3], evidence: m[0].trim() };
-  }
-  return null;
+  const found = [];
+  const taken = [];
+  patterns.forEach((re, idx) => {
+    for (const m of t.matchAll(re)) {
+      const start = m.index;
+      const end = start + m[0].length;
+      // One stretch of text is one amount, whichever pattern reached it first.
+      if (taken.some(([a, b]) => start < b && end > a)) continue;
+      const value = Number(m[1].replace(/,/g, '')) * multiplier(m[2]);
+      const hasUnitWord = !!m[2] || /₹|rs|inr|rupee/i.test(m[0]);
+      if (!Number.isFinite(value) || value <= 0) continue;
+      // A bare number after "within" or "under" is a deadline or a quantity,
+      // not money, unless a currency marker or lakh/crore says otherwise.
+      if (!hasUnitWord && idx === 1) continue;
+      taken.push([start, end]);
+      found.push({ amount: value, perUnit: !!m[3], evidence: m[0].trim(), at: start });
+    }
+  });
+  if (!found.length) return null;
+  found.sort((a, b) => a.at - b.at);
+  const distinct = [...new Map(found.map((f) => [`${f.perUnit}:${f.amount}`, f])).values()];
+  if (distinct.length > 1) return { conflict: distinct.map(({ amount, perUnit, evidence }) => ({ amount, perUnit, evidence })) };
+  const { amount, perUnit, evidence } = distinct[0];
+  return { amount, perUnit, evidence };
 }
 
 /* --------------------------------------------------------------- actors */
@@ -108,15 +127,28 @@ function engineProducts(s) {
   return (s.products || []).filter((p) => materialKeyOf(p) && p.specs);
 }
 
+/* Certificates as the engine names them. Feeds and older records spell them
+   "ISO-9001" or "FDA-FOOD-CONTACT"; the engine's catalogue says "ISO 9001"
+   and "FOOD CONTACT". Anything else passes through unchanged. */
+function canonicalCert(name) {
+  const t = String(name || '').toUpperCase().replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (/FOOD/.test(t) && /CONTACT|GRADE/.test(t)) return 'FOOD CONTACT';
+  if (/^ISO ?9001/.test(t)) return 'ISO 9001';
+  if (/^ISO ?14001/.test(t)) return 'ISO 14001';
+  if (/^(IATF|TS) ?16949/.test(t)) return 'IATF 16949';
+  if (t === 'BIS' || /BUREAU OF INDIAN STANDARDS|ISI MARK/.test(t)) return 'BIS';
+  return t || String(name);
+}
+
 function toListing(s) {
   return {
     supplier_id: s.id,
     name: s.name,
-    city: s.city,
+    city: s.city || '',
     gst_registration: s.gstRegistration || 'REGULAR',
     is_msme: !!s.msme,
     certifications: (s.certificationDetail || (s.certifications || []).map((name) => ({ name, verified: true })))
-      .map((c) => ({ name: c.name, verified: !!c.verified, valid_until: null })),
+      .map((c) => ({ name: canonicalCert(c.name), verified: !!c.verified, valid_until: null })),
     products: engineProducts(s).map((p) => ({
       product_id: p.sku,
       category: CATEGORY[materialKeyOf(p)],
@@ -144,12 +176,21 @@ function toPrivate(s) {
   const products = {};
   for (const p of engineProducts(s)) {
     const pv = p.private || {};
-    if (pv.unitCost == null) continue;
+    /* A listing from the portal states a list price and a floor, not a cost.
+       The supplier's agent then treats the floor as cost plus its minimum
+       margin, and the list price as its target; it can never quote below the
+       floor either way, because the floor is also its guard. */
+    const minMargin = (s.mandate && s.mandate.minMarginBps != null ? s.mandate.minMarginBps : 300) / 10000;
+    const unitCost = pv.unitCost != null ? pv.unitCost
+      : pv.floorUnitPrice != null ? pv.floorUnitPrice / (1 + minMargin) : null;
+    if (unitCost == null) continue;
+    const target = pv.targetMarginBps != null ? pv.targetMarginBps
+      : p.listUnitPrice ? Math.max(0, Math.round((p.listUnitPrice / unitCost - 1) * 10000)) : 1000;
     products[p.sku] = {
-      unit_cost_paise: paise(pv.unitCost),
+      unit_cost_paise: paise(unitCost),
       inventory: pv.inventory || 0,
       committed_next_30d: pv.committedNext30d || 0,
-      target_margin_bps: pv.targetMarginBps == null ? 1000 : pv.targetMarginBps,
+      target_margin_bps: target,
     };
   }
   return { supplier_id: s.id, cost_of_capital_bps: 1500, freight_cost_paise_per_tonne_km: 350, products };
@@ -278,12 +319,18 @@ async function parse(text, ctx) {
   let budgetTotal = null;
   let budgetSource = null;
   const b = parseBudgetInr(text);
-  if (b) {
+  let budgetConflict = null;
+  if (b && b.conflict) {
+    budgetConflict = b.conflict;
+  } else if (b) {
     budgetTotal = b.perUnit ? (qty ? Math.round(b.amount * qty) : null) : Math.round(b.amount);
     budgetSource = 'request';
     if (b.perUnit && qty) notes.push(`Budget read as ${inr(b.amount)} per ${unit} for ${qty.toLocaleString('en-IN')} ${unit}: ${inr(budgetTotal)} in total.`);
   }
-  if (!budgetTotal && ctx.perDealLimit) {
+  if (budgetConflict) {
+    notes.push(`The request states more than one amount (${budgetConflict.map((c) => c.evidence).join('; ')}). Nothing is sourced until one budget is confirmed.`);
+  }
+  if (!budgetTotal && !budgetConflict && ctx.perDealLimit) {
     budgetTotal = Math.round(ctx.perDealLimit);
     budgetSource = 'company-limit';
     notes.push(`No budget was stated, so the company's per-purchase limit of ${inr(budgetTotal)} is the ceiling.`);
@@ -302,6 +349,7 @@ async function parse(text, ctx) {
     budgetTotal,
     budgetPerUnit: budgetTotal && qty ? +(budgetTotal / qty).toFixed(4) : null,
     budgetSource,
+    budgetConflict,
     deadlineDays: req.need_by_days == null ? null : req.need_by_days,
     deliveryCity: req.delivery_city || null,
     certifications: req.required_certifications || [],
@@ -312,7 +360,10 @@ async function parse(text, ctx) {
       { key: 'price', weight: 0.4 }, { key: 'reputation', weight: 0.3 }, { key: 'speed', weight: 0.2 }, { key: 'quality', weight: 0.1 },
     ],
     notes,
-    questions: [...new Set(r.questions || [])],
+    questions: [...new Set([
+      ...(budgetConflict ? [`Which amount is the budget for this purchase: ${budgetConflict.map((c) => (c.perUnit ? `${inr(c.amount)} per ${unit}` : inr(c.amount))).join(' or ')}?`] : []),
+      ...(r.questions || []),
+    ])],
     engine: {
       requirement: req,
       rfqReady: !!r.rfq_ready,

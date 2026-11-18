@@ -173,6 +173,22 @@ const SIMULATED_BEHAVIOUR = {
   expediteFeePct: 0.05,
 };
 
+/*
+ * The decision engine's view of a feed product: material key, unit and the
+ * specification its grade stands for. A feed may state them itself
+ * (materialKey + specs); otherwise they are derived from the material name and
+ * grade. A product the engine cannot read is kept for display and not sourced.
+ */
+function engineView(p) {
+  if (p.materialKey && p.specs) return {};
+  const { MATERIAL_NAMES } = require('./data/suppliers');
+  const { engineFields } = require('./core/taxonomy');
+  const name = MATERIAL_NAMES[p.material] || p.material;
+  try { return engineFields(name, p.grade || null, {}) || {}; } catch (_) {
+    try { return engineFields(name, null, {}) || {}; } catch (__) { return {}; }
+  }
+}
+
 function normaliseProduct(p, margin) {
   /* A real directory publishes one price. The engine calls it listUnitPrice
      because it bargains down from it; a feed is more likely to call it
@@ -181,6 +197,7 @@ function normaliseProduct(p, margin) {
   const list = Number(p.listUnitPrice != null ? p.listUnitPrice : p.unitPrice);
 
   return {
+    ...engineView(p),
     ...p,
     listUnitPrice: list,
     unitPrice: Number(p.unitPrice != null ? p.unitPrice : list),

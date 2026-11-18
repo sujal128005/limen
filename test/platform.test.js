@@ -10,8 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const { test, group, eq, ok } = require('./harness');
 
-const REQUEST = 'I need 500 kg of bottle-grade PET resin. Budget is $1,200 total. '
-  + 'Delivery within 14 days. FDA food-contact certification required.';
+const { REQ: REQUEST } = require('./fixtures');
 
 async function run() {
   process.env.LIMEN_RATE_LIMIT = process.env.LIMEN_RATE_LIMIT || '100000';
@@ -107,15 +106,7 @@ async function run() {
   group('Platform: what a supplier may see of a purchase');
 
   const { project } = require('../server/platform/projection');
-  const { parseRequest } = require('../server/engine/parse');
-  const { evaluateCandidates } = require('../server/engine/match');
-  const { negotiateAll } = require('../server/engine/negotiate');
-  const { recommend } = require('../server/engine/recommend');
-  const brief = parseRequest(REQUEST);
-  const candidates = evaluateCandidates(brief);
-  const { selectForNegotiation } = require('../server/engine/match');
-  const negotiations = negotiateAll(selectForNegotiation(candidates), brief);
-  const recommendation = recommend(negotiations, candidates, brief);
+  const { brief, candidates, negotiations, recommendation } = await require('./fixtures').sourcingRun(REQUEST);
   const purchase = { brief, candidates, negotiations, recommendation, reference: 'LMN-TEST' };
   const views = project(purchase, { workspaceId: 'ws_test', buyerName: 'Aarav Packaging', buyerOrgId: 'org_x' });
 
@@ -129,7 +120,7 @@ async function run() {
     ok(!/budget/i.test(s), 'the word budget');
     ok(!/ceiling/i.test(s), 'the word ceiling');
     ok(!s.includes('"budgetTotal"') && !s.includes('"budgetPerUnit"'), 'budget fields');
-    ok(!s.includes('1,200') && !s.includes('1200'), 'the budget figure');
+    ok(!s.includes('6,00,000') && !s.includes('600000') && !/6 lakh/i.test(s), 'the budget figure');
   });
 
   await test('the buyer agent\'s reasoning stays with the buyer; the supplier keeps its own', async () => {
@@ -160,7 +151,7 @@ async function run() {
   await test('the projection module holds no capability', async () => {
     const src = fs.readFileSync(path.join(__dirname, '..', 'server', 'platform', 'projection.js'), 'utf8');
     const reqs = [...src.matchAll(/require\('([^']+)'\)/g)].map((m) => m[1]);
-    for (const r of reqs) ok(['../authorization', '../engine/match'].includes(r), `unexpected import ${r}`);
+    for (const r of reqs) ok(['../authorization', '../core/bridge'].includes(r), `unexpected import ${r}`);
   });
 
   group('Platform: roles');
@@ -366,7 +357,7 @@ async function run() {
   await test('a supplier signs up and gets a supplier id and a chain account', async () => {
     const r = await sup.call('POST', '/api/auth/signup', {
       name: 'Kiran Patel', email: `owner-${uniq()}@hdpe-works.example`, password: 'polymer supplier passphrase',
-      company: { name: 'Narmada HDPE Works', kind: 'supplier', country: 'India', city: 'Bharuch' },
+      company: { name: 'Narmada HDPE Works', kind: 'supplier', country: 'India', city: 'Vadodara' },
     });
     eq(r.status, 201, JSON.stringify(r.body));
     ok(r.body.org.supplierId && r.body.org.supplierId.startsWith('SUP-'), 'supplier id');
@@ -375,7 +366,7 @@ async function run() {
   });
 
   await test('a material the request reader cannot name is refused', async () => {
-    const r = await sup.call('POST', '/api/sp/listings', { sku: 'X1', material: 'unobtainium', listUnitPrice: 2, moqKg: 100, leadTimeDays: 7 });
+    const r = await sup.call('POST', '/api/sp/listings', { sku: 'X1', material: 'unobtainium', listUnitPrice: 110, moqKg: 100, leadTimeDays: 7 });
     eq(r.status, 422, 'refused');
   });
 
@@ -383,7 +374,7 @@ async function run() {
   await test('a listing cannot go live before its floor is confirmed', async () => {
     const r = await sup.call('POST', '/api/sp/listings', {
       sku: 'HDPE-NW-1', material: 'HDPE granules', grade: 'blow-moulding',
-      listUnitPrice: 1.7, moqKg: 200, monthlyCapacityKg: 90000, leadTimeDays: 6, qualityScore: 90, active: true,
+      listUnitPrice: 104, moqKg: 2000, monthlyCapacityKg: 90000, leadTimeDays: 4, qualityScore: 90, active: true,
     });
     eq(r.status, 409, `went live without a floor: ${JSON.stringify(r.body)}`);
   });
@@ -391,17 +382,19 @@ async function run() {
   await test('an owner sets the floor and the listing goes live', async () => {
     const r = await sup.call('POST', '/api/sp/listings', {
       sku: 'HDPE-NW-1', material: 'HDPE granules', grade: 'blow-moulding',
-      listUnitPrice: 1.7, moqKg: 200, monthlyCapacityKg: 90000, leadTimeDays: 6, qualityScore: 90,
-      mandate: { floorUnitPrice: 1.55, concessionRate: 0.35 }, active: true,
+      listUnitPrice: 104, moqKg: 2000, monthlyCapacityKg: 90000, leadTimeDays: 4, qualityScore: 90,
+      specs: { mfi_g_10min: { min: 0.3, max: 0.5 } },
+      mandate: { floorUnitPrice: 96, concessionRate: 0.35 }, active: true,
     });
     eq(r.status, 201, JSON.stringify(r.body));
     ok(r.body.live, 'live');
-    ok(r.body.mandate && r.body.mandate.floorUnitPrice === 1.55, 'owner sees the floor');
+    ok(r.body.mandate && r.body.mandate.floorUnitPrice === 96, 'owner sees the floor');
+    ok(r.body.sourceable, 'the engine can read what it is');
     listing = r.body;
   });
 
   await test('the buyer agent now sources from the new supplier', async () => {
-    const run = await buyerA.desked('POST', '/api/brief', { text: 'We need 1,000 kg of blow-moulding HDPE granules. Budget $2,000. Delivery within 10 days.' });
+    const run = await buyerA.desked('POST', '/api/brief', { text: 'We need 10 MT of blow-moulding HDPE granules, MFI 0.3-0.5, delivered to Pune within 10 days. Budget ₹13 lakh.' });
     eq(run.status, 200, JSON.stringify(run.body));
     const cands = await buyerA.desked('POST', '/api/candidates');
     const rows = cands.body.candidates || cands.body.rows || cands.body;
@@ -414,12 +407,12 @@ async function run() {
     eq(r.status, 200, JSON.stringify(r.body));
     ok(r.body.length >= 1, 'an opportunity');
     const s = JSON.stringify(r.body);
-    ok(!s.includes('2,000') && !s.includes('2000') && !/budget/i.test(s), 'no budget');
+    ok(!s.includes('13,00,000') && !s.includes('1300000') && !/budget/i.test(s), 'no budget');
   });
 
   await test('a supplier cannot open another supplier\'s opportunity', async () => {
     const anhui = client();
-    await anhui.login('li.wei@konsheng.example');
+    await anhui.login('lakshmi@kaveri.example');
     const theirs = (await sup.call('GET', '/api/sp/opportunities')).body[0];
     const r = await anhui.call('GET', `/api/sp/opportunities/${encodeURIComponent(theirs.id)}`);
     eq(r.status, 404, 'not found, not forbidden');
@@ -435,20 +428,20 @@ async function run() {
     const token = new URL(inv.body.devLink).searchParams.get('token');
     const s2 = client();
     await s2.call('POST', '/api/auth/invite/accept', { token, name: 'Sales Person', password: 'sales person passphrase' });
-    const floor = await s2.call('PATCH', `/api/sp/listings/${listing.id}`, { mandate: { floorUnitPrice: 1.2 } });
+    const floor = await s2.call('PATCH', `/api/sp/listings/${listing.id}`, { mandate: { floorUnitPrice: 80 } });
     eq(floor.status, 403, 'floor refused');
     const pace = await s2.call('PATCH', `/api/sp/listings/${listing.id}`, { mandate: { concessionRate: 0.2 } });
     eq(pace.status, 200, JSON.stringify(pace.body));
-    const pub = await s2.call('POST', '/api/sp/floor', { floorUnitPrice: 1.5 });
+    const pub = await s2.call('POST', '/api/sp/floor', { floorUnitPrice: 95 });
     eq(pub.status, 403, 'publishing the on-chain floor refused');
   });
 
   await test('the owner publishes a floor on chain and the portal reads it back', async () => {
-    const r = await sup.call('POST', '/api/sp/floor', { floorUnitPrice: 1.5, maxPerDealKg: 20000, days: 30 });
+    const r = await sup.call('POST', '/api/sp/floor', { floorUnitPrice: 95, maxPerDealKg: 20000, days: 30 });
     eq(r.status, 200, JSON.stringify(r.body));
     ok(/^0x[0-9a-f]{64}$/.test(r.body.txHash), 'tx hash');
     const back = await sup.call('GET', '/api/sp/floor');
-    ok(back.body.onChain.active && back.body.onChain.minUnitPrice === 1.5, JSON.stringify(back.body.onChain));
+    ok(back.body.onChain.active && back.body.onChain.minUnitPrice === 95, JSON.stringify(back.body.onChain));
   });
 
   await test('a payout account is validated and stored masked', async () => {
@@ -522,7 +515,7 @@ async function run() {
 
   await test('the owner of the demo company cannot give the demo seat a real role', async () => {
     const owner = client();
-    eq((await owner.login('li.wei@konsheng.example')).status, 200, 'owner signs in');
+    eq((await owner.login('lakshmi@kaveri.example')).status, 200, 'owner signs in');
     const list = await owner.call('GET', '/api/org/members');
     const seat = list.body.members.find((x) => x.role === 'demo');
     ok(seat, 'the demo seat is listed');

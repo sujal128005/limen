@@ -21,6 +21,7 @@
 const express = require('express');
 const S = require('./secure');
 const roles = require('./roles');
+const { engineFields } = require('../core/taxonomy');
 
 const n = (v) => (v === '' || v == null ? null : Number(v));
 const clean = (s, max = 120) => String(s == null ? '' : s).replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, max);
@@ -41,6 +42,7 @@ function makeSupplierRoutes({ store, auth, activity, catalogue, taxonomy, chainO
     const showPrivate = canDo(a, 'pricing.read');
     return {
       id: l.id, sku: l.sku, material: l.material, grade: l.grade || null, description: l.description || '',
+      unit: l.unit || 'kg', declaredRanges: l.declaredRanges || {}, sourceable: !!(l.materialKey && l.specs),
       listUnitPrice: l.listUnitPrice, moqKg: l.moqKg, monthlyCapacityKg: l.monthlyCapacityKg,
       leadTimeDays: l.leadTimeDays, qualityScore: l.qualityScore, active: !!l.active,
       live: catalogue.sellable(l),
@@ -76,6 +78,19 @@ function makeSupplierRoutes({ store, auth, activity, catalogue, taxonomy, chainO
       out.grade = b.grade || null;
     }
     if (b.description !== undefined) out.description = clean(b.description, 600);
+    /* What the decision engine matches on: material key, unit and the
+       specification the grade (and any declared ranges) stand for. */
+    if (out.material !== undefined || out.grade !== undefined || b.specs !== undefined) {
+      const material = out.material !== undefined ? out.material : existing && existing.material;
+      const grade = out.grade !== undefined ? out.grade : existing && existing.grade;
+      try {
+        const ef = engineFields(material, grade, b.specs !== undefined ? b.specs : (existing && existing.declaredRanges) || {});
+        if (ef) {
+          Object.assign(out, ef);
+          if (b.specs !== undefined) out.declaredRanges = b.specs || {};
+        }
+      } catch (e) { throw httpError(422, e.message); }
+    }
     const num = (k, label, { min, max, int, required, nullable }) => {
       if (b[k] === undefined) { if (!existing && required) throw httpError(422, `${label} is required.`); return; }
       const v = n(b[k]);
@@ -83,7 +98,7 @@ function makeSupplierRoutes({ store, auth, activity, catalogue, taxonomy, chainO
       if (!Number.isFinite(v) || v < min || v > max) throw httpError(422, `${label} must be between ${min} and ${max}.`);
       out[k] = int ? Math.round(v) : Math.round(v * 10000) / 10000;
     };
-    num('listUnitPrice', 'List price per kg', { min: 0.01, max: 100000, required: true });
+    num('listUnitPrice', 'List price per unit (₹, ex-GST)', { min: 0.01, max: 10000000, required: true });
     num('moqKg', 'Minimum order', { min: 1, max: 10000000, int: true, required: true });
     num('monthlyCapacityKg', 'Monthly capacity', { min: 1, max: 100000000, int: true, nullable: true });
     num('leadTimeDays', 'Lead time', { min: 1, max: 365, int: true, required: true });

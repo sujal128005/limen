@@ -21,7 +21,7 @@
  */
 
 const { purchaseState } = require('../authorization');
-const { selectForNegotiation } = require('../engine/match');
+const { selectForNegotiation } = require('../core/bridge');
 
 /* Agent message types a supplier actually received. Anything else the agent
    wrote ('recall', notes to itself) was never said to the supplier. */
@@ -135,6 +135,8 @@ function project(session, meta = {}) {
         material: brief.material || null,
         grade: brief.grade || null,
         quantityKg: brief.quantityKg || null,
+        unit: brief.unit || 'kg',
+        deliveryCity: brief.deliveryCity || null,
         deadlineDays: brief.deadlineDays || null,
         certifications: Array.isArray(brief.certifications) ? brief.certifications.slice() : [],
         minQuality: brief.minQuality || null,
@@ -167,7 +169,7 @@ function project(session, meta = {}) {
       view.order = {
         stage,
         stages: ORDER_STAGES,
-        terms: pick(w, ['sku', 'unitPrice', 'quantityKg', 'total', 'leadTimeDays', 'expedited']),
+        terms: pick(w, ['sku', 'unitPrice', 'quantityKg', 'unit', 'total', 'basicTotal', 'gstTotal', 'freightTotal', 'creditDays', 'leadTimeDays', 'expedited']),
         dealId: session.dealId || null,
         fundingTx: facts.fundingTx || null,
         deliveryTx: facts.deliveryTx || null,

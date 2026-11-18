@@ -13,6 +13,7 @@
  * is rupee-pegged with six decimals, so one rupee is 1,000,000 token units.
  */
 const { CATALOGUE } = require('./catalogue');
+const { gstinCheckDigit } = require('../verification');
 
 /* Engine material key -> what a buyer reads. */
 const MATERIAL_NAMES = {
@@ -52,6 +53,7 @@ function toNode(row) {
     onTimeRate: h.orders ? Math.round((h.on_time / h.orders) * 100) / 100 : null,
     priorDisputes: h.lots_rejected || 0,
     walletIndex: row.walletIndex,
+    ...(row.gstinBase ? { registeredId: row.gstinBase + gstinCheckDigit(row.gstinBase) } : {}),
     gstRegistration: row.gst || 'REGULAR',
     msme: !!row.msme,
     certifications: row.certifications.map(([name]) => name),

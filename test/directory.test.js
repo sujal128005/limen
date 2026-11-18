@@ -17,10 +17,7 @@ const { test, group, eq, ok } = require('./harness');
 const directory = require('../server/directory');
 const notify = require('../server/notify');
 const { SUPPLIERS, replaceCatalogue, publicCatalogue, listingCount } = require('../server/data/suppliers');
-const { parseRequest } = require('../server/engine/parse');
-const { evaluateCandidates, selectForNegotiation } = require('../server/engine/match');
-const { negotiateAll } = require('../server/engine/negotiate');
-const { recommend } = require('../server/engine/recommend');
+const { sourcingRun, bridge, CTX } = require('./fixtures');
 
 function tmpJson(name, data) {
   const p = path.join(os.tmpdir(), `limen-${name}-${Date.now()}.json`);
@@ -294,14 +291,13 @@ async function run() {
     certifications: ['ISO-9001', 'FDA-FOOD-CONTACT'], onTimeRate: 0.93, yearsActive: 6,
     products: [{
       sku: 'EXT-1', material: 'PET resin', grade: 'bottle-grade',
-      unitPrice: 2.30, moqKg: 100, monthlyCapacityKg: 40000,
-      leadTimeDays: 11, qualityScore: 93,
+      unitPrice: 102, moqKg: 1000, monthlyCapacityKg: 60000,
+      leadTimeDays: 5, qualityScore: 93,
     }],
     ...over,
   });
 
-  const BRIEF = '500 kg of bottle-grade PET resin, budget $1,400 total, '
-    + 'delivery within 14 days, FDA food-contact certified.';
+  const BRIEF = 'Need 5 MT of bottle-grade PET resin, food grade, delivered to Surat within 14 days. Budget ₹6.5 lakh.';
 
   await test('a feed loads, screens, negotiates and recommends end to end', async () => {
     const snapshot = SUPPLIERS.map((x) => x);
@@ -315,17 +311,12 @@ async function run() {
       eq(cat.seeded, false, 'the feed replaced the seeded catalogue');
       replaceCatalogue(cat.suppliers);
 
-      const brief = parseRequest(BRIEF);
-      const rows = evaluateCandidates(brief);
+      const { brief, candidates: rows, negotiations: results, recommendation: rec } = await sourcingRun(BRIEF, { suppliers: cat.suppliers });
       eq(rows.length, 2, 'both listings screened');
       eq(rows.filter((r) => r.eligible).length, 2, 'both eligible');
       ok(Number.isFinite(rows[0].listTotal), `listTotal must be a number, got ${rows[0].listTotal}`);
-
-      const results = negotiateAll(selectForNegotiation(rows), brief);
       ok(results.length, 'somebody was negotiated with');
       ok(results.some((r) => r.outcome === 'agreed'), 'at least one agreement');
-
-      const rec = recommend(results, rows, brief);
       eq(rec.status, 'recommended', 'a recommendation came back');
       ok(Number.isFinite(rec.winner.total), 'the winning total is a real number');
       ok(rec.winner.total <= brief.budgetTotal, 'and it is inside the budget');
@@ -340,16 +331,17 @@ async function run() {
     const snapshot = SUPPLIERS.map((x) => x);
     const file = tmpJson('bare', [{
       id: 'bare-a', name: 'Bare Alpha', country: 'India', walletIndex: 7,
-      products: [{ sku: 'BR-1', material: 'PET resin', unitPrice: 2.1, moqKg: 50, leadTimeDays: 9 }],
+      products: [{ sku: 'BR-1', material: 'PET resin', unitPrice: 98, moqKg: 50, leadTimeDays: 9 }],
     }]);
     process.env.LIMEN_SUPPLIER_FILE = file;
     try {
       const cat = await directory.load();
       replaceCatalogue(cat.suppliers);
-      const rows = evaluateCandidates(parseRequest(BRIEF));
+      const brief = await bridge.parse(BRIEF, CTX);
+      const rows = await bridge.shortlist(brief, CTX, cat.suppliers);
       eq(rows.length, 1, 'screened rather than crashed');
       eq(rows[0].eligible, false, 'and it is blocked, because nothing was verified');
-      ok(rows[0].blockedBy.includes('certification'), 'no certifications on file means the required one is not held');
+      ok(rows[0].blockedBy.some((b) => /certification/.test(b)), `no certifications on file means the required one is not held: ${rows[0].blockedBy}`);
     } finally {
       delete process.env.LIMEN_SUPPLIER_FILE;
       replaceCatalogue(snapshot);
@@ -362,13 +354,16 @@ async function run() {
     const file = tmpJson('ceiling', [feedSupplier()]);
     process.env.LIMEN_SUPPLIER_FILE = file;
     try {
-      replaceCatalogue((await directory.load()).suppliers);
-      const brief = parseRequest(BRIEF);
-      const rows = evaluateCandidates(brief);
-      for (const r of negotiateAll(selectForNegotiation(rows), brief)) {
+      const suppliers = (await directory.load()).suppliers;
+      replaceCatalogue(suppliers);
+      const { brief, negotiations } = await sourcingRun(BRIEF, { suppliers });
+      // The ceiling is on the total payable (GST and freight included), so an
+      // agent offer is checked as the escrow amount it would commit.
+      for (const r of negotiations) {
         for (const t of r.transcript.filter((x) => x.actor === 'agent' && x.unitPrice != null)) {
-          ok(t.unitPrice <= brief.budgetPerUnit + 1e-9,
-            `agent offered ${t.unitPrice} above the ${brief.budgetPerUnit} ceiling`);
+          const payable = t.unitPrice * t.quantityKg * 1.18;
+          ok(payable <= brief.budgetTotal + 1,
+            `agent offered ${t.unitPrice}/unit (₹${Math.round(payable)} payable) above the ₹${brief.budgetTotal} ceiling`);
         }
       }
     } finally {
