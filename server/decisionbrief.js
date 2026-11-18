@@ -1,4 +1,5 @@
 'use strict';
+const { inr, inr2 } = require('./money');
 
 /*
  * Decision briefs.
@@ -29,8 +30,8 @@
  */
 
 const money = (n) =>
-  '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const money0 = (n) => '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
+  inr2(n);
+const money0 = (n) => inr(n, { decimals: 0 });
 
 const POINTS = ['policy', 'fund', 'deliver', 'release'];
 

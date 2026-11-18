@@ -1,4 +1,5 @@
 'use strict';
+const { inr } = require('../money');
 
 /*
  * "That's wrong - it should be 7 days."
@@ -114,7 +115,7 @@ const CLAIMS = [
       else if (/\bmillions?\b/i.test(src)) v *= 1000000;
       return v;
     },
-    format: (v) => `$${v.toLocaleString()}`,
+    format: (v) => inr(v),
   },
   {
     field: 'quantityKg',

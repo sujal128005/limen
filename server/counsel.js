@@ -1,4 +1,5 @@
 'use strict';
+const { inr } = require('./money');
 // Counsel: explains a sourcing run in plain language.
 // Deliberately has zero imports: no chain, no signer, no network. It takes a
 // frozen snapshot and returns text, so "it cannot move money" holds even if
@@ -171,7 +172,7 @@ const REFUSAL =
   'I have no signing key and no write access - moving money requires your approval, and the ' +
   'spending limit is enforced by the escrow contract, which I cannot reach.';
 
-const money = (n) => '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
+const money = (n) => inr(n);
 
 // Freeze deeply so a route cannot hand over live session objects by accident.
 function freezeSnapshot(o) {
@@ -221,7 +222,7 @@ const INTENTS = [
   { id: 'why_agent_cannot_raise', kw: ['agent raise', 'raise its own', 'own limit', 'increase the limit', 'change the limit', 'escalat', 'why can\'t the agent', 'why cant the agent'] },
   { id: 'explain_failed_tx', kw: ['1250', '1,250', 'why did the transaction fail', 'failed transaction', 'reverted', 'exceedsperdealcap', 'over limit', 'over-limit'] },
   { id: 'why_rejected', kw: ['reject', 'excluded', 'gujarat', 'cheapest', 'why was', 'not considered', 'screened out'] },
-  { id: 'why_failed_negotiation', kw: ['meridian', 'baltic', 'walk away', 'walked away', 'why did', 'fail', 'no deal'] },
+  { id: 'why_failed_negotiation', kw: ['walk away', 'walked away', 'why did', 'fail', 'no deal'] },
   { id: 'compare', kw: ['compare', 'shortlist', 'difference', 'versus', 'vs', 'alternatives', 'other supplier'] },
   { id: 'summarize_negotiation', kw: ['summar', 'what happened', 'recap', 'overview of the negotiation'] },
   // 'platform fee' has to be longer than the 'how much is' in 'amount' below,

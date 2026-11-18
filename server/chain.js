@@ -1,4 +1,5 @@
 'use strict';
+const { inr2 } = require('./money');
 const { ethers } = require('ethers');
 const { compileContracts } = require('./compile');
 const { getFreePort } = require('./freeport');
@@ -17,7 +18,9 @@ const { MAX_ACCOUNTS } = require('./data/suppliers');
  * The float each workspace buyer is given on the local chain. Large enough that
  * a demo never runs dry, small enough to be obviously play money.
  */
-const BUYER_FLOAT = 250000n * 1000000n; // 250,000 USDC at 6dp
+/* Each demo buyer starts with ₹5 crore of the rupee-pegged escrow token
+   (6 decimals), enough for many industrial orders of tens of lakhs. */
+const BUYER_FLOAT = 50000000n * 1000000n;
 
 /*
  * The well-known development phrase. It is published in every Ethereum tutorial
@@ -471,7 +474,7 @@ class Chain {
     } catch (_) { return null; }
     if (!parsed) return null;
 
-    const usd = (v) => `$${(Number(v) / 1e6).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const usd = (v) => inr2(Number(v) / 1e6);
     const a = parsed.args;
     switch (parsed.name) {
       case 'PolicyInactive':
@@ -517,8 +520,8 @@ class Chain {
         return 'The deal does not say how much is being bought, so no unit price can be '
           + 'checked against the supplier\'s floor. The contract will not open a deal it cannot price.';
       case 'BelowSellerFloor':
-        return `This offer works out at ${usd(a[0])} per kg and the supplier published a floor of `
-          + `${usd(a[1])} per kg, so the contract refused it. `
+        return `This offer works out at ${usd(a[0])} per unit and the supplier published a floor of `
+          + `${usd(a[1])} per unit, so the contract refused it. `
           + 'The floor belongs to the supplier\'s own wallet: the buyer\'s agent cannot lower it, '
           + 'the supplier\'s selling agent cannot lower it, and neither can we.';
       case 'ExceedsSellerPerDealCap':

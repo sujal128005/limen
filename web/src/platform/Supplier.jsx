@@ -113,7 +113,7 @@ export function SupplierHome() {
         </div>
         <div className="pf-stack">
           <Card title="Your funnel" sub="From screening to cash"><Funnel data={o.data.funnel} /></Card>
-          <Card title="Won by month"><Bars data={o.data.monthly} value={(d) => d.value} label={(d) => d.month.slice(5)} format={(v) => `$${Math.round(v / 100) / 10}k`} /></Card>
+          <Card title="Won by month"><Bars data={o.data.monthly} value={(d) => d.value} label={(d) => d.month.slice(5)} format={(v) => (v >= 1e5 ? `₹${Math.round(v / 1e4) / 10}L` : `₹${Math.round(v / 100) / 10}k`)} /></Card>
         </div>
       </div>
     </>
@@ -506,7 +506,7 @@ function ListingModal({ listing, taxonomy, onClose, onSaved, onDeleted }) {
 
       <div className="pf-section-t">Commercial terms <span className="muted" style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>what buyers' agents see</span></div>
       <div className="pf-grid pf-g3">
-        <Field label="List price (USD/kg)" required><Input type="number" step="0.01" min="0" value={f.listUnitPrice} onChange={set('listUnitPrice')} /></Field>
+        <Field label="List price (₹ per unit)" required><Input type="number" step="0.01" min="0" value={f.listUnitPrice} onChange={set('listUnitPrice')} /></Field>
         <Field label="Minimum order (kg)" required><Input type="number" min="1" value={f.moqKg} onChange={set('moqKg')} /></Field>
         <Field label="Monthly capacity (kg)" hint="Leave blank if you cannot say."><Input type="number" min="1" value={f.monthlyCapacityKg} onChange={set('monthlyCapacityKg')} /></Field>
         <Field label="Lead time (days)" required><Input type="number" min="1" max="365" value={f.leadTimeDays} onChange={set('leadTimeDays')} /></Field>
@@ -516,7 +516,7 @@ function ListingModal({ listing, taxonomy, onClose, onSaved, onDeleted }) {
       <div className="pf-section-t">Your agent's mandate <span className="pf-lock"><Icon name="lock" />Private. Never shown to buyers</span></div>
       <div className="pf-grid pf-g2">
         <div>
-          <Field label="Floor price (USD/kg)" hint={authority ? (headroom != null ? `${headroom.toFixed(1)}% below list. Your agent never agrees below this.` : 'The lowest price your agent may agree to.') : 'Only an owner or admin can set the floor. They will confirm it before this listing goes live.'}>
+          <Field label="Floor price (₹ per unit)" hint={authority ? (headroom != null ? `${headroom.toFixed(1)}% below list. Your agent never agrees below this.` : 'The lowest price your agent may agree to.') : 'Only an owner or admin can set the floor. They will confirm it before this listing goes live.'}>
             <Input type="number" step="0.01" min="0" value={f.floorUnitPrice} onChange={set('floorUnitPrice')} readOnly={!authority} placeholder={authority ? '' : 'Set by an owner or admin'} />
           </Field>
           {listing.floorConfirmed && <p className="small muted" style={{ marginTop: -8 }}>Confirmed by {listing.mandate.confirmedBy} · {date(listing.mandate.confirmedAt)}</p>}
@@ -581,7 +581,7 @@ export function Floor() {
             <Card title={oc.active ? 'Publish a new floor' : 'Publish your floor'} sub="Replaces the current one. Capacity already committed is remembered.">
               <ErrorBox error={error} />
               <div className="pf-grid pf-g2">
-                <Field label="Floor (USD/kg)" hint={d.suggested ? `Your lowest listing floor is ${usd(d.suggested)}/kg. Contract storage is public, so this is a declared minimum, not your true cost.` : 'Contract storage is public: publish a declared minimum, not your true cost.'}>
+                <Field label="Floor (₹ per unit)" hint={d.suggested ? `Your lowest listing floor is ${usd(d.suggested)}/kg. Contract storage is public, so this is a declared minimum, not your true cost.` : 'Contract storage is public: publish a declared minimum, not your true cost.'}>
                   <Input type="number" step="0.01" value={f.floorUnitPrice} onChange={(e) => setForm({ ...f, floorUnitPrice: e.target.value })} />
                 </Field>
                 <Field label="Valid for (days)"><Input type="number" min="1" max="365" value={f.days} onChange={(e) => setForm({ ...f, days: e.target.value })} /></Field>

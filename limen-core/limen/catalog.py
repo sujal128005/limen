@@ -72,6 +72,12 @@ MATERIALS: dict[str, MaterialDef] = {
         "height_mm": AttrDef("mm", capability=True, lo=20, hi=2500, critical=True, question="What are the box dimensions (L x W x H in mm)?"),
         "bursting_strength_kg_cm2": AttrDef("kg/cm2", lo=4, hi=30),
     }),
+    "PET": MaterialDef("RESIN", "KG", ("pet resin", "pet chips", "pet granules", "polyethylene terephthalate", "pet"), {
+        "grade_type": AttrDef(choices=("bottle", "film", "fibre", "sheet"), critical=True,
+                              question="Which PET grade is needed (bottle, film, fibre or sheet)?"),
+        "iv_dl_g": AttrDef("dl/g", lo=0.5, hi=1.2,
+                           question="What intrinsic viscosity (IV) range is acceptable?"),
+    }),
     "BOPP_FILM": MaterialDef("PACKAGING", "KG", ("bopp film", "bopp"), {
         "thickness_micron": AttrDef("micron", capability=True, lo=8, hi=80, critical=True, question="What film thickness (micron) is required?"),
         "width_mm": AttrDef("mm", capability=True, lo=100, hi=8700),
@@ -85,4 +91,5 @@ CERTIFICATIONS: dict[str, tuple[str, ...]] = {
     "ISO 14001": ("iso 14001", "iso14001", "iso-14001"),
     "IATF 16949": ("iatf 16949", "iatf16949", "ts 16949"),
     "FSC": ("fsc",),
+    "FOOD CONTACT": ("food contact", "food-contact", "food grade", "food-grade", "fda food", "fssai"),
 }

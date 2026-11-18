@@ -96,8 +96,8 @@ function DemoAccounts({ onPick }) {
     ['priya@aarav.example', 'Buyer · Head (approves)'],
     ['rohit@aarav.example', 'Buyer · Sales (runs sourcing)'],
     ['imran@aarav.example', 'Buyer · Finance (pays)'],
-    ['li.wei@konsheng.example', 'Supplier · Owner'],
-    ['chen.yu@konsheng.example', 'Supplier · Fulfilment'],
+    ['lakshmi@kaveri.example', 'Supplier · Owner'],
+    ['arjun@kaveri.example', 'Supplier · Fulfilment'],
   ];
   return (
     <div className="pf-demo">

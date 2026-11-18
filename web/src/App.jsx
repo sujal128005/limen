@@ -409,12 +409,18 @@ async function downloadPdf(path, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
+/*
+ * Every amount in Limen is in rupees, written with Indian grouping
+ * (₹5,68,996). The escrow holds a rupee-pegged token, so the figure locked on
+ * chain, the figure approved and the figure paid are the same number.
+ *
+ * The names usd/usd0 are historical and kept so every call site reads the
+ * same; they format rupees. dp is the number of decimals: 2 by default for
+ * per-unit prices, which are where paise matter.
+ */
 const usd = (n, dp = 2) =>
-  '$' + Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp });
-const usd0 = (n) => '$' + Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
-/* The float is a real-money balance at an Indian payment provider, so it is
-   shown in rupees. The escrow stays in USDC: they are different things and
-   showing both in one currency would imply a conversion nobody performed. */
+  '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: Math.min(dp, 2), maximumFractionDigits: Math.min(dp, 2) });
+const usd0 = (n) => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
 const inr = (n) => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const short = (h) => (h ? `${h.slice(0, 8)}…${h.slice(-6)}` : '');
 
@@ -463,133 +469,125 @@ const STAGES = [
 /*
  * Scenario set.
  *
- * Every entry was run against the engine and the outcome checked, so the tag on
- * each one describes what actually happens rather than what would be nice. They
- * span all six materials in the catalogue and, deliberately, three awkward
- * cases: a rush order where the schedule surcharge exceeds what was bargained,
- * a budget with no possible deal, and a quality floor that excludes suppliers
- * before any negotiation starts. A demo set where everything succeeds proves
- * far less than one that includes the refusals.
+ * Every entry was run against the decision engine on the seeded catalogue and
+ * its outcome checked, so each tag describes what actually happens. They cover
+ * resins, packaging and metals across Indian plants, and deliberately include
+ * the awkward cases: a certificate that leaves one supplier, a walk-away set by
+ * a cheaper alternative, a date nobody can meet, and a budget with no deal. A
+ * demo set where everything succeeds proves far less than one with refusals.
  */
 const SCENARIOS = [
   {
     id: 'pet-flagship',
     label: 'Food-grade PET resin',
-    tag: 'Cheapest listing rejected, one walk-away',
+    tag: 'Only one food-contact supplier qualifies',
     industry: 'Packaging',
-    text: 'I need 500 kg of bottle-grade PET resin. Budget is $1,200 total. Delivery within 14 days. Must be FDA food-contact certified.',
-  },
-  {
-    id: 'alu-ingot',
-    label: 'Aluminium ingot, 6061',
-    tag: 'Mill certificate excludes a supplier',
-    industry: 'Metals',
-    text: 'Need 8 tonnes of 6061 aluminium ingot, budget $27,000, within 20 days, EN 10204 mill cert required.',
-  },
-  {
-    id: 'alu-extrusion',
-    label: 'Aluminium extrusion',
-    tag: 'Four rounds, one priced out',
-    industry: 'Metals',
-    text: 'Source 3 tonnes of aluminium extrusion 6063, budget $15,000, delivery in 16 days, ISO 9001.',
-  },
-  {
-    id: 'steel',
-    label: 'Cold-rolled steel coil',
-    tag: 'Commodity margins, thin bargaining room',
-    industry: 'Metals',
-    text: 'Need 20 tonnes cold-rolled steel coil DC01, budget $19,000, within 25 days, mill cert required.',
-  },
-  {
-    id: 'fasteners',
-    label: 'Stainless fasteners, A2-304',
-    tag: 'Grade mismatch excludes the premium mill',
-    industry: 'Mechanical',
-    text: 'Need 600 kg of A2 304 stainless fasteners, budget $3,500, within 22 days, RoHS compliant.',
-  },
-  {
-    id: 'copper',
-    label: 'Copper wire',
-    tag: 'RoHS and REACH both required',
-    industry: 'Electrical',
-    text: 'Source 400 kg copper wire, budget $4,000, delivery within 15 days, RoHS and REACH.',
-  },
-  {
-    id: 'silicone',
-    label: 'Medical-grade silicone',
-    tag: 'ISO 13485 leaves one qualified supplier',
-    industry: 'Medical',
-    text: 'Need 200 kg medical-grade silicone rubber, budget $2,900, within 22 days, ISO 13485.',
-  },
-  {
-    id: 'abs',
-    label: 'Flame-retardant ABS',
-    tag: 'Grade requirement over price',
-    industry: 'Electronics',
-    text: 'Need 2 tonnes flame-retardant ABS resin, budget $6,200, within 18 days, RoHS.',
-  },
-  {
-    id: 'aero',
-    label: 'Aerospace steel, AS9100',
-    tag: 'One certification, one supplier',
-    industry: 'Aerospace',
-    text: 'Need 5 tonnes cold-rolled steel coil, budget $7,000, within 16 days, AS9100 and mill cert.',
+    text: 'Need 5 MT of bottle-grade PET resin, IV 0.78-0.82, food grade, delivered to Chennai within 10 days. Budget ₹6 lakh.',
   },
   {
     id: 'hdpe',
-    label: 'HDPE granules, tight budget',
-    tag: 'Two suppliers priced out',
+    label: 'HDPE blow moulding',
+    tag: 'Five quotes, two walk away',
     industry: 'Packaging',
-    text: 'Looking for 2 tonnes of HDPE granules under $3,600, delivered within 3 weeks, ISO 9001 supplier.',
+    text: 'Need 20 MT HDPE blow moulding grade, MFI 0.3-0.5, BIS certified, deliver to Pune within 14 days. Budget Rs 26 lakh.',
   },
   {
-    id: 'ldpe',
-    label: 'LDPE film grade',
-    tag: 'Schedule and price both fail',
+    id: 'hdpe-tight',
+    label: 'HDPE, tighter budget',
+    tag: 'The budget prices out the bigger mills',
     industry: 'Packaging',
-    text: 'Need 1.5 tonnes of LDPE granules under $2,450, within 16 days, ISO 9001.',
+    text: 'Need 20 MT HDPE blow moulding grade, MFI 0.3-0.5, BIS certified, deliver to Pune within 14 days. Budget Rs 24 lakh.',
   },
   {
-    id: 'corrugated',
-    label: 'Corrugated board, bulk',
-    tag: 'High volume, low unit price',
+    id: 'hr-coil',
+    label: 'HR coil, IS 2062 E250',
+    tag: 'Thin steel margins, three mills',
+    industry: 'Metals',
+    text: 'Need 25 MT HR coil IS 2062 E250, 3 mm thick, width 1250 mm. Deliver to Pune in 14 days. ISO 9001 suppliers only. Budget ₹18 lakh.',
+  },
+  {
+    id: 'hr-e350',
+    label: 'HR coil, E350, bulk',
+    tag: 'Grade excludes one mill',
+    industry: 'Metals',
+    text: 'Need 60 MT HR coil IS 2062 E350, 6 mm thick, width 1500 mm, deliver to Visakhapatnam within 15 days, BIS, budget ₹42 lakh.',
+  },
+  {
+    id: 'cr-sheet',
+    label: 'CR sheet for auto parts',
+    tag: 'IATF 16949 leaves one supplier',
+    industry: 'Automotive',
+    text: 'Need 10 MT CR sheet IS 513 CR2, 1.2 mm thick, width 1250 mm, IATF 16949 certified, deliver to Gurugram within 12 days. Budget ₹8 lakh.',
+  },
+  {
+    id: 'aluminium',
+    label: 'Aluminium ingot, 99.7%',
+    tag: 'Purity decides the product',
+    industry: 'Metals',
+    text: 'Need 10 MT aluminium ingot 99.7% purity, deliver to Ahmedabad within 10 days. Budget ₹29 lakh.',
+  },
+  {
+    id: 'boxes',
+    label: 'Corrugated boxes, 5-ply',
+    tag: 'Nearest supplier walks away on price',
     industry: 'Packaging',
-    text: 'Need 5 tonnes of corrugated board, budget $3,800, delivery within 12 days.',
+    text: 'Need 20,000 pcs corrugated boxes 5 ply 450x300x250 mm for our Pune plant in 10 days. Budget ₹8 lakh.',
+  },
+  {
+    id: 'boxes-7',
+    label: 'Export cartons, 7-ply',
+    tag: 'Ply rating excludes a supplier',
+    industry: 'Packaging',
+    text: 'Need 6,000 pcs corrugated boxes 7 ply 600x400x400 mm, deliver to Surat within 12 days, budget ₹4 lakh.',
   },
   {
     id: 'bopp',
-    label: 'BOPP film',
-    tag: 'Three rounds to settle',
+    label: 'BOPP film, 20 micron',
+    tag: 'Two quotes, close on landed cost',
     industry: 'Packaging',
-    text: 'Source 1 tonne of BOPP film, budget $2,050, within 14 days, ISO 9001 certified.',
+    text: 'Need 3 MT BOPP film 20 micron, width 1000 mm, deliver to Ahmedabad within 12 days. Budget ₹6 lakh.',
   },
   {
-    id: 'kraft',
-    label: 'Kraft paper',
-    tag: 'Recycled grade wins on price',
+    id: 'pp-raffia',
+    label: 'PP raffia grade',
+    tag: 'Grade excludes three of four',
     industry: 'Packaging',
-    text: 'Need 3 tonnes of kraft paper under $2,900, delivered in 12 days.',
+    text: 'Need 15 MT PP raffia grade, MFI 3-3.6, BIS certified, deliver to Vadodara within 10 days. Budget ₹19 lakh.',
   },
   {
-    id: 'quality',
-    label: 'Quality floor',
-    tag: 'Five listings excluded before bargaining',
+    id: 'pp-injection',
+    label: 'PP injection moulding',
+    tag: 'Smaller supplier beats the big one',
+    industry: 'Consumer goods',
+    text: 'Need 12 MT PP injection moulding grade, MFI 11-13, deliver to Rajkot within 10 days. Budget ₹15 lakh.',
+  },
+  {
+    id: 'lldpe',
+    label: 'LLDPE film grade',
+    tag: 'Expected cost, not price, decides',
     industry: 'Packaging',
-    text: 'Need 400 kg bottle-grade PET resin, budget $1,400, within 12 days, FDA food contact, minimum quality 95.',
+    text: 'Need 8 MT LLDPE film grade, MFI 0.9-1.1, deliver to Indore within 10 days. Budget ₹9.5 lakh.',
   },
   {
     id: 'rush',
     label: 'Rush order',
-    tag: 'Expedite surcharge exceeds the discount',
+    tag: 'Nobody can deliver in 3 days',
     industry: 'Packaging',
-    text: 'Need 300 kg bottle-grade PET resin in 7 days, budget $950, FDA food contact certified.',
+    text: 'Need 10 MT HDPE blow moulding grade, MFI 0.3-0.5, deliver to Mumbai within 3 days. Budget ₹13 lakh.',
   },
   {
     id: 'nodeal',
     label: 'Budget too low',
     tag: 'No deal, and it says why',
     industry: 'Packaging',
-    text: 'Need 500 kg bottle-grade PET resin, budget $800, within 14 days, FDA food-contact certified.',
+    text: 'Need 5 MT bottle-grade PET resin, food grade, deliver to Chennai within 10 days. Budget ₹4.5 lakh.',
+  },
+  {
+    id: 'incomplete',
+    label: 'Incomplete request',
+    tag: 'Asks instead of guessing',
+    industry: 'Packaging',
+    text: 'Want 20000 pcs corrugated boxes 5 ply for our Nashik unit.',
   },
 ];
 
@@ -1335,7 +1333,6 @@ function FinancePayments({ purchase, onRelease, busy, error, onTopUp, needed }) 
             <Fact k="Rail" v={pay.rail === 'razorpay' ? 'Razorpay' : 'Local test rail'} />
             <Fact k="Instructed" v={`${pay.currency} ${Number(pay.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`} />
             {pay.amountUsd != null && <Fact k="Purchase value" v={usd(pay.amountUsd)} />}
-            {pay.fxRate ? <Fact k="Rate applied" v={`${pay.fxRate} INR per USD`} /> : null}
             <Fact k="Created" v={new Date(pay.createdAt).toLocaleString()} />
           </div>
           {/*
@@ -1346,11 +1343,8 @@ function FinancePayments({ purchase, onRelease, busy, error, onTopUp, needed }) 
             so the conversion can be checked rather than trusted.
           */}
           <p className="packet-note" style={{ textAlign: 'left' }}>
-            The escrow settles on chain in USDC; the payout is instructed on the rail in{' '}
-            {pay.currency}
-            {pay.fxRate
-              ? `, converted at a stated rate of ${pay.fxRate} INR to 1 USD. That is a fixed figure in this build, not a live market rate.`
-              : '.'}
+            The escrow holds a rupee-pegged token, so the amount released on chain is the amount
+            instructed on the rail in {pay.currency}. No currency is converted.
           </p>
           <ul className="evlist">
             {(pay.events || []).length === 0 && <li className="ev pending">Waiting for the rail to report back.</li>}
@@ -2402,7 +2396,7 @@ function SupplierDetail({ data, loading, error, onClose }) {
                     <tr key={pr.sku}>
                       <td className="mono">{pr.sku}</td>
                       <td>{pr.material}{pr.grade ? `, ${pr.grade}` : ''}</td>
-                      <td className="num">{pr.listUnitPrice != null ? `$${pr.listUnitPrice}` : '—'}</td>
+                      <td className="num">{pr.listUnitPrice != null ? usd(pr.listUnitPrice) : '—'}</td>
                       <td className="num">{pr.moqKg != null ? `${pr.moqKg} kg` : '—'}</td>
                       <td className="num">{pr.leadTimeDays}d</td>
                     </tr>
@@ -2953,12 +2947,12 @@ function CompanyView({ data, loading, role, onSaveBehaviour, onSaveLimits, notes
         <div className="cochain">
           <div className="cochain-row">
             <span className="cochain-k">Stated here</span>
-            <span className="cochain-v mono">{stated == null ? 'not set' : `$${Number(stated).toLocaleString()}`}</span>
+            <span className="cochain-v mono">{stated == null ? 'not set' : usd0(stated)}</span>
           </div>
           <div className="cochain-row">
             <span className="cochain-k">Enforced on chain</span>
             <span className="cochain-v mono">
-              {!onChain ? 'chain unreachable' : !onChain.active ? 'no policy published' : `$${Number(enforced).toLocaleString()}`}
+              {!onChain ? 'chain unreachable' : !onChain.active ? 'no policy published' : usd0(enforced)}
             </span>
           </div>
           <p className={`cochain-note${gap ? ' is-gap' : ''}`}>
@@ -6271,7 +6265,7 @@ function DocumentEvidence({ doc, brief, onRun, onClear, busy, disabled, onCheck,
     { key: 'material', label: 'Material', show: (b) => b.material },
     { key: 'grade', label: 'Grade', show: (b) => b.grade },
     { key: 'quantityKg', label: 'Quantity', show: (b) => (b.quantityKg ? `${b.quantityKg.toLocaleString()} kg` : null) },
-    { key: 'budgetTotal', label: 'Budget ceiling', show: (b) => (b.budgetTotal ? `$${b.budgetTotal.toLocaleString()}` : null) },
+    { key: 'budgetTotal', label: 'Budget ceiling', show: (b) => (b.budgetTotal ? usd0(b.budgetTotal) : null) },
     { key: 'deadlineDays', label: 'Delivery', show: (b) => (b.deadlineDays ? `within ${b.deadlineDays} days` : null) },
     { key: 'certifications', label: 'Certification', show: (b) => (b.certifications?.length ? b.certifications.join(', ') : null) },
     { key: 'minQuality', label: 'Quality floor', show: (b) => b.minQuality },
@@ -6959,7 +6953,7 @@ function ApprovalPanel({ rec, status, policyActive, onPublishPolicy, onFund, onA
             <div className="term"><span className="k">Supplier</span><span className="v">{w.name}</span></div>
             <div className="term"><span className="k">Goods</span><span className="v">{w.quantityKg.toLocaleString()} kg &middot; {w.sku}</span></div>
             <div className="term"><span className="k">Unit price</span><span className="v">{usd(w.unitPrice)}/kg</span></div>
-            <div className="term"><span className="k">Total commitment</span><span className="v">{usd(w.total)} USDC</span></div>
+            <div className="term"><span className="k">Total commitment</span><span className="v">{usd(w.total)}</span></div>
             <div className="term"><span className="k">Delivery deadline</span><span className="v">{w.leadTimeDays} days from funding</span></div>
             <div className="term"><span className="k">Release condition</span><span className="v">You confirm delivery</span></div>
           </div>
@@ -7131,7 +7125,7 @@ function ApprovalPanel({ rec, status, policyActive, onPublishPolicy, onFund, onA
             <div className="commit-bar">
               <div className="amount">
                 You are approving
-                <b>{usd(w.total)} USDC</b>
+                <b>{usd(w.total)}</b>
               </div>
               <span className="spacer" />
               {!policyActive ? (
@@ -7206,9 +7200,9 @@ function AmountFlow({ amount, funded, delivered, released }) {
 function EscrowPanel({ deal, delivery, release, onDeliver, onRelease, busy, canDeliver, canRelease, next }) {
   const steps = [
     { k: 'Deal approved', d: 'You authorised the negotiated terms', done: true, tx: null },
-    { k: 'Funds locked in escrow', d: `${usd(deal.amount)} USDC held by the contract`, done: true, tx: deal.txHash },
+    { k: 'Funds locked in escrow', d: `${usd(deal.amount)} held by the contract`, done: true, tx: deal.txHash },
     { k: 'Delivery confirmed', d: delivery ? (delivery.onTime ? 'Confirmed inside the agreed window' : 'Confirmed late') : 'Waiting on your confirmation', done: !!delivery, tx: delivery?.txHash },
-    { k: 'Payment released', d: release ? `${usd(release.paid)} USDC paid to the supplier` : 'Escrow holds the funds until confirmation', done: !!release, tx: release?.txHash },
+    { k: 'Payment released', d: release ? `${usd(release.paid)} paid to the supplier` : 'Escrow holds the funds until confirmation', done: !!release, tx: release?.txHash },
   ];
   const activeIdx = steps.findIndex((s) => !s.done);
 
@@ -7888,7 +7882,7 @@ function Ledger({ status, rec, deal, release }) {
       <div className="lcard">
         <div className="lcard-t">Settlement layer</div>
         <div className="lrow"><span className="k">Network</span><span className="v">{status ? `EVM ${status.chainId}` : '-'}</span></div>
-        <div className="lrow"><span className="k">Currency</span><span className="v">USDC, 6dp</span></div>
+        <div className="lrow"><span className="k">Currency</span><span className="v">Rupee token, 6dp</span></div>
         <div className="lrow"><span className="k">Buyer balance</span><span className="v">{status ? usd0(status.buyerBalanceUsdc) : '-'}</span></div>
         <div className="lsep" />
         <div className="lrow"><span className="k">Escrow</span><span className="v mono">{short(status?.addresses?.escrow)}</span></div>

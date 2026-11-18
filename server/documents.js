@@ -1,5 +1,6 @@
 'use strict';
 const crypto = require('crypto');
+const { inr } = require('./money');
 
 // Two procurement documents, both built here from canonical state only.
 //
@@ -35,7 +36,8 @@ function purchaseSummary(session, ctx) {
 
   const w = rec.winner;
   const brief = session.brief;
-  const listTotal = round2(w.total + w.savings);
+  const listTotal = w.listTotal != null ? round2(w.listTotal) : round2(w.total + w.savings);
+  const listUnit = w.listUnitPrice != null ? w.listUnitPrice : round2(listTotal / w.quantityKg);
 
   let status = SUMMARY_STATUS.PENDING;
   if (ctx.settled) status = SUMMARY_STATUS.SETTLED;
@@ -67,9 +69,15 @@ function purchaseSummary(session, ctx) {
       description: `${brief.grade ? brief.grade + ' ' : ''}${brief.material}`,
       sku: w.sku,
       quantityKg: w.quantityKg,
+      unit: w.unit || brief.unit || 'kg',
       unitPrice: w.unitPrice,
       negotiatedTotal: w.total,
-      listUnitPrice: round2(listTotal / w.quantityKg),
+      // Unit prices are ex-GST; totals include GST and freight, which is what
+      // the escrow holds and the supplier is paid.
+      basicTotal: w.basicTotal != null ? w.basicTotal : null,
+      freightTotal: w.freightTotal != null ? w.freightTotal : null,
+      gstTotal: w.gstTotal != null ? w.gstTotal : null,
+      listUnitPrice: listUnit,
       listTotal,
       saving: w.savings,
       savingPct: w.savingsPct,
@@ -85,14 +93,14 @@ function purchaseSummary(session, ctx) {
       deliveryRequirement: brief.deadlineDays,
       expedited: !!w.expedited,
       certificationsRequired: brief.certifications || [],
-      payment: 'Stablecoin held in escrow. Released to the supplier only after the buyer confirms delivery.',
+      payment: 'Held in escrow as a rupee-pegged token. Released to the supplier only after the buyer confirms delivery.',
       recourse: 'If the delivery window passes without confirmation, the buyer can reclaim the full amount.',
     },
 
     negotiation: {
       rounds: w.rounds,
       outcome: 'Agreement reached',
-      openingPrice: round2(listTotal / w.quantityKg),
+      openingPrice: listUnit,
       settledPrice: w.unitPrice,
       rejected: (rec.rejected || []).map((r) => ({ name: r.name, reason: r.reason, detail: r.detail })),
     },
@@ -107,9 +115,9 @@ function purchaseSummary(session, ctx) {
 
     checks: [
       { label: 'Within authorised spend', pass: ctx.policy ? w.total <= ctx.policy.maxPerDeal : null,
-        detail: ctx.policy ? `${w.total} against ${ctx.policy.maxPerDeal}` : 'No policy published yet' },
+        detail: ctx.policy ? `${inr(w.total)} against ${inr(ctx.policy.maxPerDeal)}` : 'Published at approval' },
       { label: 'Within stated budget', pass: w.total <= brief.budgetTotal,
-        detail: `${w.total} against ${brief.budgetTotal}` },
+        detail: `${inr(w.total)} against ${inr(brief.budgetTotal)}` },
       { label: 'Meets delivery window', pass: w.leadTimeDays <= brief.deadlineDays,
         detail: `${w.leadTimeDays} days against ${brief.deadlineDays}` },
       { label: 'Certifications held', pass: (brief.certifications || []).every((c) => (w.certifications || []).includes(c)),
@@ -131,7 +139,8 @@ function settlementRecord(session, ctx) {
   const w = rec.winner;
   const s = ctx.settlement;
   const fee = round2(s.amount * FEE_RATE);
-  const listTotal = round2(w.total + w.savings);
+  const listTotal = w.listTotal != null ? round2(w.listTotal) : round2(w.total + w.savings);
+  const listUnit = w.listUnitPrice != null ? w.listUnitPrice : round2(listTotal / w.quantityKg);
 
   return {
     kind: 'settlement-record',

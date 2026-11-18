@@ -41,7 +41,7 @@ const SYSTEM = [
   'Use null for value and quote when the document does not state the field.',
   'quantityKg: the quantity to buy in kilograms; if stated in tonnes, multiply by 1000.',
   'deadlineDays: the delivery deadline in days from the order; if stated in weeks, multiply by 7. Ignore offer validity, payment terms and penalties.',
-  'budget: the total budget or ceiling for the whole purchase, with its currency code (USD, INR, EUR).',
+  'budget: the total budget or ceiling for the whole purchase, with its currency code (INR unless another is stated).',
 ].join('\n');
 
 const field = (type, extra = {}) => ({
@@ -214,8 +214,8 @@ function mergeReading(ruleBrief, data, docText, meta = {}) {
     }
     /* The ceiling is dollars on chain. A budget in another currency is not
        converted here: the buyer states it in USD, or the Head's policy does. */
-    if (key === 'budgetTotal' && r.currency && r.currency !== 'USD') {
-      report.notes.push(`The tender states its budget in ${r.currency} (${r.value.toLocaleString()}). Enter the ceiling in USD; it is not converted automatically.`);
+    if (key === 'budgetTotal' && r.currency && r.currency !== 'INR') {
+      report.notes.push(`The tender states its budget in ${r.currency} (${r.value.toLocaleString()}). Enter the ceiling in rupees; it is not converted automatically.`);
       continue;
     }
     const verified = check === 'verified';

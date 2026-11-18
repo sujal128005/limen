@@ -115,7 +115,11 @@ async function createOrder({ amountRupees, receipt }) {
   if (!Number.isFinite(asked) || asked < 1) {
     throw new Error('The smallest top-up is 1 rupee.');
   }
-  const amount = Math.min(500000, asked);
+  /* Industrial orders run to tens of lakhs, so the default ceiling is ₹1 crore
+     per top-up. A payment provider's own per-transaction limit may be lower;
+     set LIMEN_MAX_TOPUP_INR to match the account. */
+  const ceiling = Math.max(1, Number(process.env.LIMEN_MAX_TOPUP_INR || 10000000));
+  const amount = Math.min(ceiling, asked);
   const paise = toPaise(amount);
 
   if (!isLive()) return localOrder(paise, receipt);
