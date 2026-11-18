@@ -100,6 +100,37 @@ function create() {
       return workspaces.size;
     },
 
+    /* Same contract as the Postgres adapter; see server/upgrade.js. */
+    async scanWorkspaces(limit = 5000) {
+      return [...workspaces.entries()]
+        .sort((a, b) => a[1].updatedAt - b[1].updatedAt)
+        .slice(0, limit)
+        .map(([id, row]) => ({ id, companyId: row.companyId || null, state: clone(row.state) }));
+    },
+
+    async archiveWorkspace(id, prefix) {
+      const row = workspaces.get(id);
+      if (!row) return;
+      for (const o of outcomes) {
+        if (o.workspaceId === id) { o.workspaceId = prefix + id; o.companyId = prefix + (o.companyId || ''); }
+      }
+      for (const [k, v] of payouts) if (v === id) payouts.set(k, prefix + id);
+      workspaces.delete(id);
+      workspaces.set(prefix + id, { ...row, companyId: prefix + (row.companyId || '') });
+    },
+
+    async archiveOutcomes(prefix, keepWorkspaceIds = []) {
+      const keep = new Set(keepWorkspaceIds);
+      const moved = new Set();
+      for (const o of outcomes) {
+        if (keep.has(o.workspaceId) || String(o.workspaceId).startsWith(prefix)) continue;
+        moved.add(o.workspaceId);
+        o.workspaceId = prefix + o.workspaceId;
+        o.companyId = prefix + (o.companyId || '');
+      }
+      return moved.size;
+    },
+
     async workspaceIdForPayout(payoutId) {
       return payouts.get(payoutId) || null;
     },

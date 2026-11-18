@@ -31,7 +31,9 @@ services:
     # the image ever stops shipping Python, rather than failing at first request.
     buildCommand: python3 -c "import sys; assert sys.version_info >= (3, 10), sys.version" && npm install && npm run build:web
     startCommand: node server/index.js
-    healthCheckPath: /api/status
+    # Ready only once storage, the chain and the decision engine are all up, so a
+    # deploy that cannot start the engine never takes traffic from the old one.
+    healthCheckPath: /api/ready
     envVars:
       - key: NODE_VERSION
         value: "22"

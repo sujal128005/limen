@@ -70,7 +70,7 @@ function createPlatform({ identity, workspace, payments, taxonomy, store: givenS
   const { ensurePublicSupplierDemo } = require('./seed');
   const auth = makeAuth({
     store, mailer, audit: activity, identity, onOrgCreated,
-    ensureSupplierDemo: () => ensurePublicSupplierDemo({ store, activity, onCatalogueChanged }),
+    ensureSupplierDemo: () => ensurePublicSupplierDemo({ store, activity, catalogue, onCatalogueChanged }),
   });
   const org = makeOrgRoutes({ store, auth, activity, mailer, taxonomy, onOrgChanged: onCatalogueChanged });
 

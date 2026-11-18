@@ -314,6 +314,44 @@ function create({ url, pg, ssl } = {}) {
       return Number(r.rows[0].n);
     },
 
+    /* Every workspace, for the boot-time upgrade in server/upgrade.js. Bounded
+       by MAX_WORKSPACES through prune, so reading them all is cheap. */
+    async scanWorkspaces(limit = 5000) {
+      const r = await q('SELECT id, company_id, state FROM workspaces ORDER BY updated_at LIMIT $1', [limit]);
+      return r.rows.map((row) => ({
+        id: row.id,
+        companyId: row.company_id || null,
+        state: typeof row.state === 'string' ? JSON.parse(row.state) : row.state,
+      }));
+    },
+
+    /*
+     * Move a workspace out of reach without deleting it: its id and company
+     * gain a prefix, so no desk addresses it and no company lists it, and its
+     * outcome history moves with it so the buyer's agent stops learning from
+     * it. Used for purchases recorded in a currency this version no longer
+     * reads. The rows stay in the database for anyone who needs them.
+     */
+    async archiveWorkspace(id, prefix) {
+      await q("UPDATE outcomes SET workspace_id = $2 || workspace_id, company_id = $2 || COALESCE(company_id, '') WHERE workspace_id = $1", [id, prefix]);
+      await q('UPDATE payouts SET workspace_id = $2 || workspace_id WHERE workspace_id = $1', [id, prefix]);
+      await q("UPDATE workspaces SET id = $2 || id, company_id = $2 || COALESCE(company_id, '') WHERE id = $1", [id, prefix]);
+    },
+
+    /* Outcome rows left behind by workspaces that were pruned long ago. */
+    async archiveOutcomes(prefix, keepWorkspaceIds = []) {
+      const r = await q('SELECT DISTINCT workspace_id FROM outcomes');
+      const keep = new Set(keepWorkspaceIds);
+      let n = 0;
+      for (const row of r.rows) {
+        const ws = row.workspace_id;
+        if (keep.has(ws) || String(ws).startsWith(prefix)) continue;
+        await q("UPDATE outcomes SET workspace_id = $2 || workspace_id, company_id = $2 || COALESCE(company_id, '') WHERE workspace_id = $1", [ws, prefix]);
+        n += 1;
+      }
+      return n;
+    },
+
     async workspaceIdForPayout(payoutId) {
       const r = await q('SELECT workspace_id FROM payouts WHERE payout_id = $1', [payoutId]);
       return r.rows.length ? r.rows[0].workspace_id : null;

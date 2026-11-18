@@ -47,6 +47,7 @@ const pdf = require('./pdf');
 const adversaryRouter = require('./routes/adversary');
 const { createPlatform } = require('./platform');
 const { seed: seedDemoAccounts } = require('./platform/seed');
+const { upgradeToRupees } = require('./upgrade');
 const security = require('./security');
 
 /*
@@ -3954,6 +3955,9 @@ async function boot() {
    * visits costs nothing.
    */
   await platform.init({ chain: chainOps, workspace: workspaceOps });
+  /* A database written by the dollar-priced version is brought forward once,
+     before anything reads it. See server/upgrade.js. */
+  await upgradeToRupees({ store: workspace.getStore(), platform });
   {
     const seeded = await seedDemoAccounts(platform);
     const n = await platform.registerPortalSuppliers();

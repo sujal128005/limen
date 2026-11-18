@@ -55,21 +55,7 @@ async function seed(platform, { force = false } = {}) {
   if (await store.count('users') > 0) return { seeded: false, reason: 'accounts already exist' };
 
   const passwordHash = await S.hashPassword(DEMO_PASSWORD);
-  const now = new Date().toISOString();
-
-  async function person(p, orgId) {
-    let u = await store.getByKey('users', p.email);
-    if (!u) {
-      u = await store.insert('users', {
-        id: S.newId('usr'), email: p.email, name: p.name, passwordHash,
-        emailVerifiedAt: now, mfa: null, lastLoginAt: null, demo: true,
-      });
-    }
-    await store.insert('memberships', {
-      id: S.newId('mem'), orgId, userId: u.id, role: p.role, desk: p.desk || null, status: 'active', invitedBy: null,
-    });
-    return u;
-  }
+  const person = makePerson(store, passwordHash);
 
   // ---- the buyer
   const gstin = demoGstin();
@@ -83,25 +69,59 @@ async function seed(platform, { force = false } = {}) {
   for (const p of PEOPLE.buyer) await person(p, buyer.id);
   await activity.record(buyer.id, { actorName: 'Limen', action: 'company.created', detail: { kind: 'buyer', demo: true } });
 
-  // ---- suppliers that claim seeded catalogue entries
-  async function claim(supplierId, people) {
+  await claimDemoSuppliers(platform, person);
+
+  await platform.onCatalogueChanged();
+  return { seeded: true, password: DEMO_PASSWORD, people: PEOPLE };
+}
+
+/* A demo person: the account if it is new, and a membership of this company. */
+function makePerson(store, passwordHash) {
+  const now = new Date().toISOString();
+  return async function person(p, orgId) {
+    let u = await store.getByKey('users', p.email);
+    if (!u) {
+      u = await store.insert('users', {
+        id: S.newId('usr'), email: p.email, name: p.name, passwordHash,
+        emailVerifiedAt: now, mfa: null, lastLoginAt: null, demo: true,
+      });
+    }
+    if (!(await store.getByKey('memberships', `${orgId}:${u.id}`))) {
+      await store.insert('memberships', {
+        id: S.newId('mem'), orgId, userId: u.id, role: p.role, desk: p.desk || null, status: 'active', invitedBy: null,
+      });
+    }
+    return u;
+  };
+}
+
+/*
+ * The two demo supplier companies, staffed. Used by the first seed and by the
+ * boot-time upgrade (server/upgrade.js), which re-creates them when a database
+ * still holds the companies an older catalogue claimed. A catalogue entry some
+ * other company has already claimed is left alone.
+ */
+const DEMO_SUPPLIERS = [['SUP-C', 'kaveri'], ['SUP-A', 'narmada']];
+
+async function claimDemoSuppliers(platform, person) {
+  const { store } = platform;
+  if (!person) person = makePerson(store, await S.hashPassword(DEMO_PASSWORD));
+  const out = [];
+  for (const [supplierId, team] of DEMO_SUPPLIERS) {
+    const taken = (await store.list('orgs', { refId: supplierId, limit: 5 })).some((o) => o.kind === 'supplier' && o.status !== 'closed');
+    if (taken) continue;
     const org = await claimSupplier(platform, supplierId);
-    if (!org) return null;
-    for (const p of people) await person(p, org.id);
-    const owner = await store.getByKey('users', people[0].email);
+    if (!org) continue;
+    for (const p of PEOPLE[team]) await person(p, org.id);
+    const owner = await store.getByKey('users', PEOPLE[team][0].email);
     for (const l of await store.list('listings', { orgId: org.id, limit: 1000 })) {
       l.private = { ...l.private, confirmedBy: owner.id, confirmedByName: owner.name };
       await store.put('listings', l);
     }
-    return org;
+    if (supplierId === 'SUP-C') await demoPayoutAccount(platform, org);
+    out.push(org);
   }
-
-  const kaveri = await claim('SUP-C', PEOPLE.kaveri);
-  await claim('SUP-A', PEOPLE.narmada);
-  if (kaveri) await demoPayoutAccount(platform, kaveri);
-
-  await platform.onCatalogueChanged();
-  return { seeded: true, password: DEMO_PASSWORD, people: PEOPLE };
+  return out;
 }
 
 /* What the demo companies say about themselves, by the catalogue entry they claim. */
@@ -123,7 +143,9 @@ const CLAIMS = {
  */
 async function claimSupplier(platform, supplierId) {
   const { store, activity } = platform;
-  const base = findSupplier(supplierId);
+  // The catalogue as shipped, not as merged: the live one carries whatever
+  // company claimed this entry before, its listings and certifications.
+  const base = (platform.catalogue && platform.catalogue.baseSupplier(supplierId)) || findSupplier(supplierId);
   if (!base) return null;
   const extra = CLAIMS[supplierId] || {};
   const now = new Date().toISOString();
@@ -215,4 +237,4 @@ async function ensurePublicSupplierDemo(platform) {
   return { user, org, membership };
 }
 
-module.exports = { seed, shouldSeed, ensurePublicSupplierDemo, DEMO_PASSWORD, PEOPLE, PUBLIC_SUPPLIER_DEMO };
+module.exports = { seed, shouldSeed, ensurePublicSupplierDemo, claimDemoSuppliers, DEMO_PASSWORD, PEOPLE, PUBLIC_SUPPLIER_DEMO };
