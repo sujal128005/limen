@@ -450,12 +450,35 @@ async function railChecks() {
   });
 }
 
+async function archiveChecks(label, store) {
+  await store.init();
+  await test(`${label}: archiving moves a purchase and its outcomes out of reach, without deleting them`, async () => {
+    await store.create('old-1', { id: 'old-1', brief: { budgetTotal: 30000 } }, 'co-old');
+    await store.appendOutcome({ workspaceId: 'old-1', companyId: 'co-old', event: 'agreed', supplierId: 'SUP-H' });
+    await store.appendOutcome({ workspaceId: 'gone-long-ago', companyId: 'co-old', event: 'agreed', supplierId: 'SUP-E' });
+    ok((await store.scanWorkspaces()).some((r) => r.id === 'old-1' && r.companyId === 'co-old'), 'the scan sees it');
+
+    await store.archiveWorkspace('old-1', 'archived-usd:');
+    eq(await store.load('old-1'), null, 'no desk can open it under its old id');
+    eq((await store.listWorkspaces('co-old')).length, 0, 'and the company no longer lists it');
+    const kept = await store.load('archived-usd:old-1');
+    eq(kept.state.brief.budgetTotal, 30000, 'the row itself is intact');
+    eq(kept.companyId, 'archived-usd:co-old');
+
+    eq(await store.archiveOutcomes('archived-usd:', []), 1, 'the orphaned outcome row is archived too');
+    eq((await store.companyOutcomes('co-old')).length, 0, 'so the buyer stops learning from old prices');
+    eq((await store.outcomes('archived-usd:old-1')).length, 1, 'which are still readable under the archive');
+    eq(await store.archiveOutcomes('archived-usd:', []), 0, 'and running it again changes nothing');
+  });
+}
+
 async function run() {
   group('Payment rail: retry, refusal and reconciliation');
   await railChecks();
 
   group('Store: in-memory adapter');
   await checks('memory', createStore({ url: null }));
+  await archiveChecks('memory', createStore({ url: null }));
 
   const pgStore = pgMemStore();
   group('Store: Postgres adapter, run against pg-mem');
@@ -466,6 +489,7 @@ async function run() {
     return;
   }
   await checks('postgres', pgStore);
+  await archiveChecks('postgres', pgMemStore());
 }
 
 module.exports = { run };

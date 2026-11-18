@@ -47,6 +47,7 @@ process.env.LIMEN_DEMO_FLOAT = '0';
   if (require('fs').existsSync(require('path').join(__dirname, 'store.test.js'))) {
     await require('./store.test').run();
   }
+  await require('./upgrade.test').run();
   if (require('fs').existsSync(require('path').join(__dirname, 'pdf.test.js'))) {
     await require('./pdf.test').run();
   }

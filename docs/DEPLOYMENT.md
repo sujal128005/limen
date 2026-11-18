@@ -14,7 +14,7 @@ Set `NODE_ENV=production`. The server then **refuses to start** until these are 
 |---|---|---|
 | `LIMEN_SESSION_SECRET` | Signs desk tokens. 32+ characters. | `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"` |
 | `LIMEN_DATA_KEY` | Encrypts bank account numbers and two-step secrets. 32+ characters, different from the above. **Back it up**: losing it loses those fields. | same command |
-| `DATABASE_URL` | Postgres connection string. Tables are created on first boot. | Neon, Supabase, Render Postgres, RDS, or your own |
+| `DATABASE_URL` | Postgres connection string. Tables are created on first boot. A database written by the older dollar-priced version is upgraded once at boot (`server/upgrade.js`): its purchases are archived, not deleted, and the boot log says what changed. Take a `pg_dump` first all the same. | Neon, Supabase, Render Postgres, RDS, or your own |
 | `LIMEN_PUBLIC_URL` | The https address people use, e.g. `https://app.limen.in`. Email links are built from it. | |
 
 Strongly recommended:

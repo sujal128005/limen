@@ -51,6 +51,8 @@ const INDEX = {
   audit:         (r) => ({ orgId: r.orgId, refId: r.actorUserId || null, key: `${r.orgId}:${r.seq}` }),
   outbox:        (r) => ({ orgId: r.orgId || null, refId: r.to ? r.to.toLowerCase() : null, key: null }),
   payout_accounts: (r) => ({ orgId: r.orgId, refId: null, key: r.orgId }),
+  // One row per one-time job the server has run, by name (server/upgrade.js).
+  meta:          (r) => ({ orgId: null, refId: null, key: r.name }),
 };
 
 function indexOf(collection, rec) {
