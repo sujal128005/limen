@@ -153,6 +153,9 @@ function project(session, meta = {}) {
         eligible: !!c.eligible,
         met: (c.satisfied || []).filter((s) => !BUDGETISH.test(`${s.constraint} ${s.detail}`)).map((s) => s.detail),
         missed: (c.violations || []).filter((v) => !BUDGETISH.test(`${v.constraint} ${v.detail}`)).map((v) => v.detail),
+        // Specifications the request named that this listing does not state:
+        // not a failure, but the reason a match was less confident.
+        unverified: (c.unverified || []).map((v) => v.detail),
       },
       negotiation: neg ? {
         outcome: neg.outcome || null,

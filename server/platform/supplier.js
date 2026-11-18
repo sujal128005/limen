@@ -466,28 +466,43 @@ function makeSupplierRoutes({ store, auth, activity, catalogue, taxonomy, chainO
 
   /* What needs a person, derived from the records every time, so there is no
      task table to fall out of step with them. */
+  /*
+   * What needs a person, most urgent first, in the words a supplier uses:
+   * which order, what to do, and what money is at stake. The reference is the
+   * same one every other screen shows for the order.
+   */
   function tasksFor(a, rows, listings, payout) {
     const t = [];
+    const inr = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
     for (const v of rows) {
       if (!v.order) continue;
-      const ref = v.reference || v.workspaceId.slice(0, 8);
-      if (v.order.stage === 'approved' && !v.order.acknowledgement && canDo(a, 'orders.fulfil')) {
-        t.push({ kind: 'acknowledge', title: `Acknowledge order ${ref}`, detail: `${v.buyer.name} approved ${v.request.quantityKg} kg ${v.request.material}.`, link: `/supplier/orders/${encodeURIComponent(v.id)}`, tone: 'warn' });
-      }
+      const ref = v.reference || `#${String(v.workspaceId).slice(-6).toUpperCase()}`;
+      const unit = v.request.unit || 'kg';
+      const what = `${Number(v.request.quantityKg || 0).toLocaleString('en-IN')} ${unit} ${v.request.material || ''}`.trim();
+      const to = v.request.deliveryCity ? ` to ${v.request.deliveryCity}` : '';
+      const link = `/supplier/orders/${encodeURIComponent(v.id)}`;
       if (v.order.stage === 'in_escrow' && canDo(a, 'orders.fulfil')) {
-        t.push({ kind: 'ship', title: `Ship order ${ref}`, detail: `Funds are held in escrow. Dispatch and record the shipment reference.`, link: `/supplier/orders/${encodeURIComponent(v.id)}`, tone: 'warn' });
+        t.push({ kind: 'ship', rank: 1, title: `Ship ${what}${to}`, detail: `Order ${ref}. ${inr(v.order.terms.total)} is locked in escrow for you. Dispatch it and record the shipment reference.`, link, action: 'Ship this order', tone: 'warn' });
+      }
+      if (v.order.stage === 'approved' && !v.order.acknowledgement && canDo(a, 'orders.fulfil')) {
+        t.push({ kind: 'acknowledge', rank: 2, title: `Confirm you will deliver ${what}${to}`, detail: `Order ${ref}. ${v.buyer.name} approved it; confirm your delivery date.`, link, action: 'Confirm the order', tone: 'warn' });
       }
       if (v.order.stage === 'payment_issue' && canDo(a, 'payouts.read')) {
-        t.push({ kind: 'payment', title: `Payment problem on ${ref}`, detail: 'The payout did not complete. Check your payout account.', link: '/supplier/payouts', tone: 'bad' });
+        t.push({ kind: 'payment', rank: 0, title: `Payment problem on order ${ref}`, detail: 'The payout did not complete. Check your payout bank account; the money is not lost.', link: '/supplier/payouts', action: 'Check payouts', tone: 'bad' });
       }
+    }
+    // Nothing can happen until something is listed, so for a new supplier
+    // that is the first step, ahead of the bank account.
+    if (!listings.length && canDo(a, 'catalogue.edit')) {
+      t.push({ kind: 'listing', rank: 0.5, title: 'Add your first product', detail: "Material, grade, price and your private floor. Buyers' agents start matching you as soon as it is live.", link: '/supplier/catalogue', action: 'Add a product', tone: 'warn' });
     }
     if (canDo(a, 'pricing.edit')) {
       for (const l of listings) {
-        if (!(l.private && l.private.confirmedAt)) t.push({ kind: 'floor', title: `Confirm the floor price for ${l.sku}`, detail: 'The listing cannot go live until an owner or admin confirms it.', link: '/supplier/catalogue', tone: 'warn' });
+        if (!(l.private && l.private.confirmedAt)) t.push({ kind: 'floor', rank: 3, title: `Set the floor price for ${l.sku}`, detail: 'Your lowest acceptable price. The listing goes live for buyers once it is set.', link: '/supplier/catalogue', action: 'Set the floor', tone: 'warn' });
       }
     }
-    if (!payout && canDo(a, 'payouts.manage')) t.push({ kind: 'payout', title: 'Add your payout bank account', detail: 'You cannot be paid without one.', link: '/supplier/settings/payouts', tone: 'warn' });
-    return t;
+    if (!payout && canDo(a, 'payouts.manage')) t.push({ kind: 'payout', rank: 4, title: 'Add the bank account you are paid into', detail: 'Payouts go here when a buyer confirms delivery.', link: '/supplier/settings/payouts', action: 'Add bank account', tone: 'warn' });
+    return t.sort((x, y) => x.rank - y.rank);
   }
 
   r.get('/overview', wrap(async (req, res) => {

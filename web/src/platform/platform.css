@@ -458,3 +458,81 @@ a.pf-kpi:hover { border-color: var(--pine-line); }
 .pf-theme button.on { background: var(--pine-wash); border-color: var(--pine-line); color: var(--pine); font-weight: 600; }
 .pf-theme button:focus-visible { outline: 2px solid var(--pine); outline-offset: 1px; }
 @media (max-height: 820px) { .pf-side-note { display: none; } }
+
+/* ===================================================== supplier journey ===
+   The supplier's twin of the buyer's stage bar, and the "whose move" banner. */
+.pf-journey { list-style: none; margin: 4px 0 16px; padding: 14px 16px 12px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); background: var(--surface); border: 1px solid var(--hair); border-radius: 12px; counter-reset: j; }
+.pf-journey li { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px; min-width: 0; }
+.pf-journey li::before { content: ''; position: absolute; top: 13px; left: calc(-50% + 16px); right: calc(50% + 16px); height: 2px; background: var(--hair-strong); }
+.pf-journey li:first-child::before { display: none; }
+.pf-journey li.done::before, .pf-journey li.now::before, .pf-journey li.failed::before { background: var(--pine); }
+.pf-jn { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; border: 1.5px solid var(--hair-strong); background: var(--surface); color: var(--ink-3); position: relative; z-index: 1; }
+.pf-journey li.done .pf-jn { background: var(--pine); border-color: var(--pine); color: #fff; }
+.pf-journey li.now .pf-jn { border-color: var(--pine); color: var(--pine); box-shadow: 0 0 0 4px var(--pine-wash); }
+.pf-journey li.now.mine .pf-jn { border-color: #D98A06; color: #8A5300; box-shadow: 0 0 0 4px rgba(245,165,36,.2); }
+.pf-journey li.failed .pf-jn { border-color: var(--crimson); color: var(--crimson); background: var(--crimson-wash); }
+.pf-jl { font-size: 12.5px; font-weight: 600; color: var(--ink); line-height: 1.25; }
+.pf-journey li.todo .pf-jl { color: var(--ink-3); font-weight: 500; }
+.pf-jb { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-4); }
+.pf-journey li.now .pf-jb { color: var(--pine); font-weight: 700; }
+.pf-journey li.now.mine .pf-jb { color: #8A5300; }
+.pf-journey li.failed .pf-jb { color: var(--crimson); text-transform: none; letter-spacing: 0; font-size: 11.5px; }
+
+.pf-next { display: flex; align-items: center; gap: 16px; padding: 14px 16px; margin: 0 0 16px; border-radius: 12px; border: 1px solid var(--pine-line); background: var(--pine-wash); }
+.pf-next.you { border-color: rgba(245,165,36,.55); background: #FFF6E5; box-shadow: inset 4px 0 0 #F5A524; }
+.pf-next.wait { border-color: var(--hair-strong); background: var(--surface); }
+.pf-next.good { border-color: var(--ok-line, #B7EBC9); background: var(--ok-wash, #ECFDF3); }
+.pf-next.bad { border-color: var(--crimson-line); background: var(--crimson-wash); }
+.pf-next-who { flex: none; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; padding: 4px 9px; border-radius: 999px; background: var(--surface); border: 1px solid var(--hair-strong); color: var(--ink-2); white-space: nowrap; }
+.pf-next.you .pf-next-who { background: #F5A524; border-color: #F5A524; color: #1A1205; }
+.pf-next.good .pf-next-who { color: var(--ok, #15803D); }
+.pf-next.bad .pf-next-who { color: var(--crimson); }
+.pf-next-t { flex: 1; min-width: 0; }
+.pf-next-t b { display: block; font-size: 15px; color: var(--ink); }
+.pf-next-t span { display: block; font-size: 13px; color: var(--ink-2); margin-top: 2px; }
+.pf-next .pf-btn, .pf-next button { flex: none; }
+.pf-next-mini { font-size: 11.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--sunk); color: var(--ink-3); white-space: nowrap; }
+.pf-next-mini.you { background: #FFF4DF; color: #8A5300; }
+.pf-next-mini.good { background: var(--ok-wash, #ECFDF3); color: var(--ok, #15803D); }
+.pf-next-mini.bad { background: var(--crimson-wash); color: var(--crimson); }
+
+.pf-how { margin: 0 0 16px; border: 1px solid var(--hair); border-radius: 12px; background: var(--surface); }
+.pf-how summary { cursor: pointer; padding: 12px 16px; font-weight: 600; font-size: 14px; }
+.pf-how ol { list-style: none; margin: 0; padding: 0 16px 16px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.pf-how li { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--hair); }
+.pf-how-i { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; background: var(--pine-wash); color: var(--pine); }
+.pf-how li b { font-size: 13.5px; display: flex; align-items: center; gap: 6px; }
+.pf-how-n { font-size: 11px; color: var(--ink-4); font-weight: 700; }
+.pf-how li > span:last-child { font-size: 12.5px; color: var(--ink-3); line-height: 1.45; }
+
+.pf-task-go { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 4px; color: var(--pine) !important; font-weight: 600; font-size: 12.5px !important; white-space: nowrap; }
+
+.pf-stops { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0 0 16px; }
+.pf-stops > div { padding: 12px 14px; border: 1px solid var(--hair); border-radius: 12px; background: var(--surface); }
+.pf-stops span { display: block; font-size: 12px; color: var(--ink-3); }
+.pf-stops b { font-size: 18px; font-variant-numeric: tabular-nums; }
+.pf-stops p { grid-column: 1 / -1; margin: 0; font-size: 12px; color: var(--ink-4); }
+
+.pf-fix { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.pf-fix li { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--hair); }
+.pf-fix li b { font-size: 13.5px; }
+.pf-fix li span { grid-column: 1; font-size: 12.5px; color: var(--ink-3); }
+.pf-fix li a { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-weight: 600; }
+.pf-box-q { border-color: var(--amber) !important; color: var(--amber); font-weight: 700; font-size: 11px; }
+.pf-msg-p { float: right; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+.pf-money { width: 100%; border-collapse: collapse; font-size: 13.5px; margin-bottom: 10px; }
+.pf-money td { padding: 8px 0; border-bottom: 1px dashed var(--hair); vertical-align: top; }
+.pf-money td:last-child { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; padding-left: 12px; }
+.pf-money td small { display: block; font-size: 11.5px; color: var(--ink-4); }
+.pf-money tr.total td { border-bottom: 0; border-top: 1.5px solid var(--ink); font-weight: 700; padding-top: 10px; }
+
+.pf-range { display: flex; align-items: center; gap: 6px; }
+.pf-range span { font-size: 12px; color: var(--ink-4); }
+.pf-agentnote { padding: 12px 14px; border-radius: 10px; background: var(--sunk); font-size: 12.5px; color: var(--ink-2); line-height: 1.5; align-self: start; margin-top: 22px; }
+.pf-agentnote b { display: block; color: var(--ink); margin-bottom: 2px; font-size: 13px; }
+
+@media (max-width: 1100px) {
+  .pf-how ol { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pf-journey { overflow-x: auto; grid-template-columns: repeat(7, 110px); }
+}
