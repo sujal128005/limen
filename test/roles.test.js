@@ -144,14 +144,14 @@ async function upToFunded(tag) {
 }
 
 /** Walk a workspace all the way to the point where finance may pay. */
-async function upToPaymentReady(tag) {
+async function upToPaymentReady(tag, { fund = true } = {}) {
   const c = await freshRun(tag);
   await call('POST', '/api/purchase/submit', { token: c.sales, workspace: c.ws });
   await call('POST', '/api/purchase/send-to-head', { token: c.sales, workspace: c.ws });
   await call('POST', '/api/purchase/approve', { token: c.head, workspace: c.ws });
   await call('POST', '/api/simulate/supplier-shipment', { token: c.sales, workspace: c.ws });
   await call('POST', '/api/purchase/confirm-receipt', { token: c.sales, workspace: c.ws });
-  await topUp(c);
+  if (fund) await topUp(c);
   return c;
 }
 
@@ -439,6 +439,24 @@ async function run() {
     ok(p.payment.fxRate > 0, 'with the rate it was converted at');
     // A converted amount without its rate cannot be checked by anybody later.
     eq(round2(p.payment.amount), round2(p.payment.amountUsd * p.payment.fxRate));
+  });
+
+  await test('a demo company opens with ₹50 lakh in the float, recorded as an opening deposit', async () => {
+    const prev = process.env.LIMEN_DEMO_FLOAT;
+    process.env.LIMEN_DEMO_FLOAT = '5000000';
+    try {
+      const c = await upToPaymentReady('demofloat', { fund: false });
+      const f = (await call('GET', '/api/payments/float', { token: c.finance, workspace: c.ws })).body;
+      eq(f.balance, 5000000, 'opening balance');
+      ok(f.topUps.some((t) => t.opening && t.amount === 5000000), 'shown in the float history, not silent');
+      const r = await call('POST', '/api/purchase/release', { token: c.finance, workspace: c.ws });
+      eq(r.status, 200, JSON.stringify(r.body).slice(0, 200));
+      const after = (await call('GET', '/api/payments/float', { token: c.finance, workspace: c.ws })).body;
+      ok(after.balance < 5000000, 'the payout is debited from it');
+      ok(after.topUps.filter((t) => t.opening).length === 1, 'and it is never refilled');
+    } finally {
+      process.env.LIMEN_DEMO_FLOAT = prev;
+    }
   });
 
   await test('a replayed release does not debit the float twice', async () => {

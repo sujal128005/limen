@@ -6,6 +6,9 @@ const { summary } = require('./harness');
    key or local Gemma in .env stays out of the suite. The Gemini tests set their
    own stand-ins. */
 for (const k of ['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'LIMEN_AI', 'GEMMA_MODEL', 'OLLAMA_HOST']) process.env[k] = '';
+/* Tests start every payment float at zero, so the refusal paths are exercised.
+   The demo's opening balance is tested on its own below. */
+process.env.LIMEN_DEMO_FLOAT = '0';
 
 (async () => {
   console.log('\n\x1b[1mLimen test suite\x1b[0m');
