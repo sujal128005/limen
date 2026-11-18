@@ -917,6 +917,7 @@ app.post('/api/brief', wrap(async (req, res) => {
   brief.softPreferences = parseRequest(text).softPreferences;
   assertWithinCompanyLimits(req, brief);
   startNewRun(session, brief);
+  session.buyerName = briefContext(req, session).orgName || null;
   res.json(brief);
 }));
 
@@ -1010,7 +1011,7 @@ function startNewRun(session, brief) {
   session.brief = brief;
   session.candidates = []; session.negotiations = []; session.recommendation = null;
   session.excludedByPolicy = [];
-  session.engineRun = null; session.engineArtefacts = null;
+  session.engineRun = null; session.engineArtefacts = null; session.supplierNotes = null;
   /*
    * A new brief starts a new run, so the previous run's settlement has to go
    * with it. Leaving settlementFacts and signature in place meant the summary
@@ -1130,6 +1131,7 @@ app.post(
        company's own limits just because it arrived as a file. */
     assertWithinCompanyLimits(req, brief);
     startNewRun(session, brief);
+    session.buyerName = briefContext(req, session).orgName || null;
 
     /*
      * What the run was read out of, kept with the run.
@@ -1385,6 +1387,18 @@ app.post('/api/negotiate', wrap(async (req, res) => {
   const { results, artefacts } = await bridge.negotiateAll(session.brief, session.candidates, ctx);
   session.engineRun = { rfqId: artefacts.rfqId || null, rfq: artefacts.rfq || null };
   session.engineArtefacts = artefacts;
+  /* Supplier agents' reasoning is each supplier's own. It is moved off the
+     transcripts the buyer reads and kept per supplier, for that supplier's
+     portal only. */
+  session.supplierNotes = {};
+  for (const r of results) {
+    for (const step of r.transcript || []) {
+      if (step.supplierNote) {
+        (session.supplierNotes[r.supplierId] = session.supplierNotes[r.supplierId] || {})[step.seq] = step.supplierNote;
+        delete step.supplierNote;
+      }
+    }
+  }
   session.negotiations = results;
 
   /* One row per counterparty, including the ones that walked away. A log that
@@ -1517,6 +1531,7 @@ app.get('/api/purchase', wrap(async (req, res) => {
     payableInr: w ? fx.usdToInr(w.total).amount : null,
     fxRate: fx.rate(),
     quantityKg: w ? w.quantityKg : null,
+    unit: (w && w.unit) || (session.brief && session.brief.unit) || 'kg',
     unitPrice: w ? w.unitPrice : null,
     leadTimeDays: w ? w.leadTimeDays : null,
     submittedBy: session.submittedBy, submittedAt: session.submittedAt,

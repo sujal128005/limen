@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { AccountMenu } from './platform/Shell';
 import { startSupplierDemo } from './platform/core';
 import Home from './Home';
+import './desk.css';
 /* eslint-disable react-hooks/exhaustive-deps */
 
 /* ---------------------------------------------------------------- helpers */
@@ -1147,7 +1148,7 @@ function HeadApproval({ purchase, status, onApprove, onReject, onPublishPolicy, 
       <div className="packet-grid">
         <Fact k="Supplier" v={p.supplier.name} />
         <Fact k="Requested amount" v={usd(amount)} />
-        <Fact k="Quantity" v={`${p.quantityKg} kg`} />
+        <Fact k="Quantity" v={`${Number(p.quantityKg).toLocaleString('en-IN')} ${p.unit || 'kg'}`} />
         <Fact k="Unit price" v={usd(p.unitPrice, 4)} />
         <Fact k="Delivery" v={`${p.leadTimeDays} days`} />
         <Fact k="Line" v={p.supplier.sku} mono />
@@ -1430,7 +1431,7 @@ function SalesReview({ purchase, onSubmit, onSendToHead, onConfirmReceipt, onOpe
       <div className="view-head">
         <span className="eyebrow">My purchase</span>
         <h2>{p.reference}</h2>
-        <p className="sub">{p.supplier.name}, {usd(p.requestedAmount)} for {p.quantityKg} kg.</p>
+        <p className="sub">{p.supplier.name}, {usd(p.requestedAmount)} for {Number(p.quantityKg).toLocaleString('en-IN')} {p.unit || 'kg'}.</p>
       </div>
 
       <div className="packet-grid">
@@ -2116,13 +2117,13 @@ function DecisionPacket({ brief, candidates, negotiations, rec, defaultOpen }) {
               <div className="figures">
                 <div className="figure">
                   <div className="fig-k">Quantity</div>
-                  <div className="fig-v">{(brief.quantityKg || 0).toLocaleString()} kg</div>
-                  <div className="fig-note">{brief.material || 'as specified'}</div>
+                  <div className="fig-v">{(brief.quantityKg || 0).toLocaleString('en-IN')} {unitOf(brief)}</div>
+                  <div className="fig-note">{[brief.grade, brief.material].filter(Boolean).join(' ') || 'as specified'}{brief.deliveryCity ? `, to ${brief.deliveryCity}` : ''}</div>
                 </div>
                 <div className="figure">
                   <div className="fig-k">Stated budget</div>
                   <div className="fig-v">{budget ? usd0(budget) : 'None stated'}</div>
-                  <div className="fig-note">Becomes the on-chain ceiling</div>
+                  <div className="fig-note">Incl. GST and freight. Becomes the on-chain ceiling</div>
                 </div>
                 <div className={`figure ${budget && w.total <= budget ? 'accent' : ''}`}>
                   <div className="fig-k">Negotiated</div>
@@ -2137,7 +2138,7 @@ function DecisionPacket({ brief, candidates, negotiations, rec, defaultOpen }) {
                   <div className="fig-k">Delivery</div>
                   <div className="fig-v">{w.leadTimeDays} days</div>
                   <div className="fig-note">
-                    {brief.deliveryDays ? `${brief.deliveryDays} requested` : 'No window stated'}
+                    {brief.deadlineDays != null ? `${brief.deadlineDays} days requested` : 'No window stated'}
                   </div>
                 </div>
               </div>
@@ -2152,6 +2153,14 @@ function DecisionPacket({ brief, candidates, negotiations, rec, defaultOpen }) {
             </>
           )}
 
+          {rec && rec.status === 'recommended' && (
+            <>
+              <div className="ev-h">What it costs, line by line</div>
+              <CostBreakdown w={w} row={((rec.engine && rec.engine.comparison) || []).find((c) => c.supplierId === w.supplierId) || null} />
+              <QuoteComparison rows={rec.engine && rec.engine.comparison} winnerId={w.supplierId} unit={unitOf(w)} />
+            </>
+          )}
+
           {!!rows.length && (
             <>
               <div className="ev-h">Every listing that was screened</div>
@@ -2162,6 +2171,7 @@ function DecisionPacket({ brief, candidates, negotiations, rec, defaultOpen }) {
                       <th>Supplier</th>
                       <th className="num">List total</th>
                       <th className="num">Lead time</th>
+                      <th className="num">Late risk</th>
                       <th>Outcome</th>
                     </tr>
                   </thead>
@@ -2174,6 +2184,7 @@ function DecisionPacket({ brief, candidates, negotiations, rec, defaultOpen }) {
                         </td>
                         <td className="num">{money(c.listTotal)}</td>
                         <td className="num">{c.leadTimeDays} d</td>
+                        <td className="num"><RiskChip p={c.match && c.match.reliability ? c.match.reliability.p_late : null} /></td>
                         <td>
                           {c.eligible === false ? (
                             <span className="ev-no">
@@ -2230,8 +2241,8 @@ function DecisionPacket({ brief, candidates, negotiations, rec, defaultOpen }) {
                   <ol>
                     {winning.transcript.map((t, i) => (
                       <li key={i}>
-                        <span className="tr-who">{t.from || t.side || (i % 2 ? 'Supplier' : 'Agent')}</span>
-                        <span className="tr-msg">{t.message || t.rationale || ''}</span>
+                        <span className="tr-who">{t.actor === 'agent' ? 'Your agent' : 'Supplier'}</span>
+                        <span className="tr-msg">{t.message || ''}</span>
                       </li>
                     ))}
                   </ol>
@@ -2397,7 +2408,7 @@ function SupplierDetail({ data, loading, error, onClose }) {
                       <td className="mono">{pr.sku}</td>
                       <td>{pr.material}{pr.grade ? `, ${pr.grade}` : ''}</td>
                       <td className="num">{pr.listUnitPrice != null ? usd(pr.listUnitPrice) : '—'}</td>
-                      <td className="num">{pr.moqKg != null ? `${pr.moqKg} kg` : '—'}</td>
+                      <td className="num">{pr.moqKg != null ? `${Number(pr.moqKg).toLocaleString('en-IN')} ${pr.unit || 'kg'}` : '—'}</td>
                       <td className="num">{pr.leadTimeDays}d</td>
                     </tr>
                   ))}
@@ -2720,10 +2731,7 @@ function CompanyView({ data, loading, role, onSaveBehaviour, onSaveLimits, notes
   const [blocked, setBlocked] = useState('');
   const [preferred, setPreferred] = useState('');
   const [cats, setCats] = useState('');
-  const [pace, setPace] = useState(0.5);
-  const [expedite, setExpedite] = useState('');
   const [blockedRegions, setBlockedRegions] = useState('');
-  const [weights, setWeights] = useState(null);
   const [perDeal, setPerDeal] = useState('');
   const [autoBelow, setAutoBelow] = useState('');
 
@@ -2735,10 +2743,7 @@ function CompanyView({ data, loading, role, onSaveBehaviour, onSaveLimits, notes
     setBlocked(p.blockedSuppliers.join(', '));
     setPreferred(p.preferredSuppliers.join(', '));
     setCats(p.categories.map((c) => `${c.label}: ${c.materials.join(', ')}`).join('\n'));
-    setPace(p.concessionPace ?? 0.5);
-    setExpedite(p.maxExpeditePct == null ? '' : String(Math.round(p.maxExpeditePct * 100)));
     setBlockedRegions((p.blockedRegions || []).join(', '));
-    setWeights({ ...p.rankingWeights });
   }, [p, company]);
 
   /*
@@ -2835,53 +2840,22 @@ function CompanyView({ data, loading, role, onSaveBehaviour, onSaveLimits, notes
           <span className="hint">Screened out before negotiation, and named on the run like a blocked supplier.</span>
         </div>
 
+        {/*
+          * Three controls used to sit here: ranking weights, how fast the agent
+          * concedes, and a cap on rush charges. They steered the old engine.
+          * The decision engine ranks on expected total cost and negotiates to a
+          * walk-away set by your budget and your next-best supplier, so those
+          * knobs would change nothing, and a setting that changes nothing is
+          * worse than none. What actually steers the agent is stated instead.
+          */}
         <div className="cofield">
-          <label>What the agent should weigh</label>
-          {/*
-            * These sliders had no effect at all until now - a settings control
-            * that changes nothing is worse than a missing one, because the
-            * person believes they have steered something. They set the
-            * company's STANDING preference, and a request that states its own
-            * ("need it fastest") still overrides them: specific beats standing.
-            */}
-          <div className="coweights">
-            {['price', 'speed', 'reputation', 'quality'].map((k) => (
-              <div key={k} className="coweight">
-                <span className="coweight-k">{k}</span>
-                <input
-                  type="range" min="0" max="100" step="5"
-                  value={Math.round(((weights && weights[k]) || 0) * 100)}
-                  onChange={(e) => setWeights({ ...weights, [k]: Number(e.target.value) / 100 })}
-                />
-                <span className="coweight-v mono">{Math.round(((weights && weights[k]) || 0) * 100)}</span>
-              </div>
-            ))}
-          </div>
-          <span className="hint">A request that states its own priority wins over these. They are the standing default, not an override.</span>
-        </div>
-
-        <div className="cofield">
-          <label htmlFor="co-pace">How fast the agent concedes</label>
-          <div className="coweights">
-            <div className="coweight">
-              <span className="coweight-k">{pace <= 0.3 ? 'patient' : pace >= 0.7 ? 'quick' : 'balanced'}</span>
-              <input
-                type="range" min="10" max="90" step="5"
-                value={Math.round(pace * 100)}
-                onChange={(e) => setPace(Number(e.target.value) / 100)}
-              />
-              <span className="coweight-v mono">{Math.round(pace * 100)}</span>
-            </div>
-          </div>
-          <span className="hint">
-            Conceding slower wins better prices and loses more deals. It moves the agent toward its ceiling and can never pass it.
-          </span>
-        </div>
-
-        <div className="cofield">
-          <label htmlFor="co-expedite">Most you will pay to rush an order</label>
-          <input id="co-expedite" value={expedite} onChange={(e) => setExpedite(e.target.value)} inputMode="decimal" placeholder="blank for no limit" />
-          <span className="hint">Per cent. This only ever refuses a deal, so the worst it can do is decline to pay for speed.</span>
+          <label>How the agent decides</label>
+          <ul className="dk-howlist">
+            <li><b>Requirements first.</b> Grade, specification, certificate, minimum order, capacity and the delivery date exclude a supplier before any price is discussed.</li>
+            <li><b>Expected total cost, not list price.</b> Basic price, freight and GST, the cost of financing GST until input credit, the value of credit days, and the expected cost of a late or rejected lot from each supplier's record.</li>
+            <li><b>A walk-away it will not cross.</b> Your budget, and what the next-best supplier would cost. It walks away rather than pay more.</li>
+            <li><b>Your lists still apply.</b> Blocked suppliers are removed before screening; preferred ones are listed first among those that qualify.</li>
+          </ul>
         </div>
 
         <div className="cofoot">
@@ -2894,9 +2868,6 @@ function CompanyView({ data, loading, role, onSaveBehaviour, onSaveLimits, notes
               preferredSuppliers: list(preferred),
               blockedSuppliers: list(blocked),
               blockedRegions: list(blockedRegions),
-              rankingWeights: weights,
-              concessionPace: pace,
-              maxExpeditePct: expedite === '' ? null : Number(expedite) / 100,
             })}
           >
             Save
@@ -3003,8 +2974,11 @@ function Dashboard({ profile: prof, history, purchase, suppliers, onGo }) {
   const limits = prof && prof.profile ? prof.profile.limits : null;
   const onChain = prof && prof.onChain;
 
-  const waiting = purchase && purchase.state && !['SETTLED', 'DRAFT', 'AI_COMPLETED'].includes(purchase.state)
+  /* A finished agent run waiting for sales to review it is in flight: it is
+     the next thing a person has to do, not a blank slate. */
+  const waiting = purchase && purchase.state && !['SETTLED', 'DRAFT', 'REJECTED'].includes(purchase.state)
     ? purchase : null;
+  const nameOf = (id) => ((suppliers || []).find((x) => x.id === id) || {}).name || id;
 
   const topSuppliers = (history && history.suppliers ? history.suppliers : []).slice(0, 5);
   const verifiedCount = (suppliers || []).filter((s) => s.verification && s.verification.status === 'verified').length;
@@ -3024,7 +2998,7 @@ function Dashboard({ profile: prof, history, purchase, suppliers, onGo }) {
             <div className="dash-now-k">In flight</div>
             <div className="dash-now-v">
               {purchase.supplier ? purchase.supplier.name : 'A purchase'}
-              {purchase.amount ? ` — ${usd0(purchase.amount)}` : ''}
+              {(purchase.requestedAmount ?? purchase.amount) ? ` — ${usd0(purchase.requestedAmount ?? purchase.amount)}` : ''}
             </div>
             <div className="dash-now-s">{STATE_BLURB[purchase.state] || purchase.state}</div>
           </>
@@ -3095,7 +3069,7 @@ function Dashboard({ profile: prof, history, purchase, suppliers, onGo }) {
               <tbody>
                 {topSuppliers.map((h) => (
                   <tr key={h.supplierId}>
-                    <td className="dt-name">{h.supplierId}</td>
+                    <td className="dt-name">{nameOf(h.supplierId)}</td>
                     <td className="num">{h.runs}</td>
                     <td className="num">{h.agreed}</td>
                     <td className="num">{h.walkedAway}</td>
@@ -3116,6 +3090,7 @@ function Dashboard({ profile: prof, history, purchase, suppliers, onGo }) {
 }
 
 const STATE_BLURB = {
+  AI_COMPLETED: 'The agent has a recommendation. Sales reviews it and sends it up.',
   SALES_REVIEW: 'With the sourcing desk, to check and send up.',
   HEAD_APPROVAL: 'Waiting on the head to sanction the amount.',
   APPROVED: 'Approved. Waiting for the supplier to ship.',
@@ -6264,7 +6239,7 @@ function DocumentEvidence({ doc, brief, onRun, onClear, busy, disabled, onCheck,
   const ROWS = [
     { key: 'material', label: 'Material', show: (b) => b.material },
     { key: 'grade', label: 'Grade', show: (b) => b.grade },
-    { key: 'quantityKg', label: 'Quantity', show: (b) => (b.quantityKg ? `${b.quantityKg.toLocaleString()} kg` : null) },
+    { key: 'quantityKg', label: 'Quantity', show: (b) => (b.quantityKg ? `${b.quantityKg.toLocaleString('en-IN')} ${b.unit || 'kg'}` : null) },
     { key: 'budgetTotal', label: 'Budget ceiling', show: (b) => (b.budgetTotal ? usd0(b.budgetTotal) : null) },
     { key: 'deadlineDays', label: 'Delivery', show: (b) => (b.deadlineDays ? `within ${b.deadlineDays} days` : null) },
     { key: 'certifications', label: 'Certification', show: (b) => (b.certifications?.length ? b.certifications.join(', ') : null) },
@@ -6527,31 +6502,29 @@ function RequestPanel({
 
 /* --------------------------------------------------------- requirements */
 
+const unitOf = (x) => (x && x.unit) || 'kg';
+const pctOf = (p) => (p == null ? '—' : `${Math.round(Number(p) * 100)}%`);
+const paiseToRupees = (p) => Math.round(Number(p || 0)) / 100;
+
 function BriefPanel({ brief }) {
+  const u = unitOf(brief);
   const items = [
     { k: 'Material', v: brief.material || '-' },
     { k: 'Grade', v: brief.grade || 'Any' },
-    { k: 'Quantity', v: brief.quantityKg ? `${brief.quantityKg.toLocaleString()} kg` : '-' },
-    { k: 'Budget ceiling', v: brief.budgetTotal ? usd0(brief.budgetTotal) : '-' },
-    { k: 'Unit ceiling', v: brief.budgetPerUnit ? `${usd(brief.budgetPerUnit)}/kg` : '-' },
-    { k: 'Delivery window', v: brief.deadlineDays ? `${brief.deadlineDays} days` : '-' },
+    { k: 'Quantity', v: brief.quantityKg ? `${brief.quantityKg.toLocaleString('en-IN')} ${u}` : '-' },
+    { k: 'Deliver to', v: brief.deliveryCity || '-' },
+    { k: 'Delivery window', v: brief.deadlineDays != null ? `${brief.deadlineDays} days` : '-' },
+    { k: 'Budget ceiling', v: brief.budgetTotal ? usd0(brief.budgetTotal) : '-', note: 'incl. GST and freight' },
   ];
+  if (brief.creditDays != null) items.push({ k: 'Credit asked', v: `${brief.creditDays} days` });
   return (
     <section className="section">
       <div className="view-head">
         <div className="eyebrow">Step 02 &middot; Requirements</div>
-        <h2>Constraints the agent will hold</h2>
-        {brief.semanticMatch && (
-          <p className={`gem-inline ${brief.semanticMatch.accepted ? 'ok' : 'warn'}`}>
-            <span className="gem-mark sm" aria-hidden="true">G</span>
-            {brief.semanticMatch.accepted
-              ? <>{brief.semanticMatch.label || 'Gemini'} matched your wording to <strong>{brief.semanticMatch.material}</strong> by meaning (similarity {brief.semanticMatch.similarity.toFixed(2)}). Every requirement below is still screened.</>
-              : <>Closest catalogue material by meaning is {brief.semanticMatch.material} ({brief.semanticMatch.similarity.toFixed(2)}), below the {brief.semanticMatch.threshold} threshold, so it was not used. Name the material to continue.</>}
-          </p>
-        )}
+        <h2>What the agent will hold to</h2>
         <p className="sub">
-          Hard constraints disqualify a supplier or have to be negotiated away. Soft preferences
-          only rank the survivors.
+          Every figure below was read from your words and can be traced back to them. A supplier that
+          misses a hard requirement is excluded before any price is discussed.
         </p>
       </div>
 
@@ -6560,6 +6533,7 @@ function BriefPanel({ brief }) {
           <div key={i.k} className="spec binding">
             <div className="spec-k">{i.k}</div>
             <div className="spec-v">{i.v}</div>
+            {i.note && <div className="spec-n">{i.note}</div>}
           </div>
         ))}
         {(brief.certifications || []).map((c) => (
@@ -6570,17 +6544,44 @@ function BriefPanel({ brief }) {
         ))}
       </div>
 
-      <div className="weights">
-        <span className="eyebrow">Ranking weights</span>
-        {(brief.softPreferences || []).map((p) => (
-          <span key={p.key} className="weight">{p.key}<b>{Math.round(p.weight * 100)}%</b></span>
-        ))}
-      </div>
+      {(brief.specs || []).length > 0 && (
+        <div className="dk-chips" aria-label="Specifications">
+          <span className="eyebrow">Specification</span>
+          {brief.specs.map((s) => <span key={s} className="dk-chip">{s}</span>)}
+        </div>
+      )}
+
+      {(brief.notes || []).length > 0 && (
+        <ul className="dk-notes">
+          {brief.notes.map((n) => <li key={n}>{n}</li>)}
+        </ul>
+      )}
+
+      <p className="dk-method">
+        <b>How suppliers are compared:</b> on expected total cost to you, not list price. That is the basic
+        price, freight and GST, the cost of financing GST until you claim input credit, the value of credit
+        days, and the expected cost of a late or rejected lot given each supplier's record.
+      </p>
     </section>
   );
 }
 
 /* ------------------------------------------------------------ screening */
+
+function MatchMeter({ score }) {
+  const v = Math.max(0, Math.min(1, Number(score) || 0));
+  return (
+    <span className="dk-meter" title={`Match score ${v.toFixed(2)}`}>
+      <i style={{ width: `${Math.round(v * 100)}%` }} />
+    </span>
+  );
+}
+
+function RiskChip({ p }) {
+  if (p == null) return <span className="dk-risk na">—</span>;
+  const tone = p <= 0.08 ? 'low' : p <= 0.2 ? 'mid' : 'high';
+  return <span className={`dk-risk ${tone}`} title="Estimated chance of a late delivery, from this supplier's record">{pctOf(p)}</span>;
+}
 
 function CandidatesPanel({ rows, shortlist, winnerId }) {
   const eligible = rows.filter((r) => r.eligible).length;
@@ -6590,15 +6591,15 @@ function CandidatesPanel({ rows, shortlist, winnerId }) {
         <div className="eyebrow">Step 03 &middot; Suppliers</div>
         <h2>Screening the catalogue</h2>
         <p className="sub">
-          A supplier is only worth negotiating with if every failure it has is commercially movable.
-          Certification, minimum order and capacity are not.
+          Grade, specification, certificate, minimum order, capacity and the delivery date are checked for every
+          listing. Price is not a reason to exclude anyone: a supplier over budget can still be negotiated with.
         </p>
       </div>
 
       <div className="screen-stats">
         <div className="sstat"><div className="k">Listings screened</div><div className="v">{rows.length}</div></div>
-        <div className="sstat"><div className="k">Eligible</div><div className="v">{eligible}</div></div>
-        <div className="sstat"><div className="k">Shortlisted</div><div className="v">{shortlist.length}</div></div>
+        <div className="sstat"><div className="k">Meet every requirement</div><div className="v">{eligible}</div></div>
+        <div className="sstat"><div className="k">Asked to quote</div><div className="v">{shortlist.length}</div></div>
       </div>
 
       <div className="sheet">
@@ -6607,42 +6608,60 @@ function CandidatesPanel({ rows, shortlist, winnerId }) {
             <thead>
               <tr>
                 <th>Supplier</th>
-                <th className="right">List total</th>
-                <th className="right">Lead time</th>
-                <th className="right">Quality</th>
-                <th className="right">On-time</th>
+                <th className="right">List price</th>
+                <th className="right">Delivery</th>
+                <th className="right">Late risk</th>
+                <th>Match</th>
                 <th>Assessment</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
-                <tr key={r.supplierId + r.sku} className={!r.eligible ? 'excluded' : r.supplierId === winnerId ? 'winner' : ''}>
-                  <td>
-                    <div className="sup-name">
-                      {r.name}
-                      {shortlist.includes(r.supplierId) && <span className="badge neutral">shortlisted</span>}
-                    </div>
-                    <div className="sup-meta">{r.city}, {r.country} &middot; {r.sku} &middot; {r.grade}</div>
-                  </td>
-                  <td className="right num">{usd0(r.listTotal)}<div className="sup-meta">{usd(r.listUnitPrice)}/kg</div></td>
-                  <td className="right num">{r.leadTimeDays}d</td>
-                  <td className="right num">{r.qualityScore}</td>
-                  <td className="right num">{Math.round(r.onTimeRate * 100)}%</td>
-                  <td>
-                    {r.eligible
-                      ? r.needsNegotiation
-                        ? <span className="badge warn">negotiable &middot; {r.negotiationTargets.join(' + ')}</span>
-                        : <span className="badge ok">meets all constraints</span>
-                      : <span className="badge bad">excluded</span>}
-                    {r.violations.map((v, i) => (
-                      <div key={i} className={v.negotiable === false ? 'violation' : 'satisfied'}>
-                        <span className="marker">{v.negotiable === false ? '✕' : '·'}</span>
-                        <span>{v.detail}</span>
+              {rows.map((r) => {
+                const m = r.match || {};
+                const rel = m.reliability || {};
+                return (
+                  <tr key={r.supplierId + r.sku} className={!r.eligible ? 'excluded' : r.supplierId === winnerId ? 'winner' : ''}>
+                    <td>
+                      <div className="sup-name">
+                        {r.name}
+                        {shortlist.includes(r.supplierId) && <span className="badge neutral">asked to quote</span>}
                       </div>
-                    ))}
-                  </td>
-                </tr>
-              ))}
+                      <div className="sup-meta">{r.city} &middot; {r.sku} &middot; {r.grade}</div>
+                    </td>
+                    <td className="right num">
+                      {usd0(r.listTotal)}
+                      <div className="sup-meta">{usd(r.listUnitPrice)}/{unitOf(r)} + GST</div>
+                    </td>
+                    <td className="right num">
+                      {r.leadTimeDays}d
+                      <div className="sup-meta">{m.distanceKm != null ? `${m.distanceKm.toLocaleString('en-IN')} km` : 'distance unknown'}</div>
+                    </td>
+                    <td className="right"><RiskChip p={rel.p_late} />
+                      <div className="sup-meta">{rel.observations ? `${rel.observations} orders` : 'no record'}</div>
+                    </td>
+                    <td><MatchMeter score={m.score} /></td>
+                    <td>
+                      {r.eligible
+                        ? r.needsNegotiation
+                          ? <span className="badge warn">over budget at list &middot; negotiable</span>
+                          : <span className="badge ok">meets every requirement</span>
+                        : <span className="badge bad">excluded</span>}
+                      {r.violations.map((v, i) => (
+                        <div key={i} className={v.negotiable ? 'satisfied' : 'violation'}>
+                          <span className="marker">{v.negotiable ? '·' : '✕'}</span>
+                          <span>{v.detail}</span>
+                        </div>
+                      ))}
+                      {(r.unverified || []).map((v, i) => (
+                        <div key={`u${i}`} className="dk-unverified">
+                          <span className="marker">?</span>
+                          <span>{v.detail}</span>
+                        </div>
+                      ))}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -6654,68 +6673,83 @@ function CandidatesPanel({ rows, shortlist, winnerId }) {
 /* ---------------------------------------------------------- negotiation */
 
 function NegotiationPanel({ results, revealed, brief }) {
+  const u = unitOf(brief);
+  const n = results.length;
+  /* A six-round negotiation is twelve moves. Once one has finished, the
+     opening quote and the last three moves tell the story; the rest are a
+     click away. */
+  const [expanded, setExpanded] = useState({});
   return (
     <section className="section">
       <div className="view-head">
         <div className="eyebrow">Step 04 &middot; Negotiation</div>
-        <h2>Bounded bargaining, {results.length} suppliers in parallel</h2>
+        <h2>{n === 1 ? 'Negotiated with one supplier' : `Negotiated with ${n} suppliers`}</h2>
         <p className="sub">
-          The agent cannot see a supplier's floor price. It discovers the deal by making offers and
-          reading concessions, hard-capped at {usd(brief?.budgetPerUnit || 0)}/kg, and walks away
-          rather than going over.
+          Your agent and each supplier's agent bargain on price and credit days. Neither sees the other's
+          limit: your agent will not commit more than {brief?.budgetTotal ? usd0(brief.budgetTotal) : 'your ceiling'} in
+          total, a supplier's agent will not sell below its owner's floor, and your agent walks away rather than
+          pay more than its next-best alternative costs.
         </p>
       </div>
 
       <div className="negs stagger">
-        {results.map((n) => {
-          const shown = revealed[n.supplierId] ?? n.transcript.length;
-          const turns = n.transcript.slice(0, shown);
-          const done = shown >= n.transcript.length;
+        {results.map((neg) => {
+          const shown = revealed[neg.supplierId] ?? neg.transcript.length;
+          const all = neg.transcript.slice(0, shown);
+          const done = shown >= neg.transcript.length;
+          const fold = done && all.length > 6 && !expanded[neg.supplierId];
+          const turns = fold ? [all[0], ...all.slice(-3)] : all;
+          const hidden = all.length - turns.length;
           return (
-            <article key={n.supplierId} className={`neg ${done ? n.outcome : 'live'}`}>
+            <article key={neg.supplierId} className={`neg ${done ? neg.outcome : 'live'}`}>
               <header className="neg-head">
                 <div>
-                  <div className="neg-who">{n.name}</div>
-                  <div className="neg-meta">{n.rounds} round{n.rounds === 1 ? '' : 's'}</div>
+                  <div className="neg-who">{neg.name}</div>
+                  <div className="neg-meta">{neg.rounds} round{neg.rounds === 1 ? '' : 's'}</div>
                 </div>
                 <div className="neg-state">
                   {!done && <span className="negpulse" aria-label="negotiating" />}
-                  {done && n.outcome === 'agreed' && <span className="badge ok">agreement reached</span>}
-                  {done && n.outcome === 'failed' && <span className="badge bad">no deal &middot; {n.failureReason}</span>}
+                  {done && neg.outcome === 'agreed' && <span className="badge ok">{neg.partial ? 'agreed, part quantity' : 'agreement reached'}</span>}
+                  {done && neg.outcome === 'failed' && <span className="badge bad">no deal &middot; {neg.failureReason}</span>}
                 </div>
               </header>
 
               <div className="thread">
-                {turns.map((t) => (
+                {turns.map((t, ti) => (<React.Fragment key={t.seq}>
+                  {fold && ti === 1 && (
+                    <button type="button" className="dk-fold" onClick={() => setExpanded((e) => ({ ...e, [neg.supplierId]: true }))}>
+                      Show {hidden} earlier move{hidden === 1 ? '' : 's'}
+                    </button>
+                  )}
                   <div
-                    key={t.seq}
                     className={`turn ${t.type === 'settled' || t.type === 'accept' ? 'settle' : ''} ${
-                      t.type === 'walk_away' || t.type === 'expedite_decline' ? 'reject' : ''}`}
+                      t.type === 'walk_away' || t.type === 'reject' ? 'reject' : ''}`}
                   >
-                    <div className={`turn-side ${t.actor}`}>{t.actor === 'agent' ? 'Agent' : 'Supplier'}</div>
+                    <div className={`turn-side ${t.actor}`}>{t.actor === 'agent' ? 'Your agent' : 'Supplier'}</div>
                     <div>
                       <div className="turn-msg">{t.message}</div>
                       {t.rationale && <div className="turn-why">{t.rationale}</div>}
                     </div>
-                    <div className="turn-price">{t.unitPrice ? `${usd(t.unitPrice)}/kg` : ''}</div>
+                    <div className="turn-price">
+                      {t.unitPrice ? `${usd(t.unitPrice)}/${u}` : ''}
+                      {t.creditDays != null && t.unitPrice ? <small>{t.creditDays}d credit</small> : null}
+                    </div>
                   </div>
-                ))}
+                </React.Fragment>))}
               </div>
 
-              {done && n.outcome === 'agreed' && (
+              {done && neg.outcome === 'agreed' && (
                 <div className="neg-foot">
-                  <div><div className="k">Agreed total</div><div className="v">{usd0(n.total)}</div></div>
-                  <div><div className="k">Unit price</div><div className="v">{usd(n.unitPrice)}</div></div>
-                  <div><div className="k">Delivery</div><div className="v">{n.leadTimeDays}<small style={{ fontSize: 13, color: 'var(--ink-3)', fontWeight: 500, marginLeft: 4 }}>days</small></div></div>
-                  <div>
-                    <div className="k">{savingView(n).label}</div>
-                    <div className={`v ${savingView(n).tone}`}>{savingView(n).value}</div>
-                  </div>
-                  <div><div className="k">Budget headroom</div><div className="v">{usd0(n.budgetHeadroom)}</div></div>
+                  <div><div className="k">Total payable</div><div className="v">{usd0(neg.total)}</div></div>
+                  <div><div className="k">Unit price</div><div className="v">{usd(neg.unitPrice)}</div></div>
+                  <div><div className="k">Credit</div><div className="v">{neg.creditDays}<small className="dk-small">days</small></div></div>
+                  <div><div className="k">Delivery</div><div className="v">{neg.leadTimeDays}<small className="dk-small">days</small></div></div>
+                  <div><div className="k">Under budget by</div><div className="v">{neg.budgetHeadroom != null ? usd0(neg.budgetHeadroom) : '—'}</div></div>
+                  {neg.partialNote && <div className="dk-partial">{neg.partialNote}</div>}
                 </div>
               )}
-              {done && n.outcome === 'failed' && (
-                <div className="neg-foot"><div style={{ color: 'var(--crimson)', fontSize: 13.5 }}>{n.failureDetail}</div></div>
+              {done && neg.outcome === 'failed' && (
+                <div className="neg-foot"><div className="dk-fail">{neg.failureDetail}</div></div>
               )}
             </article>
           );
@@ -6727,6 +6761,99 @@ function NegotiationPanel({ results, revealed, brief }) {
 
 /* ------------------------------------------------------- recommendation */
 
+/*
+ * The arithmetic behind the award, line by line: first what is paid (and
+ * held in escrow), then what it actually costs the buyer once GST credit,
+ * credit days and delivery risk are counted. Every figure is the engine's.
+ */
+function CostBreakdown({ w, row }) {
+  const l = (row && row.landed) || null;
+  const pay = [
+    ['Basic price', `${w.quantityKg.toLocaleString('en-IN')} ${unitOf(w)} at ${usd(w.unitPrice)}`, w.basicTotal],
+    ['Freight', w.freightTotal ? 'billed by the supplier' : 'delivered price, no freight billed', w.freightTotal || 0],
+    ['GST', 'charged on the invoice', w.gstTotal],
+  ];
+  const cost = l ? [
+    ['Basic price and freight', null, paiseToRupees(l.basic_paise + l.freight_billed_paise + l.freight_buyer_arranged_paise)],
+    ['GST cost', 'GST you cannot recover, and financing the rest until input credit', paiseToRupees(l.gst_cost_paise)],
+    ['Value of credit days', `paying ${w.creditDays || 0} days later`, -paiseToRupees(l.credit_benefit_paise)],
+    ...(l.advance_cost_paise ? [['Cost of advance payment', null, paiseToRupees(l.advance_cost_paise)]] : []),
+    ['Expected cost of a late delivery', row.reliability ? `${pctOf(row.reliability.p_late)} chance, from ${row.reliability.observations || 0} past orders` : null, row.expectedLateCost],
+    ['Expected cost of a rejected lot', row.reliability ? `${pctOf(row.reliability.p_reject)} chance` : null, row.expectedRejectCost],
+  ] : [];
+  return (
+    <div className="dk-cost">
+      <div className="dk-cost-col">
+        <div className="eyebrow">What is paid</div>
+        <table className="dk-lines">
+          <tbody>
+            {pay.map(([k, d, v]) => (
+              <tr key={k}><td>{k}{d && <small>{d}</small>}</td><td className="num">{usd0(v)}</td></tr>
+            ))}
+            <tr className="total"><td>Total payable<small>locked in escrow until you confirm delivery</small></td><td className="num">{usd0(w.total)}</td></tr>
+          </tbody>
+        </table>
+      </div>
+      {l && (
+        <div className="dk-cost-col">
+          <div className="eyebrow">What it costs you</div>
+          <table className="dk-lines">
+            <tbody>
+              {cost.map(([k, d, v]) => (
+                <tr key={k}><td>{k}{d && <small>{d}</small>}</td><td className={`num ${v < 0 ? 'neg' : ''}`}>{v < 0 ? `-${usd0(-v)}` : usd0(v)}</td></tr>
+              ))}
+              <tr className="total"><td>Expected total cost<small>what the recommendation minimises</small></td><td className="num">{usd0(row.expectedTotalCost)}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function QuoteComparison({ rows, winnerId, unit }) {
+  if (!rows || rows.length < 2) return null;
+  const sorted = [...rows].sort((a, b) => a.expectedTotalCost - b.expectedTotalCost);
+  return (
+    <div className="dk-compare">
+      <div className="eyebrow">Agreed quotes, compared</div>
+      <div className="sheet">
+        <div className="sheet-scroll">
+          <table className="grid">
+            <thead>
+              <tr>
+                <th>Supplier</th>
+                <th className="right">Unit price</th>
+                <th className="right">Landed per {unit}</th>
+                <th className="right">Payable</th>
+                <th className="right">Delivery</th>
+                <th className="right">Late risk</th>
+                <th className="right">Expected total cost</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((c) => (
+                <tr key={c.supplierId} className={c.supplierId === winnerId ? 'winner' : ''}>
+                  <td>
+                    <div className="sup-name">{c.name}{c.supplierId === winnerId && <span className="badge ok">recommended</span>}{c.lowestPrice && c.supplierId !== winnerId && <span className="badge neutral">lowest price</span>}</div>
+                    {(c.flags || []).length > 0 && <div className="sup-meta">{c.flags.join('; ')}</div>}
+                  </td>
+                  <td className="right num">{usd(c.unitPrice)}</td>
+                  <td className="right num">{usd(c.landedPerUnit)}</td>
+                  <td className="right num">{usd0(c.payable)}</td>
+                  <td className="right num">{c.deliveryDays != null ? `${c.deliveryDays}d` : '—'}</td>
+                  <td className="right"><RiskChip p={c.reliability && c.reliability.p_late} /></td>
+                  <td className="right num"><b>{usd0(c.expectedTotalCost)}</b></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RecommendationPanel({ rec }) {
   const headline = useAnimatedNumber(rec.status === 'recommended' ? rec.winner.total : 0, 700);
 
@@ -6735,7 +6862,7 @@ function RecommendationPanel({ rec }) {
       <section className="section">
         <div className="view-head">
           <div className="eyebrow">Step 05 &middot; Result</div>
-          <h2>No deal inside your constraints</h2>
+          <h2>No deal inside your requirements</h2>
           <p className="sub">{rec.reason}</p>
         </div>
         <div className="panel">
@@ -6756,11 +6883,14 @@ function RecommendationPanel({ rec }) {
   }
 
   const w = rec.winner;
+  const eng = rec.engine || {};
+  const row = (eng.comparison || []).find((c) => c.supplierId === w.supplierId) || null;
   return (
     <section className="section">
       <div className="view-head">
         <div className="eyebrow">Step 05 &middot; Recommendation</div>
         <h2>Recommended deal</h2>
+        <p className="sub">Decision support only: nothing is committed until your head approves and the contract locks the money.</p>
       </div>
 
       <div className="award">
@@ -6768,11 +6898,11 @@ function RecommendationPanel({ rec }) {
           <div>
             <div className="eyebrow">Supplier</div>
             <div className="award-sup">{w.name}</div>
-            <div className="award-loc">{w.city}, {w.country} &middot; {w.sku}</div>
+            <div className="award-loc">{w.city} &middot; {w.sku}</div>
           </div>
           <div className="award-amt">
             <div className="v settled-num">{usd0(Math.round(headline))}</div>
-            <div className="k">{usd(w.unitPrice)}/kg &middot; {w.quantityKg.toLocaleString()} kg</div>
+            <div className="k">{usd(w.unitPrice)}/{unitOf(w)} + GST &middot; {w.quantityKg.toLocaleString('en-IN')} {unitOf(w)}</div>
           </div>
         </header>
 
@@ -6780,6 +6910,10 @@ function RecommendationPanel({ rec }) {
           <div className="award-cell">
             <div className="k">Delivery</div>
             <div className="v">{w.leadTimeDays}<small>days</small></div>
+          </div>
+          <div className="award-cell">
+            <div className="k">Credit</div>
+            <div className="v">{w.creditDays || 0}<small>days</small></div>
           </div>
           <div className="award-cell">
             <div className="k">{savingView(w).label}</div>
@@ -6791,11 +6925,9 @@ function RecommendationPanel({ rec }) {
             <div className="k">Under budget by</div>
             <div className="v">{usd0(w.budgetHeadroom)}</div>
           </div>
-          <div className="award-cell">
-            <div className="k">On-time record</div>
-            <div className="v">{Math.round(w.onTimeRate * 100)}<small>%</small></div>
-          </div>
         </div>
+
+        <CostBreakdown w={w} row={row} />
 
         <div className="why">
           <div className="eyebrow">Why this supplier</div>
@@ -6803,7 +6935,7 @@ function RecommendationPanel({ rec }) {
             {rec.reasons.map((r, i) => (
               <li key={i}>
                 <span className="t">&#10003;</span>
-                <span><span className="kind">{r.kind}</span>{r.text}</span>
+                <span>{r.text}</span>
               </li>
             ))}
           </ul>
@@ -6814,13 +6946,23 @@ function RecommendationPanel({ rec }) {
             {rec.rejected.map((r, i) => (
               <div key={i} className="r">
                 <span className="x">&#10005;</span>
-                <span><b>{r.name}</b>, {r.detail}</span>
+                <span><b>{r.name}</b>: {r.detail}</span>
               </div>
             ))}
             {rec.excludedNote && <div style={{ marginTop: 7, color: 'var(--ink-3)' }}>{rec.excludedNote}</div>}
           </div>
         )}
       </div>
+
+      <QuoteComparison rows={eng.comparison} winnerId={w.supplierId} unit={unitOf(w)} />
+
+      {((eng.tradeOffs || []).length > 0 || (eng.assumptions || []).length > 0) && (
+        <details className="dk-assume">
+          <summary>Trade-offs and assumptions behind this recommendation</summary>
+          {(eng.tradeOffs || []).length > 0 && <><div className="eyebrow">Trade-offs</div><ul>{eng.tradeOffs.map((t) => <li key={t}>{t}</li>)}</ul></>}
+          {(eng.assumptions || []).length > 0 && <><div className="eyebrow">Assumptions</div><ul>{eng.assumptions.map((t) => <li key={t}>{t}</li>)}</ul></>}
+        </details>
+      )}
     </section>
   );
 }
@@ -6829,7 +6971,7 @@ function RecommendationPanel({ rec }) {
 
 function EconomicsPanel({ rec }) {
   const w = rec.winner;
-  const list = w.total + w.savings;
+  const list = w.listTotal != null ? w.listTotal : w.total + w.savings;
   const fee = w.total * 0.015;
   return (
     <section className="section">
@@ -6840,35 +6982,26 @@ function EconomicsPanel({ rec }) {
 
       <div className="figures">
         <div className="figure quiet">
-          <div className="fig-k">Supplier list price</div>
+          <div className="fig-k">At list price</div>
           <div className="fig-v">{usd0(list)}</div>
-          <div className="fig-note">What the catalogue asked for</div>
+          <div className="fig-note">The supplier's catalogue price, with GST</div>
         </div>
         <div className="figure">
-          <div className="fig-k">Negotiated price</div>
+          <div className="fig-k">Negotiated</div>
           <div className="fig-v">{usd0(w.total)}</div>
-          <div className="fig-note">After {w.rounds} rounds</div>
+          <div className="fig-note">After {w.rounds} round{w.rounds === 1 ? '' : 's'}</div>
         </div>
         <div className={`figure ${w.savings >= 0 ? 'accent' : 'hold'}`}>
-          <div className="fig-k">{w.savings >= 0 ? 'Buyer saves' : 'Net of expedite'}</div>
+          <div className="fig-k">You save</div>
           <div className="fig-v">{savingView(w).value}<small>{w.savingsPct}%</small></div>
-          <div className="fig-note">
-            {savingView(w).note || 'Against the list price'}
-          </div>
+          <div className="fig-note">{savingView(w).note || 'Against the list price'}</div>
         </div>
         <div className="figure quiet">
-          <div className="fig-k">Platform fee</div>
-          <div className="fig-v">{usd(fee)}</div>
-          <div className="fig-note">1.5% of settled value</div>
+          <div className="fig-k">Limen fee</div>
+          <div className="fig-v">{usd0(fee)}</div>
+          <div className="fig-note">1.5% of settled value, only if it completes</div>
         </div>
       </div>
-
-      <p className="hint">
-        The fee is charged on settled volume, so it is only earned when a deal actually completes
-        {w.bargained > 0 && fee > 0
-          ? `, and here it is ${(w.bargained / fee).toFixed(1)} times smaller than what the negotiation bargained off list.`
-          : '.'}
-      </p>
     </section>
   );
 }
@@ -6952,7 +7085,7 @@ function ApprovalPanel({ rec, status, policyActive, onPublishPolicy, onFund, onA
           <div className="terms">
             <div className="term"><span className="k">Supplier</span><span className="v">{w.name}</span></div>
             <div className="term"><span className="k">Goods</span><span className="v">{w.quantityKg.toLocaleString()} kg &middot; {w.sku}</span></div>
-            <div className="term"><span className="k">Unit price</span><span className="v">{usd(w.unitPrice)}/kg</span></div>
+            <div className="term"><span className="k">Unit price</span><span className="v">{usd(w.unitPrice)}/{unitOf(w)} + GST</span></div>
             <div className="term"><span className="k">Total commitment</span><span className="v">{usd(w.total)}</span></div>
             <div className="term"><span className="k">Delivery deadline</span><span className="v">{w.leadTimeDays} days from funding</span></div>
             <div className="term"><span className="k">Release condition</span><span className="v">You confirm delivery</span></div>
@@ -7439,7 +7572,7 @@ function SignPanel({ doc, signature, onSign, busy, canSign, next, signatory }) {
         <div className="signbox-head">Awaiting approval</div>
         <div className="signbox-terms">
           <div><span className="k">Supplier</span><span className="v">{doc.supplier.name}</span></div>
-          <div><span className="k">Goods</span><span className="v">{l.quantityKg.toLocaleString()} kg {l.description}</span></div>
+          <div><span className="k">Goods</span><span className="v">{l.quantityKg.toLocaleString('en-IN')} {l.unit || 'kg'} {l.description}</span></div>
           <div><span className="k">Total</span><span className="v strong">{usd(l.negotiatedTotal)}</span></div>
           <div><span className="k">Delivery</span><span className="v">{doc.terms.deliveryDays} days</span></div>
         </div>
@@ -7453,7 +7586,7 @@ function SignPanel({ doc, signature, onSign, busy, canSign, next, signatory }) {
       <div className="signbox-head">You are approving</div>
       <div className="signbox-terms">
         <div><span className="k">Supplier</span><span className="v">{doc.supplier.name}</span></div>
-        <div><span className="k">Goods</span><span className="v">{l.quantityKg.toLocaleString()} kg {l.description}</span></div>
+        <div><span className="k">Goods</span><span className="v">{l.quantityKg.toLocaleString('en-IN')} {l.unit || 'kg'} {l.description}</span></div>
         <div><span className="k">Total</span><span className="v strong">{usd(l.negotiatedTotal)}</span></div>
         <div>
           <span className="k">Authorised limit</span>
@@ -7530,21 +7663,27 @@ function PurchaseSummary({ doc, signature, onSign, busy, onPreview, canSign, nex
           </thead>
           <tbody>
             <tr>
-              <td><b>{l.description}</b><div className="doc-fine">{l.sku}</div></td>
-              <td className="right num">{l.quantityKg.toLocaleString()} kg</td>
+              <td><b>{l.description}</b><div className="doc-fine">{l.sku} &middot; basic price, before GST</div></td>
+              <td className="right num">{l.quantityKg.toLocaleString('en-IN')} {l.unit || 'kg'}</td>
               <td className="right num">{usd(l.unitPrice)}</td>
-              <td className="right num">{usd(l.negotiatedTotal)}</td>
+              <td className="right num">{usd(l.basicTotal != null ? l.basicTotal : l.negotiatedTotal)}</td>
             </tr>
+            {l.freightTotal > 0 && (
+              <tr><td>Freight to destination</td><td /><td /><td className="right num">{usd(l.freightTotal)}</td></tr>
+            )}
+            {l.gstTotal != null && (
+              <tr><td>GST</td><td /><td /><td className="right num">{usd(l.gstTotal)}</td></tr>
+            )}
             <tr className="doc-strike">
-              <td>Supplier list price</td>
-              <td className="right num">{l.quantityKg.toLocaleString()} kg</td>
+              <td>Supplier list price, before GST</td>
+              <td className="right num">{l.quantityKg.toLocaleString('en-IN')} {l.unit || 'kg'}</td>
               <td className="right num">{usd(l.listUnitPrice)}</td>
-              <td className="right num">{usd(l.listTotal)}</td>
+              <td className="right num">{usd(l.listBasic != null ? l.listBasic : l.listTotal)}</td>
             </tr>
           </tbody>
           <tfoot>
-            <tr><td colSpan={3}>Negotiated saving</td><td className="right num pos">{usd(l.saving)} ({l.savingPct}%)</td></tr>
-            <tr className="doc-total"><td colSpan={3}>Amount for approval</td><td className="right num">{usd(l.negotiatedTotal)}</td></tr>
+            <tr><td colSpan={3}>Negotiated saving, before GST</td><td className="right num pos">{usd(l.savingBasic != null ? l.savingBasic : l.saving)} ({l.savingPct}%)</td></tr>
+            <tr className="doc-total"><td colSpan={3}>Amount for approval, incl. GST and freight</td><td className="right num">{usd(l.negotiatedTotal)}</td></tr>
           </tfoot>
         </table>
 
@@ -7697,7 +7836,7 @@ function SettlementRecord({ doc, onPreview }) {
           <tbody>
             <tr>
               <td><b>{l.description}</b><div className="doc-fine">{l.sku}</div></td>
-              <td className="right num">{l.quantityKg.toLocaleString()} kg</td>
+              <td className="right num">{l.quantityKg.toLocaleString('en-IN')} {l.unit || 'kg'}</td>
               <td className="right num">{usd(l.unitPrice)}</td>
               <td className="right num">{usd(l.amount)}</td>
             </tr>

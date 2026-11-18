@@ -10,12 +10,23 @@ const PDFDocument = require('pdfkit');
 
 const PAGE = { size: 'A4', margins: { top: 54, bottom: 64, left: 54, right: 54 } };
 const W = 595.28 - 108; // A4 width less margins
+const PAGE_H = 841.89;   // A4 height
+/* Start a new page when a block of the given height will not fit above the
+   footer. A block that starts too low is otherwise split line by line by
+   pdfkit, one line per page. */
+function ensureRoom(doc, y, need) {
+  if (y + need <= PAGE_H - PAGE.margins.bottom - 16) return y;
+  doc.addPage();
+  return PAGE.margins.top + 6;
+}
 
-const INK = '#14181C';
+const INK = '#0F1B2D';
 const MUTED = '#5A6570';
 const FAINT = '#98A2AC';
 const RULE = '#D8D5CE';
-const PINE = '#0D5D52';
+const PINE = '#15803D';   // success: passed checks, savings
+const BLUE = '#1D4ED8';   // the brand's action blue
+const BRAND = '#F5A524';  // the amber threshold in the mark
 const CRIMSON = '#A32338';
 const AMBER = '#8A5A00';
 
@@ -54,7 +65,7 @@ function brandMark(doc, x, y, size = 18) {
     .closePath()
     .fill();
   // The threshold: the line it does not cross on its own.
-  doc.roundedRect(X(4), Y(36), 40 * u, 7 * u, 3.5 * u).fill();
+  doc.fillColor(BRAND).roundedRect(X(4), Y(36), 40 * u, 7 * u, 3.5 * u).fill();
   doc.restore();
 }
 
@@ -195,10 +206,10 @@ function lineTable(doc, y, rows, totals) {
 // product's actual guarantee, so it gets its own framed panel.
 function authorityPanel(doc, y, a) {
   const h = 66;
-  doc.save().lineWidth(0.8).strokeColor('#B6D0CA').fillColor('#F1F6F4')
+  doc.save().lineWidth(0.8).strokeColor('#BFD3FE').fillColor('#EFF4FF')
     .roundedRect(54, y, W, h, 3).fillAndStroke().restore();
 
-  doc.font('Helvetica-Bold').fontSize(7.5).fillColor(PINE)
+  doc.font('Helvetica-Bold').fontSize(7.5).fillColor(BLUE)
     .text('SPENDING AUTHORITY', 68, y + 11, { characterSpacing: 1.1 });
 
   const cells = [
@@ -268,12 +279,21 @@ function footers(doc, disclaimer) {
   const range = doc.bufferedPageRange();
   for (let i = 0; i < range.count; i++) {
     doc.switchToPage(range.start + i);
-    const y = 792 - 52;
+    /*
+     * The footer sits inside the page's bottom margin. Written with the margin
+     * in place, pdfkit treats it as overflow and starts a new page for it,
+     * which turned a two-page agreement into five with the footer spilling onto
+     * blank pages. The margin is lifted while the footer is drawn and restored.
+     */
+    const bottom = doc.page.margins.bottom;
+    doc.page.margins.bottom = 0;
+    const y = PAGE_H - 50;
     rule(doc, y);
     doc.font('Helvetica').fontSize(7).fillColor(FAINT)
-      .text(disclaimer, 54, y + 8, { width: W - 90 });
+      .text(disclaimer, 54, y + 8, { width: W - 90, lineBreak: true, height: 30, ellipsis: true });
     doc.font('Helvetica').fontSize(7.5).fillColor(MUTED)
-      .text(`Page ${i + 1} of ${range.count}`, 54, y + 8, { width: W, align: 'right' });
+      .text(`Page ${i + 1} of ${range.count}`, 54, y + 8, { width: W, align: 'right', lineBreak: false });
+    doc.page.margins.bottom = bottom;
   }
 }
 
@@ -356,25 +376,33 @@ function agreementPdf(d, sig) {
          ['On-time record', `${Math.round(d.supplier.onTimeRate * 100)}%`], ['Certifications', (d.supplier.certifications || []).join(', ')]]);
 
       y = sectionTitle(doc, 'Order', y);
-      y = lineTable(doc, y, [
-        {
-          description: l.description,
-          sub: `${l.sku}  ·  delivery within ${d.terms.deliveryDays} days  ·  required within ${d.terms.deliveryRequirement} days`,
-          quantity: `${l.quantityKg.toLocaleString('en-US')} kg`,
-          unit: money(l.unitPrice),
-          amount: money(l.negotiatedTotal),
-        },
-        {
-          description: 'Supplier list price before negotiation',
-          quantity: `${l.quantityKg.toLocaleString('en-US')} kg`,
+      {
+        /* Unit prices and the basic amount are before GST; the total for
+           approval includes GST and freight, which is what the escrow holds. */
+        const qty = `${l.quantityKg.toLocaleString('en-IN')} ${l.unit || 'kg'}`;
+        const rows = [
+          {
+            description: l.description,
+            sub: `${l.sku}  ·  basic price before GST  ·  delivery within ${d.terms.deliveryDays} days (required within ${d.terms.deliveryRequirement})`,
+            quantity: qty,
+            unit: money(l.unitPrice),
+            amount: money(l.basicTotal != null ? l.basicTotal : l.negotiatedTotal),
+          },
+        ];
+        if (l.freightTotal > 0) rows.push({ description: 'Freight to destination', quantity: '', unit: '', amount: money(l.freightTotal) });
+        if (l.gstTotal != null) rows.push({ description: 'GST', quantity: '', unit: '', amount: money(l.gstTotal) });
+        rows.push({
+          description: 'Supplier list price before negotiation, before GST',
+          quantity: qty,
           unit: money(l.listUnitPrice),
-          amount: money(l.listTotal),
+          amount: money(l.listBasic != null ? l.listBasic : l.listTotal),
           strike: true,
-        },
-      ], [
-        { label: `Negotiated saving (${l.savingPct}% over ${d.negotiation.rounds} rounds)`, value: money(l.saving), tone: 'pos' },
-        { label: 'Total for approval', value: money(l.negotiatedTotal), strong: true },
-      ]);
+        });
+        y = lineTable(doc, y, rows, [
+          { label: `Negotiated saving before GST (${l.savingPct}% over ${d.negotiation.rounds} rounds)`, value: money(l.savingBasic != null ? l.savingBasic : l.saving), tone: 'pos' },
+          { label: 'Total for approval, incl. GST and freight', value: money(l.negotiatedTotal), strong: true },
+        ]);
+      }
 
       y = authorityPanel(doc, y, {
         limit: d.authority.limit,
@@ -395,7 +423,7 @@ function agreementPdf(d, sig) {
         y += 8;
       }
 
-      if (y > 560) { doc.addPage(); y = 60; }
+      y = ensureRoom(doc, y, 190);
 
       y = signatureBlock(doc, y, [
         {
@@ -411,7 +439,7 @@ function agreementPdf(d, sig) {
           ? 'Approved automatically by a standing threshold. No person signed this.'
           : 'Demo e-signature, captured as a typed name. Not legally binding.');
 
-      verificationBlock(doc, y, [
+      verificationBlock(doc, ensureRoom(doc, y, 150), [
         ['Document ID', d.reference],
         ['Version', String(sig ? sig.version : 1)],
         ['Status', signed ? 'Signed and locked' : 'Awaiting buyer approval'],
@@ -453,7 +481,7 @@ function invoicePdf(d, sig) {
         {
           description: l.description,
           sub: `${l.sku}  ·  delivered in ${d.delivery.onTime ? 'the agreed window' : 'a late window'}`,
-          quantity: `${l.quantityKg.toLocaleString('en-US')} kg`,
+          quantity: `${l.quantityKg.toLocaleString('en-IN')} ${l.unit || 'kg'}`,
           unit: money(l.unitPrice),
           amount: money(l.amount),
         },
@@ -502,7 +530,7 @@ function invoicePdf(d, sig) {
         { role: 'Supplier acknowledgement' },
       ], 'Demo e-signature. Not legally binding.');
 
-      verificationBlock(doc, y, [
+      verificationBlock(doc, ensureRoom(doc, y, 150), [
         ['Invoice ID', d.reference],
         ['Agreement ref', d.approval.summaryReference],
         ['Verification', 'Open /verify/' + d.reference + ' in the application'],

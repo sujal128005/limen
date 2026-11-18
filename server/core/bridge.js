@@ -500,7 +500,7 @@ function eventToStep(ev, round, s, brief, rationale) {
     step.leadTimeDays = t.lead_time_days;
     step.total = Math.round(rupees(t.unit_price_paise) * t.quantity);
   }
-  const price = t ? `${inr(rupees(t.unit_price_paise))}/${u}` : '';
+  const price = t ? `₹${rupees(t.unit_price_paise).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/${u}` : '';
   const credit = t ? `, ${t.credit_days} days credit` : '';
   const who = by === 'agent' ? 'Your agent' : s.name;
   step.message = {
@@ -510,7 +510,17 @@ function eventToStep(ev, round, s, brief, rationale) {
     WALK_AWAY: `${who} ends the negotiation.`,
     REJECT: `${who} rejects the offer.`,
   }[ev.action] || `${who}: ${String(ev.action).toLowerCase()}.`;
-  if (rationale && rationale.length) step.rationale = rationale[0];
+  /*
+   * Whose reasoning goes where. The buyer's agent explains itself to the
+   * buyer. A supplier agent's reasoning ("you have moved 54% of the way to
+   * your lowest acceptable price") is that supplier's private position: it is
+   * kept apart as supplierNote, which the server strips before anything is
+   * stored or sent to a buyer and which only that supplier's portal reads.
+   */
+  if (rationale && rationale.length) {
+    const text = humanise(rationale[0], {});
+    if (by === 'agent') step.rationale = text; else step.supplierNote = text;
+  }
   return step;
 }
 
@@ -650,15 +660,26 @@ function noDealDetail(s, steps, brief) {
   const last = (actor) => [...steps].reverse().find((x) => x.actor === actor && x.unitPrice != null);
   const theirs = last('supplier');
   const ours = last('agent');
+  const p2 = (v) => `₹${Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   if (theirs && ours) {
-    return `${s.name} would not go below ${inr(theirs.unitPrice)}/${u}. Your agent's limit was ${inr(ours.unitPrice)}/${u}, `
+    return `Would not go below ${p2(theirs.unitPrice)}/${u}. Your agent's limit was ${p2(ours.unitPrice)}/${u}, `
       + 'set by your budget or by what the next-best supplier costs, so it walked away rather than overpay.';
   }
-  return `No terms were agreed with ${s.name} within both sides' limits.`;
+  return 'No terms were agreed within both sides\' limits.';
 }
 
 /* The engine writes for auditors: supplier codes, "Rs", "KG". People read names and ₹. */
+/* Engine flag codes, in words. */
+const FLAG_TEXT = {
+  PARTIAL_QUANTITY: 'Can supply part of the quantity only',
+  OVER_BUYER_LIMITS: 'Over your spending limit',
+  LATE: 'Misses the delivery date',
+};
+/* Lines that only describe a setting this server chose, not the purchase. */
+const NOISE = [/^Only single-supplier awards are feasible\.?$/];
+
 function humanise(text, byId) {
+  if (FLAG_TEXT[text]) return FLAG_TEXT[text];
   return String(text)
     .replace(/\b(SUP-[A-Z0-9-]+)\b/g, (m, id) => (byId[id] ? byId[id].name : m))
     .replace(/\bRs\.?\s?/g, '₹')
@@ -695,10 +716,13 @@ function agreedResult(row, s, q, neg, brief) {
     expedited: false, expediteFeePct: 0, expediteCost: 0,
     listTotal: Math.round(listBasic * (1 + gst)),
     quotedTotal: Math.round(quotedBasic * (1 + gst)),
-    bargained: Math.max(0, Math.round((quotedBasic - basic) * (1 + gst))),
+    // The saving is measured against the list price, like for like. The
+    // supplier's opening quote often came with credit days the final terms
+    // traded away, so "quote minus agreed" overstates what bargaining won.
+    bargained: Math.max(0, Math.round((listBasic - basic) * (1 + gst))),
     savings: Math.max(0, Math.round((listBasic - basic) * (1 + gst))),
     savingsPct: listBasic ? Math.max(0, Math.round(((listBasic - basic) / listBasic) * 100)) : 0,
-    budgetHeadroom: brief.budgetTotal ? Math.round(brief.budgetTotal - total) : null,
+    budgetHeadroom: brief.budgetTotal && !partial ? Math.round(brief.budgetTotal - total) : null,
     rounds: neg.rounds,
     transcript: neg.steps,
     engine: { quote: q, agreedTerms: t },
@@ -796,7 +820,7 @@ async function recommend(brief, negotiations, rows, ctx, artefacts, suppliers = 
     status: 'recommended',
     currency: 'INR',
     winner,
-    reasons: rec.explanation.map((text) => ({ kind: 'engine', text: humanise(text, byId) })),
+    reasons: rec.explanation.filter((t) => !NOISE.some((re) => re.test(t))).map((text) => ({ kind: 'engine', text: humanise(text, byId) })),
     ranking: { method: 'expected-total-cost', source: 'engine' },
     runnersUp: others.map((o) => {
       const c = comparison.find((x) => x.supplierId === o.supplierId) || {};

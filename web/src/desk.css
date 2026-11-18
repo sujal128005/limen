@@ -1,0 +1,60 @@
+/* ==========================================================================
+   Buyer desk: the engine's evidence. Prefix dk-. Built on styles.css tokens.
+   ========================================================================== */
+
+.spec-n { margin-top: 2px; font-size: 11.5px; color: var(--ink-4); }
+
+.dk-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
+.dk-chips .eyebrow { margin-right: 4px; }
+.dk-chip { font-size: 12.5px; padding: 4px 10px; border-radius: 999px; background: var(--surface); border: 1px solid var(--hair-strong); color: var(--ink-2); }
+
+.dk-notes { margin: 14px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.dk-notes li { font-size: 13px; color: var(--ink-2); padding-left: 16px; position: relative; }
+.dk-notes li::before { content: ''; position: absolute; left: 4px; top: 8px; width: 5px; height: 5px; border-radius: 50%; background: var(--brand, #F5A524); }
+
+.dk-method { margin-top: 16px; padding: 12px 14px; border-radius: 10px; background: var(--sunk); font-size: 13px; color: var(--ink-2); line-height: 1.55; }
+.dk-method b { color: var(--ink); }
+
+.dk-meter { display: inline-block; width: 72px; height: 6px; border-radius: 4px; background: var(--sunk); overflow: hidden; vertical-align: middle; }
+.dk-meter i { display: block; height: 100%; background: var(--pine); border-radius: 4px; }
+
+.dk-risk { display: inline-block; min-width: 42px; text-align: center; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; font-variant-numeric: tabular-nums; }
+.dk-risk.low { background: var(--ok-wash, #ECFDF3); color: var(--ok, #15803D); }
+.dk-risk.mid { background: var(--amber-wash); color: var(--amber); }
+.dk-risk.high { background: var(--crimson-wash); color: var(--crimson); }
+.dk-risk.na { color: var(--ink-4); }
+
+.dk-unverified { display: flex; gap: 6px; font-size: 12.5px; color: var(--amber); margin-top: 3px; }
+.dk-unverified .marker { font-weight: 700; }
+
+.turn-price small { display: block; font-size: 11px; color: var(--ink-4); font-weight: 500; }
+.dk-small { font-size: 13px; color: var(--ink-3); font-weight: 500; margin-left: 4px; }
+.dk-partial { grid-column: 1 / -1; font-size: 13px; color: var(--amber); }
+.dk-fail { color: var(--crimson); font-size: 13.5px; line-height: 1.5; }
+
+.dk-cost { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; padding: 18px 22px; border-top: 1px solid var(--hair); }
+.dk-cost .eyebrow { margin-bottom: 8px; }
+.dk-lines { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.dk-lines td { padding: 7px 0; border-bottom: 1px dashed var(--hair); vertical-align: top; }
+.dk-lines td small { display: block; font-size: 11.5px; color: var(--ink-4); margin-top: 1px; }
+.dk-lines td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; padding-left: 12px; }
+.dk-lines td.neg { color: var(--ok, #15803D); }
+.dk-lines tr.total td { border-bottom: 0; border-top: 1.5px solid var(--ink); font-weight: 700; padding-top: 9px; }
+
+.dk-compare { margin-top: 22px; }
+.dk-compare .eyebrow { margin-bottom: 10px; }
+.dk-compare .sup-name .badge { margin-left: 8px; }
+
+.dk-assume { margin-top: 18px; border: 1px solid var(--hair); border-radius: 12px; background: var(--surface); padding: 12px 16px; font-size: 13.5px; color: var(--ink-2); }
+.dk-assume summary { cursor: pointer; font-weight: 600; color: var(--ink); }
+.dk-assume .eyebrow { margin: 12px 0 4px; }
+.dk-assume ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+
+@media (max-width: 900px) { .dk-cost { grid-template-columns: 1fr; } }
+
+.dk-fold { display: block; width: 100%; margin: 4px 0; padding: 8px; border: 1px dashed var(--hair-strong); border-radius: 8px; background: var(--surface-2); color: var(--pine); font: 600 12.5px var(--sans); cursor: pointer; }
+.dk-fold:hover { border-color: var(--pine); }
+
+.dk-howlist { margin: 4px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.dk-howlist li { font-size: 13px; line-height: 1.5; color: var(--ink-2); padding: 10px 12px; border-radius: 10px; background: var(--sunk); }
+.dk-howlist b { color: var(--ink); }

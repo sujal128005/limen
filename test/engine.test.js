@@ -147,6 +147,18 @@ async function run() {
     gt(agreed(hd), agreed(tight), 'more agreements at ₹26 lakh than at ₹24 lakh');
   });
 
+  await test('a supplier agent\'s reasoning never sits on the buyer\'s transcript', async () => {
+    let supplierSteps = 0;
+    for (const n of hd.negotiations) {
+      for (const t of n.transcript.filter((x) => x.actor === 'supplier')) {
+        supplierSteps += 1;
+        eq(t.rationale, undefined, `${n.supplierId}#${t.seq} carries supplier reasoning as buyer-visible rationale`);
+      }
+    }
+    gt(supplierSteps, 0, 'there were supplier moves to check');
+    ok(hd.negotiations.some((n) => n.transcript.some((t) => t.supplierNote)), 'the supplier\'s own note is kept apart for its portal');
+  });
+
   await test('negotiation is deterministic for the same inputs', async () => {
     const again = await sourcingRun(REQ_HDPE);
     const sig = (r) => JSON.stringify(r.negotiations.map((n) => [n.supplierId, n.outcome, n.unitPrice || null, n.transcript.map((t) => t.unitPrice || null)]));
