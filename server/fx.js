@@ -1,76 +1,49 @@
 'use strict';
 
 /*
- * Two currencies, and the fact that they are two.
+ * One currency, and the fact that it is one.
  *
- * This file exists because the product was quietly treating them as one. The
- * purchase, the escrow and every figure a person approves are in USD. Razorpay
- * is INR. The payout call was sending the purchase total straight through with
- * `currency: 'INR'`, so a deal a head approved at $1,175 was instructing a
- * payment rail to send ₹1,175, which is a different amount of money by a factor
- * of about eighty five.
+ * Every figure a person approves in Limen is in Indian rupees: list prices,
+ * negotiated terms, GST, freight, the ceiling the head publishes and the amount
+ * finance pays. The escrow contract holds a rupee-pegged token with six
+ * decimals (1 token = ₹1, 1 paisa = 10,000 units), so the amount locked on
+ * chain IS the rupee amount, and the payout to the supplier's bank account
+ * through Razorpay is the same number.
  *
- * Nothing caught it because both numbers are called "amount" and neither
- * carried its unit. Adding the payment float made it visible: the float is
- * denominated in rupees, the payout was denominated in dollars, and the check
- * that the float could cover the payout was comparing the two directly.
+ * This module used to convert a dollar escrow into rupees at a stated rate.
+ * That conversion is gone, and with it the class of bug it existed to catch
+ * (a payout sent in one currency for a purchase approved in another). The
+ * functions keep their names so every caller still reads the rate it used and
+ * stores it with the payment record; the rate is now exactly 1.
  *
- * BE CLEAR ABOUT WHAT THIS IS. It is a stated constant, not a live rate. There
- * is no FX feed here, no provider, and no attempt to track the market. Every
- * screen that shows a converted figure says which rate produced it, and the
- * rate travels with the payment record so a conversion can be checked later
- * against the number that was actually used rather than against whatever the
- * constant says today.
- *
- * A product that silently converts at a rate nobody stated is worse than one
- * that refuses to convert at all, so if this ever needs to be real it should
- * become a rate fetched, timestamped and stored per payment. The shape below is
- * built to make that a substitution rather than a rewrite.
+ * If the escrow ever moves to a token that is NOT rupee-pegged, this is the one
+ * place that must change, and it must become a rate fetched, timestamped and
+ * stored per payment, never a silent constant.
  */
 
-/*
- * Overridable, because a demonstration in a different month should not have to
- * ship a code change to stop quoting a stale figure. Deliberately not read from
- * a network: an interface that silently reprices a purchase between the screen
- * that approves it and the screen that pays it would be a worse problem than a
- * stale constant.
- */
-const DEFAULT_USD_INR = 85;
+const TOKEN = 'INR';   // what one escrow token is worth one of
+const RATE = 1;
 
-function rate() {
-  const r = Number(process.env.LIMEN_USD_INR || DEFAULT_USD_INR);
-  if (!Number.isFinite(r) || r <= 0) {
-    throw new Error(`LIMEN_USD_INR is ${process.env.LIMEN_USD_INR}, which is not a usable rate.`);
-  }
-  return r;
-}
+function rate() { return RATE; }
 
-/** Whether the rate in force is the built-in constant or one somebody set. */
-function isDefaultRate() {
-  return !process.env.LIMEN_USD_INR || Number(process.env.LIMEN_USD_INR) === DEFAULT_USD_INR;
-}
+/** The token is rupee-pegged, so the default is the only rate there is. */
+function isDefaultRate() { return true; }
 
 /**
- * Convert, and say so.
- *
- * Returns the rate alongside the figure on purpose. A converted amount without
- * the rate that produced it cannot be checked by anybody afterwards, and this
- * one ends up in a payment record and on an invoice.
+ * Escrow amount -> rupees paid out. Identity, and says so: the rate travels
+ * with the figure so a payment record shows what was used.
  */
-function usdToInr(usd) {
-  const r = rate();
-  const amount = Math.round(Number(usd) * r * 100) / 100;
-  return { amount, rate: r, from: 'USD', to: 'INR', stated: true };
+function usdToInr(amount) {
+  return { amount: Math.round(Number(amount) * 100) / 100, rate: RATE, from: TOKEN, to: 'INR', stated: true };
 }
 
-function inrToUsd(inr) {
-  const r = rate();
-  return { amount: Math.round((Number(inr) / r) * 100) / 100, rate: r, from: 'INR', to: 'USD', stated: true };
+function inrToUsd(amount) {
+  return { amount: Math.round(Number(amount) * 100) / 100, rate: RATE, from: 'INR', to: TOKEN, stated: true };
 }
 
-/** One sentence a person can read under a figure, so no screen has to invent it. */
+/** One sentence a person can read under a figure. */
 function disclosure() {
-  return `Converted at a stated rate of ${rate()} INR to 1 USD. This is a fixed figure, not a live market rate.`;
+  return 'The escrow holds a rupee-pegged token (1 token = ₹1), so the amount locked on chain is the amount paid. No currency is converted.';
 }
 
-module.exports = { rate, usdToInr, inrToUsd, disclosure, isDefaultRate, DEFAULT_USD_INR };
+module.exports = { rate, usdToInr, inrToUsd, disclosure, isDefaultRate, DEFAULT_USD_INR: RATE, TOKEN };

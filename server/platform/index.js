@@ -1,4 +1,5 @@
 'use strict';
+const { inr } = require('../money');
 
 /*
  * The platform: accounts, companies, the supplier portal, and the seam that
@@ -162,10 +163,10 @@ function createPlatform({ identity, workspace, payments, taxonomy, store: givenS
   }
 
   const STAGE_NOTICE = {
-    approved: (v) => ({ title: `Order approved by ${v.buyer.name}`, body: `${v.request.quantityKg} kg ${v.request.material} at $${v.order.terms.unitPrice}/kg. Acknowledge it and commit a delivery date.` }),
-    in_escrow: (v) => ({ title: 'Funds are in escrow. Ship the order.', body: `$${v.order.terms.total} is held by the escrow contract for ${v.buyer.name}. It is released when the buyer confirms delivery.` }),
+    approved: (v) => ({ title: `Order approved by ${v.buyer.name}`, body: `${v.request.quantityKg} ${v.request.unit || 'kg'} ${v.request.material} at ${inr(v.order.terms.unitPrice)}/${v.request.unit || 'kg'}. Acknowledge it and commit a delivery date.` }),
+    in_escrow: (v) => ({ title: 'Funds are in escrow. Ship the order.', body: `${inr(v.order.terms.total)} is held by the escrow contract for ${v.buyer.name}. It is released when the buyer confirms delivery.` }),
     delivered: (v) => ({ title: 'Delivery confirmed by the buyer', body: `${v.buyer.name} confirmed receipt. Payment is now with their finance desk.` }),
-    paid: (v) => ({ title: 'Payment settled', body: `$${v.order.terms.total} for ${v.request.quantityKg} kg ${v.request.material} has been paid out.` }),
+    paid: (v) => ({ title: 'Payment settled', body: `${inr(v.order.terms.total)} for ${v.request.quantityKg} ${v.request.unit || 'kg'} ${v.request.material} has been paid out.` }),
     rejected: () => ({ title: 'The buyer did not approve the purchase', body: 'Their approver rejected it. Nothing is owed and nothing is held.' }),
   };
 

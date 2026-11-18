@@ -1,4 +1,5 @@
 'use strict';
+const { inrText } = require('./money');
 const PDFDocument = require('pdfkit');
 
 // Real PDF generation. Not print CSS, not an HTML screenshot: pdfkit writes the
@@ -19,7 +20,7 @@ const CRIMSON = '#A32338';
 const AMBER = '#8A5A00';
 
 const money = (n) =>
-  '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  inrText(n);
 
 /*
  * The mark, as the application draws it.
@@ -333,7 +334,7 @@ function agreementPdf(d, sig) {
            * misled by a document that merely stayed quiet.
            */
           ? 'NO PERSON APPROVED THIS PURCHASE. It was sanctioned by a standing automatic-approval '
-            + `threshold of $${sig.rule && sig.rule.autoApproveBelow != null ? Number(sig.rule.autoApproveBelow).toLocaleString() : 'unknown'}, `
+            + `threshold of ${sig.rule && sig.rule.autoApproveBelow != null ? inrText(sig.rule.autoApproveBelow, { decimals: 0 }) : 'unknown'}, `
             + `set by ${sig.rule && sig.rule.setBy ? sig.rule.setBy : 'an unrecorded role'}. `
             + 'The on-chain spending ceiling was enforced by the escrow contract regardless. '
           : 'The approval was captured as a typed name and is a demonstration e-signature, not a '
@@ -551,7 +552,7 @@ function auditPdf({ workspace, reference, purchase, entries, generatedAt }) {
         y = pairs(doc, [
           ['Reference', reference || '-'],
           ['Supplier', purchase.supplier || '-'],
-          ['Amount', purchase.amount != null ? `USD ${Number(purchase.amount).toFixed(2)}` : '-'],
+          ['Amount', purchase.amount != null ? inrText(purchase.amount) : '-'],
           ['Final state', purchase.state || '-'],
           ['Raised by', purchase.submittedBy || '-'],
           ['Approved by', purchase.approver || 'not approved'],

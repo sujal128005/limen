@@ -1,4 +1,5 @@
 'use strict';
+const { inr2 } = require('./money');
 
 /*
  * Telling somebody it is their turn.
@@ -74,7 +75,7 @@ function compose({ reference, state, next, amount, supplier, workspace }) {
   }
 
   const money = amount != null
-    ? ` for $${Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    ? ` for ${inr2(amount)}`
     : '';
   const from = supplier ? ` from ${supplier}` : '';
 

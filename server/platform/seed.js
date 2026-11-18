@@ -3,9 +3,10 @@
 /*
  * Demo accounts, so the two-sided loop can be walked on a fresh install:
  * a buyer company with all three desks staffed, and two supplier companies
- * that have CLAIMED seeded suppliers - Anhui Konsheng, which wins the reference
- * PET purchase, and Meridian, which walks away on price - so a buyer's run
- * shows up in a real supplier portal with a real order to ship.
+ * that have CLAIMED seeded suppliers - Kaveri Polymers, the only food-contact
+ * PET supplier in reach of Chennai, and Narmada Polymers, a large resin house
+ * in Vadodara - so a buyer's run shows up in a real supplier portal with a
+ * real order to ship.
  *
  * Every address is on .example, which by RFC 2606 can never be a real mailbox.
  * Seeding runs only on an empty account store, only outside production unless
@@ -24,13 +25,13 @@ const PEOPLE = {
     { email: 'rohit@aarav.example', name: 'Rohit Deshmukh', role: 'admin', desk: 'sales' },
     { email: 'imran@aarav.example', name: 'Imran Qureshi', role: 'member', desk: 'finance' },
   ],
-  anhui: [
-    { email: 'li.wei@konsheng.example', name: 'Li Wei', role: 'owner' },
-    { email: 'chen.yu@konsheng.example', name: 'Chen Yu', role: 'fulfilment' },
-    { email: 'mei.lin@konsheng.example', name: 'Mei Lin', role: 'finance' },
+  kaveri: [
+    { email: 'lakshmi@kaveri.example', name: 'Lakshmi Iyer', role: 'owner' },
+    { email: 'arjun@kaveri.example', name: 'Arjun Nair', role: 'fulfilment' },
+    { email: 'meena@kaveri.example', name: 'Meena Subramanian', role: 'finance' },
   ],
-  meridian: [
-    { email: 'aisha@meridian.example', name: 'Aisha Rahman', role: 'owner' },
+  narmada: [
+    { email: 'harsh@narmada.example', name: 'Harsh Patel', role: 'owner' },
   ],
 };
 
@@ -95,9 +96,9 @@ async function seed(platform, { force = false } = {}) {
     return org;
   }
 
-  const anhui = await claim('SUP-C', PEOPLE.anhui);
-  await claim('SUP-A', PEOPLE.meridian);
-  if (anhui) await demoPayoutAccount(platform, anhui);
+  const kaveri = await claim('SUP-C', PEOPLE.kaveri);
+  await claim('SUP-A', PEOPLE.narmada);
+  if (kaveri) await demoPayoutAccount(platform, kaveri);
 
   await platform.onCatalogueChanged();
   return { seeded: true, password: DEMO_PASSWORD, people: PEOPLE };
@@ -106,12 +107,12 @@ async function seed(platform, { force = false } = {}) {
 /* What the demo companies say about themselves, by the catalogue entry they claim. */
 const CLAIMS = {
   'SUP-C': {
-    legalName: 'Anhui Konsheng Materials Co., Ltd.',
-    about: 'Food-contact PET and polyolefin resins for bottle and film converters. BRC certified plant in Hefei.',
+    legalName: 'Kaveri Polymers Private Limited',
+    about: 'Food-contact PET bottle resin, HDPE and BOPP film for converters across South India. BIS and ISO 9001 certified plant in Chennai.',
   },
   'SUP-A': {
-    legalName: 'Meridian Polymers Sdn Bhd',
-    about: 'PET, LDPE and BOPP film for South-East Asian converters.',
+    legalName: 'Narmada Polymers Limited',
+    about: 'HDPE, PP and LLDPE for blow moulders, raffia and film converters. Plant and warehouse in Vadodara.',
   },
 };
 
@@ -138,6 +139,8 @@ async function claimSupplier(platform, supplierId) {
   for (const prod of base.products) {
     await store.insert('listings', {
       id: S.newId('lst'), orgId: org.id, sku: prod.sku, material: prod.material, grade: prod.grade || null,
+      materialKey: prod.materialKey || null, specs: prod.specs || null, uom: prod.uom || 'KG', unit: prod.unit || 'kg',
+      unitWeightKg: prod.unitWeightKg || 1, gstRateBps: prod.gstRateBps == null ? 1800 : prod.gstRateBps,
       description: '', listUnitPrice: prod.listUnitPrice, moqKg: prod.moqKg,
       monthlyCapacityKg: prod.monthlyCapacityKg == null ? null : prod.monthlyCapacityKg,
       leadTimeDays: prod.leadTimeDays, qualityScore: prod.qualityScore == null ? null : prod.qualityScore,
@@ -163,7 +166,7 @@ async function demoPayoutAccount(platform, org) {
  * The public supplier demo: the supplier-side twin of the buyer's demo desk.
  *
  * One shared account, signed into without a password, at a demo company that
- * claims the catalogue's Anhui Konsheng, which wins the reference PET
+ * claims the catalogue's Kaveri Polymers, which wins the reference PET
  * purchase, so a run on the buyer demo turns up here as an order to ship. It
  * holds the 'demo' role: it sees floors and orders and can ship, and it cannot
  * change listings, prices, the team, the company record or payouts, because

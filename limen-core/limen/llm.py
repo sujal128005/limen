@@ -60,7 +60,8 @@ _RANGE = r"(\d+(?:\.\d+)?)\s*(?:-|–|to)\s*(\d+(?:\.\d+)?)"
 
 _GRADE_TYPES = [("blow_moulding", r"blow[\s-]*mou?ld(?:ing)?"), ("injection_moulding", r"injection[\s-]*mou?ld(?:ing)?"),
                 ("raffia", r"raffia"), ("pipe", r"pipe\s+grade"), ("film", r"film\s+grade"),
-                ("roto_moulding", r"roto[\s-]*mou?ld(?:ing)?")]
+                ("roto_moulding", r"roto[\s-]*mou?ld(?:ing)?"), ("bottle", r"bottle[\s-]*grade"),
+                ("fibre", r"fib(?:re|er)[\s-]*grade"), ("sheet", r"sheet[\s-]*grade")]
 _STEEL_GRADES = [(r"IS\s*2062\s*E\s*(250|350)", "IS2062_E{}"), (r"IS\s*513\s*CR\s*([1-4])", "IS513_CR{}"),
                  (r"IS\s*(10748)", "IS{}"), (r"SAE\s*(1010)", "SAE{}")]
 
@@ -134,7 +135,8 @@ class StubLLM:
             add("budget_inr", _f(m.group(1)) * mult, m)
 
         # specifications
-        for label, attr in ((r"(?:mfi|melt\s+flow(?:\s+index)?)", "mfi_g_10min"), (r"density", "density_g_cc")):
+        for label, attr in ((r"(?:mfi|melt\s+flow(?:\s+index)?)", "mfi_g_10min"), (r"density", "density_g_cc"),
+                            (r"(?:\biv\b|intrinsic\s+viscosity)", "iv_dl_g")):
             for m in re.finditer(label + r"\D{0,15}?" + _RANGE, text, I):
                 add(f"spec.{attr}", {"min": float(m.group(1)), "max": float(m.group(2))}, m)
             for m in re.finditer(label + r"\D{0,15}?(\d+(?:\.\d+)?)(?!\s*(?:-|–|to)\s*\d)(?![\d.])", text, I):

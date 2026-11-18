@@ -1,4 +1,5 @@
 'use strict';
+const { inr, inr2 } = require('./money');
 
 /*
  * The two sentences at the top of an approver's screen.
@@ -34,8 +35,8 @@
 
 const grok = require('./grok');
 
-const usd = (n) => `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const usd0 = (n) => `$${Math.round(Number(n)).toLocaleString('en-US')}`;
+const usd = (n) => inr2(n);
+const usd0 = (n) => inr(Math.round(Number(n)));
 const pct = (n) => `${Math.abs(n).toFixed(1)}%`;
 
 /**

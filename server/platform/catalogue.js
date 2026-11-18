@@ -49,6 +49,14 @@ function makeCatalogue({ store }) {
     sku: l.sku,
     material: l.material,
     grade: l.grade || null,
+    // What the decision engine reads. A listing created in the portal without
+    // a known material and specifications is shown to its owner but not sourced.
+    materialKey: l.materialKey || null,
+    specs: l.specs || null,
+    uom: l.uom || 'KG',
+    unit: l.unit || 'kg',
+    unitWeightKg: l.unitWeightKg == null ? 1 : Number(l.unitWeightKg),
+    gstRateBps: l.gstRateBps == null ? 1800 : Number(l.gstRateBps),
     listUnitPrice: Number(l.listUnitPrice),
     moqKg: Number(l.moqKg),
     monthlyCapacityKg: l.monthlyCapacityKg == null ? null : Number(l.monthlyCapacityKg),
@@ -56,6 +64,12 @@ function makeCatalogue({ store }) {
     qualityScore: l.qualityScore == null ? null : Number(l.qualityScore),
     private: {
       floorUnitPrice: Number(l.private.floorUnitPrice),
+      unitCost: l.private.unitCost == null ? null : Number(l.private.unitCost),
+      targetMarginBps: l.private.targetMarginBps == null ? null : Number(l.private.targetMarginBps),
+      inventory: Number(l.private.inventory || 0),
+      committedNext30d: Number(l.private.committedNext30d || 0),
+      maxPerDealKg: l.private.maxPerDealKg == null ? null : Number(l.private.maxPerDealKg),
+      maxTotalKg: l.private.maxTotalKg == null ? null : Number(l.private.maxTotalKg),
       concessionRate: Number(l.private.concessionRate),
       minMarginPct: Number(l.private.minMarginPct),
       expediteMaxDays: Number(l.private.expediteMaxDays),

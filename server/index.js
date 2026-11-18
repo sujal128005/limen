@@ -24,6 +24,9 @@ const verification = require('./verification');
 const trust = require('./trust');
 const outcomes = require('./outcomes');
 const { evaluateCandidates, selectForNegotiation } = require('./engine/match');
+const engine = require('./core/engine');
+const { inr, inr2 } = require('./money');
+const bridge = require('./core/bridge');
 const { negotiateAll } = require('./engine/negotiate');
 const { recommend } = require('./engine/recommend');
 const workspace = require('./workspace');
@@ -611,6 +614,7 @@ app.get('/api/status', wrap(async (req, res) => {
     supplierSeeded: !!supplierSource.seeded,
     listingCount: SUPPLIERS.reduce((n, s) => n + s.products.length, 0),
     counselModel: grok.isEnabled() ? grok.MODEL : 'local',
+    engine: (() => { const e = engine.status(); return { ready: e.ready, version: e.version, mode: e.mode }; })(),
     // Google AI in use: Gemini on the free tier, and which features it powers.
     // Never the key; only whether one is set, the models and the call counts.
     googleAi: (() => {
@@ -908,33 +912,12 @@ app.post('/api/brief', wrap(async (req, res) => {
   guard(req, session, 'run');
   const text = String(req.body.text || '').slice(0, 4000);
   if (!text.trim()) throw new Error('Describe what you need to source.');
-  let brief = parseRequest(text);
-  /* A local model on a laptop CPU takes seconds; when the rules parser already
-     has everything there is no gap for it to fill, so it is not asked. */
-  const skipModel = gemini.provider() === 'gemma' && brief.complete;
-  const llm = skipModel ? null : await llmParse(text);
-  if (llm) {
-    // LLM only fills gaps the deterministic parser left open; it never overrides
-    // a value that was unambiguously present in the text.
-    const merged = { ...brief };
-    for (const k of ['material', 'grade', 'quantityKg', 'budgetTotal', 'deadlineDays', 'minQuality']) {
-      if ((merged[k] === null || merged[k] === undefined) && llm[k] != null) merged[k] = llm[k];
-    }
-    if ((!merged.certifications || !merged.certifications.length) && Array.isArray(llm.certifications)) {
-      merged.certifications = llm.certifications;
-    }
-    brief = parseRequest(text);
-    Object.assign(brief, merged, { llmAssisted: true });
-    if (brief.budgetTotal && brief.quantityKg && !brief.budgetPerUnit) {
-      brief.budgetPerUnit = +(brief.budgetTotal / brief.quantityKg).toFixed(4);
-    }
-    if (llm.provider) brief.llmProvider = llm.provider;
-    parse.recomputeBrief(brief);
-  }
-  /* Still no material: match the request to the catalogue by meaning with
-     Gemini embeddings. Proposes a material only; every requirement is still
-     screened. No key, or below the threshold: the brief is unchanged. */
-  if (!brief.material) await googleMatch.fillMaterial(brief, text, parse.recomputeBrief);
+  /* The decision engine reads the requirement: material, grade and
+     specifications, quantity, delivery city and date, certifications. Every
+     value it keeps is grounded in the words of the request; anything decisive
+     that is missing comes back as a question, never as a guess. */
+  const brief = await bridge.parse(text, briefContext(req, session));
+  brief.softPreferences = parseRequest(text).softPreferences;
   assertWithinCompanyLimits(req, brief);
   startNewRun(session, brief);
   res.json(brief);
@@ -955,6 +938,35 @@ app.post('/api/brief', wrap(async (req, res) => {
  * that a person finds out at the start rather than at the funding step, and the
  * message names which limit and whose decision it is to raise.
  */
+/*
+ * What the engine needs to know about the buyer to read a request: who is
+ * asking, where the plant is (the default delivery city), and the company's
+ * own per-purchase limit, which stands in as the ceiling when a request states
+ * no budget.
+ */
+function briefContext(req, session) {
+  const org = req.account && req.account.org;
+  const limits = session.profile && session.profile.limits;
+  return {
+    orgId: req.companyId || session.id,
+    userId: req.account && req.account.user ? req.account.user.id : (req.actor && req.actor.role) || 'sales',
+    orgName: org ? org.name : (session.profile && session.profile.company && session.profile.company.name) || null,
+    plantCity: (org && org.city) || (session.profile && session.profile.company && session.profile.company.city) || 'Pune',
+    perDealLimit: limits && limits.perDeal != null ? limits.perDeal : null,
+  };
+}
+
+/* The same context, plus what is already spent under this workspace's
+   on-chain policy, for the engine's cumulative-limit check. */
+async function runContext(req, session) {
+  const ctx = briefContext(req, session);
+  try {
+    const buyer = await chain.buyerFor(session.id);
+    ctx.spentRupees = fromUnits((await chain.escrow.policies(buyer.address)).spent);
+  } catch (_) { ctx.spentRupees = 0; }
+  return ctx;
+}
+
 function assertWithinCompanyLimits(req, brief) {
   const session = sessionFor(req);
   const check = profile.checkBrief(session.profile, brief);
@@ -983,10 +995,25 @@ function assertWithinCompanyLimits(req, brief) {
  * first run's approval - which is precisely the bug the comments below were
  * written about the first time. One list, one place.
  */
+/* A Gemini reading of a scanned tender, as sentences the engine can parse. */
+function readingAsText(data) {
+  const v = (k) => data && data[k] && data[k].value != null ? data[k].value : null;
+  const out = [];
+  if (v('material')) out.push(`Item: ${v('material')}${v('grade') ? ` ${v('grade')}` : ''}.`);
+  if (v('quantityKg')) out.push(`Quantity: ${v('quantityKg')} kg.`);
+  if (v('deadlineDays')) out.push(`Deliver within ${v('deadlineDays')} days.`);
+  const certs = v('certifications');
+  if (Array.isArray(certs) && certs.length) out.push(`Certification: ${certs.join(', ')}.`);
+  const b = data && data.budget && data.budget.value;
+  if (b && b.amount) out.push(`Budget ${b.currency === 'INR' || !b.currency ? 'Rs' : b.currency} ${b.amount}.`);
+  return out.join(' ');
+}
+
 function startNewRun(session, brief) {
   session.brief = brief;
   session.candidates = []; session.negotiations = []; session.recommendation = null;
   session.excludedByPolicy = [];
+  session.engineRun = null; session.engineArtefacts = null;
   /*
    * A new brief starts a new run, so the previous run's settlement has to go
    * with it. Leaving settlementFacts and signature in place meant the summary
@@ -1082,17 +1109,25 @@ app.post(
      * timeout) leaves the rules reader's brief exactly as it was.
      */
     const hasText = !!doc.text && doc.text.replace(/\s+/g, '').length >= 40;
-    let brief = hasText ? parseDocument(doc.text) : null;
-    if (geminiOn) {
+    /*
+     * The engine reads the document's text layer. A scan or photo has none, so
+     * when Gemini is configured it reads the page and its grounded reading is
+     * written out as plain sentences for the engine to parse the same way. A
+     * Gemini failure of any kind leaves whatever the text layer gave.
+     */
+    let readText = hasText ? doc.text : '';
+    let geminiNote = null;
+    if (!hasText && geminiOn) {
       const g = await googleTender.readWithGemini({ buf: body, kind: doc.kind, mime: doc.mime, text: doc.text });
-      if (g.ok) brief = googleTender.mergeReading(brief, g.data, hasText ? doc.text : '', { model: g.model, latencyMs: g.latencyMs });
-      else if (brief) brief.gemini = { model: g.model || null, error: g.reason };
+      if (g.ok) readText = readingAsText(g.data);
+      geminiNote = { model: g.model || null, error: g.ok ? null : g.reason };
     }
-    if (!brief) brief = parseDocument(doc.text || '');
-    if (!brief.material && hasText) {
-      const scope = (doc.text.match(/^.*(?:scope|supply of|procurement of|requirement).*$/im) || [doc.text.slice(0, 400)])[0];
-      await googleMatch.fillMaterial(brief, scope, parse.recomputeBrief);
-    }
+    const brief = await bridge.parse(readText.slice(0, 20000), briefContext(req, session));
+    brief.softPreferences = parseRequest(readText.slice(0, 4000)).softPreferences;
+    brief.fromDocument = true;
+    brief.sources = Object.fromEntries(Object.entries((brief.engine.requirement && brief.engine.requirement.provenance) || {})
+      .map(([k, v]) => [k, { from: 'clause', quote: v.evidence || null, confidence: v.confidence }]));
+    if (geminiNote) brief.gemini = geminiNote;
 
     /* The same gate as the typed path. A tender is not a way round the
        company's own limits just because it arrived as a file. */
@@ -1230,7 +1265,8 @@ app.post('/api/brief/correct', wrap(async (req, res) => {
         documentQuote: result.currentQuote || null,
         verdict: result.verdict,
       };
-    parse.recomputeBrief(brief);
+    bridge.syncRequirement(brief);
+    bridge.finishBrief(brief);
 
     /*
      * The shortlist below this was computed against the old figures, so it goes.
@@ -1281,7 +1317,8 @@ app.post('/api/candidates', wrap(async (req, res) => {
   const session = sessionFor(req);
   guard(req, session, 'run');
   if (!session.brief) throw new Error('No brief. Submit a request first.');
-  const evaluated = evaluateCandidates(session.brief);
+  if (!session.brief.engine) throw new Error('This run was read by an earlier version of Limen. Run the request again.');
+  const evaluated = await bridge.shortlist(session.brief, briefContext(req, session));
 
   /*
    * The company's two supplier lists, and they are not symmetric.
@@ -1321,7 +1358,7 @@ app.post('/api/candidates', wrap(async (req, res) => {
   session.candidates = rows;
   session.excludedByPolicy = excluded;
 
-  const shortlist = selectForNegotiation(rows).map((r) => r.supplierId);
+  const shortlist = bridge.selectForNegotiation(rows).map((r) => r.supplierId);
   /* Preferred suppliers first WITHIN the shortlist the engine already chose.
      The membership of that shortlist is not ours to change here. */
   const trustOf = (id) => {
@@ -1344,29 +1381,13 @@ app.post('/api/negotiate', wrap(async (req, res) => {
   const session = sessionFor(req);
   guard(req, session, 'run');
   if (!session.candidates.length) throw new Error('No candidates evaluated yet.');
-  const shortlist = selectForNegotiation(session.candidates);
-
-  /*
-   * What the log already knows about these suppliers, handed to the engine.
-   *
-   * This is the only place the outcome log feeds back into a decision, and it
-   * moves exactly one thing: how hard the agent opens. The ceiling, the
-   * acceptance rule and both invariants are untouched, so the worst a wrong
-   * history can do is open at a price a supplier refuses - which costs a round,
-   * not money.
-   */
-  const rows = await workspace.companyOutcomes(req.companyId, 500);
-  const historyBy = {};
-  for (const c of shortlist) {
-    const h = outcomes.supplierHistory(rows, c.supplierId);
-    if (h) historyBy[c.supplierId] = h;
-  }
-
-  const results = negotiateAll(shortlist, session.brief, historyBy, {
-    concessionPace: session.profile ? session.profile.concessionPace : undefined,
-    maxExpeditePct: session.profile && session.profile.maxExpeditePct != null
-      ? session.profile.maxExpeditePct : undefined,
-  });
+  if (!session.brief || !session.brief.engine) throw new Error('This run was read by an earlier version of Limen. Run the request again.');
+  /* Suppliers are asked to quote by their own agents, then each one that can
+     deliver is negotiated with, move by move, inside both sides' limits. */
+  const ctx = await runContext(req, session);
+  const { results, artefacts } = await bridge.negotiateAll(session.brief, session.candidates, ctx);
+  session.engineRun = { rfqId: artefacts.rfqId || null, rfq: artefacts.rfq || null };
+  session.engineArtefacts = artefacts;
   session.negotiations = results;
 
   /* One row per counterparty, including the ones that walked away. A log that
@@ -1386,12 +1407,14 @@ app.post('/api/negotiate', wrap(async (req, res) => {
 app.post('/api/recommend', wrap(async (req, res) => {
   const session = sessionFor(req);
   guard(req, session, 'run');
-  if (!session.negotiations.length) throw new Error('No negotiations completed yet.');
-  /* The company's standing preference, used only where the request itself
-     expressed none. recommend() decides; this just hands it over. */
-  const rec = recommend(session.negotiations, session.candidates, session.brief, {
-    weights: session.profile ? session.profile.rankingWeights : null,
-  });
+  /* A run where nobody qualified to be asked still gets an answer: no deal,
+     with the requirements that excluded everyone. */
+  if (!session.negotiations.length && !session.engineRun) throw new Error('No negotiations completed yet.');
+  /* The engine decides on expected total cost over the agreed terms: landed
+     cost with GST and freight, carrying cost, and the expected cost of a late
+     or rejected lot, inside the buyer's spending authority. */
+  const ctx = await runContext(req, session);
+  const rec = await bridge.recommend(session.brief, session.negotiations, session.candidates, ctx, session.engineArtefacts || null);
   session.recommendation = rec;
   await logOutcome(req, 'sourced', {
     outcome: rec.status,
@@ -1429,7 +1452,7 @@ app.get('/api/run', wrap(async (req, res) => {
     // Recomputed rather than stored. selectForNegotiation is deterministic over
     // the candidate rows, so deriving it here cannot disagree with what was
     // actually negotiated, whereas a second copy on the session could.
-    shortlist: candidates.length ? selectForNegotiation(candidates).map((r) => r.supplierId) : [],
+    shortlist: candidates.length && candidates[0].match ? bridge.selectForNegotiation(candidates).map((r) => r.supplierId) : [],
     negotiations: session.negotiations || [],
     recommendation: session.recommendation || null,
     excludedByPolicy: session.excludedByPolicy || [],
@@ -2549,16 +2572,15 @@ const releasePayment = wrap(async (req, res) => {
    * a purchase the contract would refuse should be refused on those grounds,
    * not on a balance.
    *
-   * The conversion is the point. The purchase is in USD and the float is in
-   * INR, and the first version of this check compared them directly, which is
-   * not a comparison. See fx.js.
+   * Both sides are rupees: the escrow token is rupee-pegged and the float is a
+   * rupee balance. fx.js still records the (unit) rate with the payment so the
+   * record says what was used. See fx.js.
    */
   const payable = fx.usdToInr(amount);
   const available = floatOf(session);
   if (available < payable.amount) {
     throw new Error(
-      `The payment float holds ${available.toFixed(2)} INR and this payout is `
-      + `${payable.amount.toFixed(2)} INR, being ${Number(amount).toFixed(2)} USD at ${payable.rate}. `
+      `The payment float holds ${inr2(available)} and this payout is ${inr2(payable.amount)}. `
       + 'Top it up on the finance desk before releasing.'
     );
   }
@@ -3774,7 +3796,7 @@ platform.mount(app);
 let booted = false;
 app.get('/api/health', (req, res) => res.json({ ok: true, uptimeSec: Math.round(process.uptime()) }));
 app.get('/api/ready', async (req, res) => {
-  const checks = { booted, chain: !!(chain.escrow), store: false, platformStore: false };
+  const checks = { booted, chain: !!(chain.escrow), engine: engine.status().ready, store: false, platformStore: false };
   try { await workspace.getStore().count(); checks.store = true; } catch (_) { /* reported below */ }
   try { await platform.store.count('orgs'); checks.platformStore = true; } catch (_) { /* reported below */ }
   const ok = Object.values(checks).every(Boolean);
@@ -3803,6 +3825,14 @@ async function boot() {
    */
   await workspace.init();
   console.log(`  store: ${workspace.getStore().kind}${workspace.getStore().kind === 'memory' ? ' (state is lost on restart, set DATABASE_URL to persist)' : ''}`);
+
+  /* The decision engine. Every sourcing number comes from it, so the server
+     does not report ready without it. */
+  await engine.start();
+  {
+    const e = engine.status();
+    console.log(`  engine: limen-core ${e.version} (${e.mode})`);
+  }
 
   /*
    * Sweep expired idempotency records.
@@ -3886,9 +3916,9 @@ async function boot() {
     console.log(`  accounts: ${platform.store.kind} store${seeded.seeded ? `, demo accounts created (password ${seeded.password})` : ''}; ${n} portal supplier${n === 1 ? '' : 's'} on chain`);
   }
 
-  await chain.fundBuyer(toUnits(250000));
+  await chain.fundBuyer(toUnits(50000000));
   const usdcAsBuyer = chain.contractAt('MockUSDC', addresses.usdc, chain.buyer);
-  await (await usdcAsBuyer.approve(addresses.escrow, toUnits(250000))).wait();
+  await (await usdcAsBuyer.approve(addresses.escrow, toUnits(50000000))).wait();
   console.log('  reference buyer funded, per-workspace buyers derive on demand');
 
   /*
@@ -3946,6 +3976,7 @@ if (require.main === module) {
     const force = setTimeout(() => process.exit(1), 15000);
     force.unref();
     const done = async () => {
+      try { engine.stop(); } catch (_) { /* best effort */ }
       try { await platform.store.close(); } catch (_) { /* best effort */ }
       try { await workspace.getStore().close(); } catch (_) { /* best effort */ }
       process.exit(0);

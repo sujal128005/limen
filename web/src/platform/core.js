@@ -161,12 +161,13 @@ export function useLoad(path, deps = []) {
 
 /* ------------------------------------------------------------- formats */
 
+/* Rupees with Indian grouping. Named usd for history; every amount is INR. */
 export const usd = (n, { cents = true } = {}) => (n == null || Number.isNaN(Number(n)) ? '—'
-  : Number(n).toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: cents ? 2 : 0, maximumFractionDigits: cents ? 2 : 0 }));
+  : Number(n).toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: cents ? 2 : 0, maximumFractionDigits: cents ? 2 : 0 }));
 export const inr = (n) => (n == null ? '—' : Number(n).toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }));
-export const num = (n) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
+export const num = (n) => (n == null ? '—' : Number(n).toLocaleString('en-IN'));
 export const pct = (x, d = 0) => (x == null ? '—' : `${(Number(x) * 100).toFixed(d)}%`);
-export const kg = (n) => (n == null ? '—' : `${Number(n).toLocaleString('en-US')} kg`);
+export const kg = (n, unit = 'kg') => (n == null ? '—' : `${Number(n).toLocaleString('en-IN')} ${unit}`);
 export function date(s, withTime = false) {
   if (!s) return '—';
   const d = new Date(typeof s === 'number' ? s : String(s));

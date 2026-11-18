@@ -1,4 +1,5 @@
 'use strict';
+const { inr } = require('./money');
 
 /*
  * The buying company, as opposed to the current purchase.
@@ -362,7 +363,7 @@ function applyLimits(profile, patch, by) {
     for (const [id, v] of Object.entries(next.limits.perCategory)) {
       if (v > next.limits.perDeal) {
         next.limits.perCategory[id] = next.limits.perDeal;
-        adjusted.push(`"${id}" was above the per-purchase limit, so it was brought down to $${next.limits.perDeal.toLocaleString()}.`);
+        adjusted.push(`"${id}" was above the per-purchase limit, so it was brought down to ${inr(next.limits.perDeal)}.`);
       }
     }
   }
@@ -379,7 +380,7 @@ function applyLimits(profile, patch, by) {
       adjusted.push(
         next.limits.perDeal == null
           ? 'Automatic approval needs a per-purchase limit to be set first, so it stays off.'
-          : `Automatic approval was capped at $${Math.floor(cap).toLocaleString()}, `
+          : `Automatic approval was capped at ${inr(Math.floor(cap))}, `
             + `${Math.round(AUTO_APPROVE_MAX_FRACTION * 100)}% of the per-purchase limit. `
             + 'No setting here can remove approval from a purchase that matters.'
       );
@@ -434,8 +435,8 @@ function checkBrief(profile, brief) {
       scope: 'category',
       limit: catLimit,
       reason:
-        `This request is $${total.toLocaleString()} and your limit for ${cat.label} is `
-        + `$${catLimit.toLocaleString()}. Nothing has been sourced. `
+        `This request is ${inr(total)} and your limit for ${cat.label} is `
+        + `${inr(catLimit)}. Nothing has been sourced. `
         + 'Raising it is the head\'s decision, on the company profile.',
     };
   }
@@ -446,8 +447,8 @@ function checkBrief(profile, brief) {
       scope: 'perDeal',
       limit: profile.limits.perDeal,
       reason:
-        `This request is $${total.toLocaleString()} and your limit for a single purchase is `
-        + `$${profile.limits.perDeal.toLocaleString()}. Nothing has been sourced. `
+        `This request is ${inr(total)} and your limit for a single purchase is `
+        + `${inr(profile.limits.perDeal)}. Nothing has been sourced. `
         + 'Raising it is the head\'s decision, on the company profile.',
     };
   }
