@@ -64,7 +64,10 @@ async function withKey(fn) {
   }
 }
 
-const SAMPLE = path.join(__dirname, '..', 'docs', 'samples', 'sample-tender-pet-resin.pdf');
+/* The original six-page tender: the text-layer decoder and the clause reader
+   (still used by corrections) are pinned against its exact wording, including
+   the offer-validity clause that precedes the delivery clause. */
+const SAMPLE = path.join(__dirname, 'data', 'legacy-tender-pet-resin.pdf');
 const GOOD = {
   material: { value: 'Bottle-Grade PET Resin', quote: 'Supply of 500 kg bottle-grade PET resin.' },
   grade: { value: 'bottle-grade', quote: 'Supply of 500 kg bottle-grade PET resin.' },
@@ -143,7 +146,11 @@ async function run() {
 
   await test('agreement is recorded, a disagreement keeps the clause, an invented figure is dropped', async () => {
     const agreed = googleTender.mergeReading(parseDocument(doc.text), clone(GOOD), doc.text, { model: 'gemini-test' });
-    eq(agreed.gemini.agreed.length, 6, 'six fields agree');
+    // The legacy tender states its budget in US dollars. Budgets are rupees
+    // now, so that one is held back with a note rather than converted; the
+    // other five fields agree.
+    eq(agreed.gemini.agreed.length, 5, 'five fields agree');
+    ok(agreed.gemini.notes.some((x) => /rupees/.test(x)), 'and the dollar budget is flagged, not converted');
     ok(agreed.sources.deadlineDays.gemini.agrees, 'marked on the field');
 
     const bad = clone(GOOD);
@@ -156,15 +163,15 @@ async function run() {
     eq(merged.gemini.rejected[0].why, 'quote-not-found', 'and says why');
   });
 
-  await test('a scan is read but must be confirmed, and a non-USD budget is not converted', async () => {
+  await test('a scan is read but must be confirmed, and a non-rupee budget is not converted', async () => {
     const scan = googleTender.mergeReading(null, clone(GOOD), '', {});
     eq(scan.quantityKg, 500, 'read');
     ok(scan.needsConfirmation, 'confirmation required');
     eq(scan.sources.quantityKg.verified, false, 'marked unverified');
-    const inr = clone(GOOD); inr.budget = { value: 100000, currency: 'INR', quote: 'INR 1,00,000' };
-    const b = googleTender.mergeReading(null, inr, '', {});
-    eq(b.budgetTotal, null, 'no INR ceiling');
-    ok(b.gemini.notes.some((n) => /USD/.test(n)), 'told to state it in USD');
+    const usd = clone(GOOD); usd.budget = { value: 1200, currency: 'USD', quote: 'USD 1,200' };
+    const b = googleTender.mergeReading(null, usd, '', {});
+    eq(b.budgetTotal, null, 'no dollar ceiling');
+    ok(b.gemini.notes.some((n) => /rupees/.test(n)), 'told to state it in rupees');
   });
 
   await test('words quoted with an empty value still count, a figure never does', async () => {
@@ -297,7 +304,7 @@ async function run() {
         ok(sent.format && sent.format.properties && sent.format.properties.deadlineDays, 'schema sent as format');
         const merged = googleTender.mergeReading(parseDocument(doc.text), r.data, doc.text, { model: r.model });
         eq(merged.gemini.label, 'Gemma', 'labelled Gemma');
-        eq(merged.gemini.agreed.length, 6, 'and checked the same way');
+        eq(merged.gemini.agreed.length, 5, 'and checked the same way (the dollar budget is held back)');
 
         const png = Buffer.from([0x89, 0x50, 0x4E, 0x47, 1, 2, 3]);
         await googleTender.readWithGemini({ buf: png, kind: 'image', mime: 'image/png', text: '' });

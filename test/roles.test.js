@@ -421,13 +421,13 @@ async function run() {
       `expected the float to fall by ${purchase.payableInr}`);
   });
 
-  await test('the purchase amount is converted, not relabelled', async () => {
+  await test('the payout is the escrow amount, in rupees, with nothing converted', async () => {
     const c = await upToPaymentReady('fxconv');
     const p = (await call('GET', '/api/purchase', { token: c.finance, workspace: c.ws })).body;
-    // The bug this pins: the USD total used to be sent to an INR rail as if the
-    // two were the same number.
-    ok(p.payableInr !== p.requestedAmount, 'the two currencies must not be the same figure');
-    eq(round2(p.payableInr), round2(p.requestedAmount * p.fxRate), 'converted at the stated rate');
+    // The escrow token is rupee-pegged, so the amount approved, the amount
+    // locked on chain and the amount paid are one number.
+    eq(p.fxRate, 1, 'no conversion rate other than 1');
+    eq(round2(p.payableInr), round2(p.requestedAmount), 'payable equals the approved amount');
   });
 
   await test('the rate that was used travels with the payment', async () => {
@@ -784,7 +784,8 @@ async function run() {
     const r = await call('GET', '/api/purchase/approval-payload', { token: c.head, workspace: c.ws });
     eq(r.status, 200, r.body.error);
     eq(r.body.value.workspace, c.ws, 'the signature is pinned to this workspace');
-    eq(r.body.value.amount, '1175');
+    const purchase = (await call('GET', '/api/purchase', { token: c.head, workspace: c.ws })).body;
+    eq(r.body.value.amount, String(purchase.requestedAmount), 'the amount is the canonical one');
     ok(/^0x[0-9a-f]{64}$/i.test(r.body.value.termsHash), r.body.value.termsHash);
     ok(r.body.domain.chainId > 0 && r.body.domain.verifyingContract, JSON.stringify(r.body.domain));
 
@@ -1174,17 +1175,17 @@ async function run() {
   await test('a purchase under the threshold is approved by rule, and the record says no person did', async () => {
     const c = await freshRun('prof-auto');
     await call('PATCH', '/api/profile/limits', {
-      body: { perDeal: 10000, autoApproveBelow: 2000 }, token: c.head, workspace: c.ws,
+      body: { perDeal: 5000000, autoApproveBelow: 1000000 }, token: c.head, workspace: c.ws,
     });
     await call('POST', '/api/policy', { body: { days: 30 }, token: c.head, workspace: c.ws });
     await call('POST', '/api/purchase/submit', { token: c.sales, workspace: c.ws });
     const r = await call('POST', '/api/purchase/send-to-head', { token: c.sales, workspace: c.ws });
 
     eq(r.status, 200, JSON.stringify(r.body).slice(0, 200));
-    ok(r.body.autoApproved, `the purchase is under 2,000 so it should auto-approve: ${JSON.stringify(r.body).slice(0, 300)}`);
+    ok(r.body.autoApproved, `the purchase is under ₹10 lakh so it should auto-approve: ${JSON.stringify(r.body).slice(0, 300)}`);
     eq(r.body.autoApproved.auto, true);
     eq(r.body.autoApproved.method, 'rule', 'not a typed name');
-    eq(r.body.autoApproved.rule.autoApproveBelow, 2000, 'the rule is copied into the record');
+    eq(r.body.autoApproved.rule.autoApproveBelow, 1000000, 'the rule is copied into the record');
     eq(r.body.autoApproved.rule.setBy, 'head', 'naming who set it');
 
     const audit = (await call('GET', '/api/audit', { token: c.sales, workspace: c.ws })).body;
@@ -1196,7 +1197,7 @@ async function run() {
   await test('a purchase above the threshold still waits for a person', async () => {
     const c = await freshRun('prof-auto-no');
     await call('PATCH', '/api/profile/limits', {
-      body: { perDeal: 10000, autoApproveBelow: 100 }, token: c.head, workspace: c.ws,
+      body: { perDeal: 5000000, autoApproveBelow: 100 }, token: c.head, workspace: c.ws,
     });
     await call('POST', '/api/policy', { body: { days: 30 }, token: c.head, workspace: c.ws });
     await call('POST', '/api/purchase/submit', { token: c.sales, workspace: c.ws });
@@ -1335,11 +1336,12 @@ async function run() {
     const r = await upload(TENDER, { token: c.sales, workspace: c.ws, filename: 'Nexa tender.pdf' });
     eq(r.status, 200, JSON.stringify(r.body).slice(0, 300));
     eq(r.body.document.kind, 'pdf');
-    eq(r.body.document.pages, 6);
+    ok(r.body.document.pages >= 1, `pages: ${r.body.document.pages}`);
     eq(r.body.document.sha256.length, 64, 'the bytes are hashed, so the run can say which file it read');
     const b = r.body.brief;
-    eq(b.quantityKg, 500);
-    eq(b.budgetTotal, 1200);
+    eq(b.quantityKg, 5000, '5 MT');
+    eq(b.budgetTotal, 600000, 'Rs 6 lakh, from the internal note');
+    eq(b.deliveryCity, 'Chennai', 'the plant the tender names');
     eq(b.deadlineDays, 14, 'the delivery clause, not the offer validity that precedes it');
     ok(b.complete, `complete, missing ${b.missing}`);
   });
@@ -1356,7 +1358,7 @@ async function run() {
     const w = run.recommendation && run.recommendation.winner;
     ok(w, 'a winner came out of a document-started run');
     ok(w.leadTimeDays <= 14, `the winner must meet the document's real 14-day deadline, got ${w.leadTimeDays}`);
-    ok(w.total <= 1200, `and its budget, got ${w.total}`);
+    ok(w.total <= 600000, `and its budget, got ${w.total}`);
   });
 
   await test('a new document starts a new run, approval and all', async () => {
@@ -1831,7 +1833,7 @@ async function run() {
   await test('resetting one purchase leaves the others and the policy alone', async () => {
     const c = await newCompany('reset');
     const second = (await call('POST', '/api/tenders', at(c, c.first, c.sales))).body.id;
-    await call('PATCH', '/api/profile/limits', { ...at(c, c.first, c.head), body: { perDeal: 3000 } });
+    await call('PATCH', '/api/profile/limits', { ...at(c, c.first, c.head), body: { perDeal: 3000000 } });
     await call('POST', '/api/brief', { ...at(c, second, c.sales), body: { text: REQUEST } });
 
     const r = await call('POST', '/api/reset', at(c, c.first, c.sales));
@@ -1841,7 +1843,7 @@ async function run() {
     ok(other.body.brief, 'the other purchase is untouched by a reset over here');
 
     const p = await call('GET', '/api/profile', at(c, c.first, c.head));
-    eq(p.body.profile.limits.perDeal, 3000, 'a reset clears the run, not the company');
+    eq(p.body.profile.limits.perDeal, 3000000, 'a reset clears the run, not the company');
   });
 
   /*

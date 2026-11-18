@@ -25,8 +25,8 @@
  *
  * gstinBase is the first fourteen characters of the supplier's (invented) GSTIN;
  * the check digit is computed, so the verification screen shows a real pass.
- * Narmada Polymers deliberately has none: a supplier that has not supplied a
- * number is unverified, never failed.
+ * Narmada Polymers and Deccan Resins deliberately have none: a supplier that
+ * has not supplied a number is unverified, never failed.
  *
  * walletIndex is the on-chain account that receives the supplier's payment. It
  * must be unique, must not be 10 (the agent) and must be under the account
@@ -144,7 +144,6 @@ const CATALOGUE = [
     ],
   },
   {
-    gstinBase: '36AAGFD3157S1Z',
     id: 'SUP-F', walletIndex: 7, name: 'Deccan Resins', city: 'Hyderabad', yearsActive: 7,
     gst: 'REGULAR', msme: true,
     certifications: [['BIS', true]],

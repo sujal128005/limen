@@ -14,23 +14,20 @@ const fs = require('fs');
 const path = require('path');
 const documents = require('../server/documents');
 const pdf = require('../server/pdf');
-const { parseRequest } = require('../server/engine/parse');
-const { evaluateCandidates, selectForNegotiation } = require('../server/engine/match');
-const { negotiateAll } = require('../server/engine/negotiate');
-const { recommend } = require('../server/engine/recommend');
+const bridge = require('../server/core/bridge');
+const engine = require('../server/core/engine');
 
-const REQ =
-  'I need 500 kg of bottle-grade PET resin. Budget is $1,200 total. ' +
-  'Delivery within 14 days. Must be FDA food-contact certified.';
+const REQ = 'Need 5 MT of bottle-grade PET resin, IV 0.78-0.82, food grade, delivered to Chennai within 10 days. Budget ₹6 lakh.';
+const CTX = { orgId: 'sample', userId: 'sample', orgName: 'Nexa Materials', plantCity: 'Chennai' };
 
 const BUYER = '0xFFCf8FDEE72ac11b5c542428B35EEF5769C409f0';
 const SUPPLIER = '0x22d491Bde2303f2f43325b2108D26f1eAbA1e32b';
 
 async function main() {
-  const brief = parseRequest(REQ);
-  const rows = evaluateCandidates(brief);
-  const negotiations = negotiateAll(selectForNegotiation(rows), brief);
-  const recommendation = recommend(negotiations, rows, brief);
+  const brief = await bridge.parse(REQ, CTX);
+  const rows = await bridge.shortlist(brief, CTX);
+  const { results: negotiations, artefacts } = await bridge.negotiateAll(brief, rows, CTX);
+  const recommendation = await bridge.recommend(brief, negotiations, rows, CTX, artefacts);
 
   const session = {
     id: 'seed-workspace',
@@ -39,9 +36,9 @@ async function main() {
   };
 
   const agreement = documents.purchaseSummary(session, {
-    buyer: BUYER, supplierWallet: SUPPLIER, policy: { maxPerDeal: 1200 }, settled: false,
+    buyer: BUYER, supplierWallet: SUPPLIER, policy: { maxPerDeal: brief.budgetTotal }, settled: false,
   });
-  const signature = documents.signAgreement(session, agreement, 'A. Okafor');
+  const signature = documents.signAgreement(session, agreement, 'Priya Raghavan');
 
   const settlementFacts = {
     fundingTx: '0x' + 'a'.repeat(64),
@@ -72,4 +69,4 @@ async function main() {
   }
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main().then(() => engine.stop()).catch((e) => { console.error(e); engine.stop(); process.exit(1); });

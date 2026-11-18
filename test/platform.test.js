@@ -10,7 +10,9 @@ const fs = require('fs');
 const path = require('path');
 const { test, group, eq, ok } = require('./harness');
 
-const { REQ: REQUEST } = require('./fixtures');
+/* Several suppliers quote, some walk away and one wins: the case that tests
+   what each supplier may see of the others. */
+const { REQ_HDPE: REQUEST } = require('./fixtures');
 
 async function run() {
   process.env.LIMEN_RATE_LIMIT = process.env.LIMEN_RATE_LIMIT || '100000';
@@ -120,7 +122,7 @@ async function run() {
     ok(!/budget/i.test(s), 'the word budget');
     ok(!/ceiling/i.test(s), 'the word ceiling');
     ok(!s.includes('"budgetTotal"') && !s.includes('"budgetPerUnit"'), 'budget fields');
-    ok(!s.includes('6,00,000') && !s.includes('600000') && !/6 lakh/i.test(s), 'the budget figure');
+    ok(!s.includes('26,00,000') && !s.includes('2600000') && !/26 lakh/i.test(s), 'the budget figure');
   });
 
   await test('the buyer agent\'s reasoning stays with the buyer; the supplier keeps its own', async () => {

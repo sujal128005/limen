@@ -32,7 +32,10 @@ const { readTender } = require('../server/engine/tender');
 const { parseDocument, parseRequest } = require('../server/engine/parse');
 const { checkCorrection, readClaim } = require('../server/engine/correction');
 
-const SAMPLE = path.join(__dirname, '..', 'docs', 'samples', 'sample-tender-pet-resin.pdf');
+/* The original six-page tender: the text-layer decoder and the clause reader
+   (still used by corrections) are pinned against its exact wording, including
+   the offer-validity clause that precedes the delivery clause. */
+const SAMPLE = path.join(__dirname, 'data', 'legacy-tender-pet-resin.pdf');
 
 /** Build a PDF in memory from lines of text. Exercises a different writer from
     the committed fixture: pdfkit emits Flate-compressed streams, the fixture is
