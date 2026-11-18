@@ -26,7 +26,10 @@ services:
     runtime: node
     plan: free
     region: singapore
-    buildCommand: npm install && npm run build:web
+    # The decision engine (limen-core) is Python 3.10+ using only the standard
+    # library, so nothing is pip-installed. The check fails the build loudly if
+    # the image ever stops shipping Python, rather than failing at first request.
+    buildCommand: python3 -c "import sys; assert sys.version_info >= (3, 10), sys.version" && npm install && npm run build:web
     startCommand: node server/index.js
     healthCheckPath: /api/status
     envVars:

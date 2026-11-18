@@ -43,7 +43,7 @@ P('Certification: material must be food-grade, with food contact compliance docu
 H('B. Delivery and commercial terms');
 P('Delivery: deliver to our Chennai plant within 14 days of the purchase order.');
 P('Prices: quote the basic price per kg ex-GST, GST at the applicable rate, and freight to destination separately.');
-P('Payment terms: 30 days credit from the date of receipt and acceptance of material.');
+P('Payment terms: 45 days credit from the date of receipt and acceptance of material.');
 P('Offer validity: 30 days from the closing date.');
 P('Quality: each lot will be inspected on receipt. A lot that fails the IV range or the food-contact requirement will be rejected at the supplier\'s cost.');
 

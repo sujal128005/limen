@@ -46,8 +46,8 @@ async function run() {
     // The amount arrives from a browser. A page that could name any figure and
     // have it go straight to a payment provider is a page that can charge
     // whatever it likes.
-    const o = await checkout.createOrder({ amountRupees: 99999999, receipt: 'r2' });
-    ok(o.amount <= 500000 * 100, `clamped, got ${o.amount}`);
+    const o = await checkout.createOrder({ amountRupees: 9999999999, receipt: 'r2' });
+    ok(o.amount <= 10000000 * 100, `clamped to the ₹1 crore default ceiling, got ${o.amount}`);
   });
 
   await test('a sub-rupee amount is refused', async () => {
