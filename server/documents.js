@@ -53,7 +53,7 @@ function purchaseSummary(session, ctx) {
     awaitingApproval: status === SUMMARY_STATUS.PENDING,
 
     buyer: {
-      name: 'Buyer workspace',
+      name: session.buyerName || 'Buyer workspace',
       account: ctx.buyer,
       workspace: session.id,
     },
@@ -78,6 +78,9 @@ function purchaseSummary(session, ctx) {
       freightTotal: w.freightTotal != null ? w.freightTotal : null,
       gstTotal: w.gstTotal != null ? w.gstTotal : null,
       listUnitPrice: listUnit,
+      // Like-for-like, before GST: what the catalogue asked and what was agreed.
+      listBasic: round2(listUnit * w.quantityKg),
+      savingBasic: w.basicTotal != null ? round2(listUnit * w.quantityKg - w.basicTotal) : null,
       listTotal,
       saving: w.savings,
       savingPct: w.savingsPct,
@@ -150,13 +153,14 @@ function settlementRecord(session, ctx) {
     issuedAt: new Date().toISOString(),
     status: 'Settled',
 
-    buyer: { name: 'Buyer workspace', account: ctx.buyer, workspace: session.id },
+    buyer: { name: session.buyerName || 'Buyer workspace', account: ctx.buyer, workspace: session.id },
     supplier: { name: w.name, location: [w.city, w.country].filter(Boolean).join(', '), account: s.supplierWallet },
 
     line: {
       description: `${session.brief.grade ? session.brief.grade + ' ' : ''}${session.brief.material}`,
       sku: w.sku,
       quantityKg: w.quantityKg,
+      unit: w.unit || session.brief.unit || 'kg',
       unitPrice: w.unitPrice,
       amount: s.amount,
       listTotal,

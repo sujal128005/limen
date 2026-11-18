@@ -115,7 +115,9 @@ function project(session, meta = {}) {
           // it was close to a ceiling; the neutral line does not.
           ...(m.actor !== 'supplier' && BUDGETISH.test(m.message || '') ? { message: 'Ending negotiation - no agreement within the buyer\'s terms.' } : {}),
           // A supplier keeps its own agent's reasoning; the buyer agent's stays with the buyer.
-          ...(m.actor === 'supplier' && m.rationale ? { rationale: m.rationale } : {}),
+          ...(m.actor === 'supplier' && session.supplierNotes && session.supplierNotes[supplierId] && session.supplierNotes[supplierId][m.seq]
+            ? { rationale: session.supplierNotes[supplierId][m.seq] }
+            : m.actor === 'supplier' && m.rationale ? { rationale: m.rationale } : {}),
         }))
       : [];
 
