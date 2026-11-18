@@ -430,6 +430,41 @@ const ATTR_NAMES = {
 const attrName = (k) => ATTR_NAMES[k] || k.replace(/_/g, ' ');
 const CHECK_LABEL = (name) => (name.startsWith('cert:') ? `certification ${name.slice(5)}` : attrName(name.replace(/^spec:/, '')));
 
+/*
+ * One screening check as a sentence a buyer or a supplier can act on. The
+ * engine writes "MOQ 1000 <= 5000" and "offered bottle; required one of
+ * ['bottle']"; people read "Minimum order 1,000 kg fits the 5,000 kg ordered".
+ * Anything not recognised keeps the engine's own wording, which is exact.
+ */
+function checkText(c, unit = 'kg') {
+  const d = String(c.detail || '');
+  const n = (x) => Number(String(x).replace(/,/g, '')).toLocaleString('en-IN');
+  const clean = (x) => String(x).replace(/[[\]']/g, '').replace(/_/g, ' ').replace(/(\d+(?:\.\d+)?)-\1(?![\d.])/g, '$1').trim();
+  const pass = c.status === 'PASS';
+  if (c.name.startsWith('spec:')) {
+    const what = attrName(c.name.slice(5));
+    const m = /offered (.+?); required (?:one of )?(.+)$/.exec(d);
+    if (m) return `${what[0].toUpperCase()}${what.slice(1)}: offered ${clean(m[1])}, required ${clean(m[2])}`;
+    if (/not declared|has not declared/.test(d)) return `${what[0].toUpperCase()}${what.slice(1)}: not stated by the supplier, so it is unverified`;
+    return d;
+  }
+  let m;
+  if (c.name === 'moq' && (m = /MOQ (\d[\d,]*) (?:<=|>) (\d[\d,]*)/.exec(d))) {
+    return pass ? `Minimum order ${n(m[1])} ${unit} fits the ${n(m[2])} ${unit} ordered`
+      : `Minimum order ${n(m[1])} ${unit} is more than the ${n(m[2])} ${unit} ordered`;
+  }
+  if (c.name === 'capacity' && (m = /capacity in window (\d[\d,]*) (?:>=|<) (\d[\d,]*)/.exec(d))) {
+    return pass ? `Can make ${n(m[1])} ${unit} in time, ${n(m[2])} ${unit} needed`
+      : `Can make only ${n(m[1])} ${unit} in time, ${n(m[2])} ${unit} needed`;
+  }
+  if (c.name === 'lead_time' && (m = /(\d+)d production \+ ~?(\d+)d transit.*?vs (\d+)d needed/.exec(d))) {
+    const total = Number(m[1]) + Number(m[2]);
+    return pass ? `Delivers in about ${total} days (${m[1]} to make, ${m[2]} in transit), ${m[3]} days allowed`
+      : `Needs about ${total} days (${m[1]} to make, ${m[2]} in transit), only ${m[3]} days allowed`;
+  }
+  return d;
+}
+
 /**
  * Screen the catalogue for a brief. One row per supplier that lists the
  * material, eligible or not, with the engine's checks, score, distance and
@@ -456,7 +491,7 @@ async function shortlist(brief, ctx, suppliers = SUPPLIERS) {
     const listTotal = Math.round(p.listUnitPrice * qty * (1 + gst));
     const fails = m.checks.filter((c) => c.status === 'FAIL');
     const unknown = m.checks.filter((c) => c.status === 'UNKNOWN' || c.status === 'WARN');
-    const violations = fails.map((c) => ({ constraint: CHECK_LABEL(c.name), negotiable: null, detail: c.detail }));
+    const violations = fails.map((c) => ({ constraint: CHECK_LABEL(c.name), negotiable: null, detail: checkText(c, p.unit) }));
     const overBudget = brief.budgetTotal && listTotal > brief.budgetTotal;
     if (m.eligible && overBudget) {
       violations.push({
@@ -471,8 +506,8 @@ async function shortlist(brief, ctx, suppliers = SUPPLIERS) {
       listUnitPrice: p.listUnitPrice, listTotal, gstRateBps: p.gstRateBps, quantityKg: qty,
       moqKg: p.moqKg, monthlyCapacityKg: p.monthlyCapacityKg, leadTimeDays: p.leadTimeDays, qualityScore: p.qualityScore,
       violations,
-      satisfied: m.checks.filter((c) => c.status === 'PASS').map((c) => ({ constraint: CHECK_LABEL(c.name), detail: c.detail })),
-      unverified: unknown.map((c) => ({ constraint: CHECK_LABEL(c.name), detail: c.detail })),
+      satisfied: m.checks.filter((c) => c.status === 'PASS').map((c) => ({ constraint: CHECK_LABEL(c.name), detail: checkText(c, p.unit) })),
+      unverified: unknown.map((c) => ({ constraint: CHECK_LABEL(c.name), detail: checkText(c, p.unit) })),
       eligible: !!m.eligible,
       blockedBy: fails.map((c) => CHECK_LABEL(c.name)),
       needsNegotiation: !!m.eligible && !!overBudget,

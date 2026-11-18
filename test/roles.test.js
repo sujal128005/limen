@@ -459,6 +459,33 @@ async function run() {
     }
   });
 
+  await test('the winning supplier confirms and ships from its own portal, and the buyer can then receive', async () => {
+    const c = await upToFunded('sp-ship');
+    // The public supplier demo signs in as Kaveri Polymers, which wins this purchase.
+    const login = await fetch(`${base}/api/auth/demo/supplier`, { method: 'POST', headers: { 'content-type': 'application/json' } });
+    eq(login.status, 200, 'supplier demo sign-in');
+    const cookie = (login.headers.get('set-cookie') || '').split(';')[0];
+    const sp = async (method, path, body) => {
+      const r = await fetch(`${base}${path}`, { method, headers: { cookie, 'content-type': 'application/json', 'x-limen-csrf': '1' }, body: body ? JSON.stringify(body) : undefined });
+      return { status: r.status, body: await r.json().catch(() => null) };
+    };
+    const orders = await sp('GET', '/api/sp/orders');
+    eq(orders.status, 200);
+    const mine = orders.body.find((v) => v.workspaceId === c.ws);
+    ok(mine, 'the order is in the supplier\'s list');
+    eq(mine.order.stage, 'in_escrow', 'money is locked before the supplier is asked to ship');
+    ok(mine.request.deliveryCity === 'Chennai', 'the supplier is told where to deliver');
+    ok(mine.order.terms.gstTotal > 0 && mine.order.terms.basicTotal > 0, 'and the GST breakdown');
+    const overview = await sp('GET', '/api/sp/overview');
+    ok(overview.body.tasks.some((t) => t.kind === 'ship' && /Chennai/.test(t.title)), 'its home says to ship it');
+    eq((await sp('POST', `/api/sp/orders/${encodeURIComponent(mine.id)}/acknowledge`, { committedDays: 3, note: 'Dispatch from Chennai' })).status, 200, 'confirmed');
+    const shipped = await sp('POST', `/api/sp/orders/${encodeURIComponent(mine.id)}/ship`, { reference: 'LR 4410 2026', carrier: 'VRL Logistics' });
+    eq(shipped.status, 200, JSON.stringify(shipped.body).slice(0, 200));
+    eq(shipped.body.order.stage, 'shipped');
+    const receipt = await call('POST', '/api/purchase/confirm-receipt', { token: c.sales, workspace: c.ws });
+    eq(receipt.status, 200, JSON.stringify(receipt.body).slice(0, 200));
+  });
+
   await test('a replayed release does not debit the float twice', async () => {
     const c = await upToPaymentReady('nodouble');
     await call('POST', '/api/purchase/release', { token: c.finance, workspace: c.ws });

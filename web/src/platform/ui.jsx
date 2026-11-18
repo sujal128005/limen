@@ -38,9 +38,12 @@ const P = {
   tag: 'M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8zM7.5 7.5h.01',
   handshake: 'M11 17l2 2a1.4 1.4 0 0 0 2-2M14 14l2.5 2.5a1.4 1.4 0 0 0 2-2l-3.9-3.9a2 2 0 0 0-2.8 0l-.9.9a1.4 1.4 0 0 1-2-2L11.6 7a4 4 0 0 1 5.5-.1L21 10.5M3 10.5l4.4-4.4M3 15l4 4',
 };
-export function Icon({ name, size, ...rest }) {
+export function Icon({ name, size, style, ...rest }) {
+  /* A caller's style is merged, not swapped in: passing { marginLeft } used to
+     drop the width and height, and the icon grew to fill its whole box. */
+  const sized = size ? { width: size, height: size, flex: 'none' } : null;
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={size ? { width: size, height: size } : undefined} {...rest}>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={sized || style ? { ...sized, ...style } : undefined} {...rest}>
       <path d={P[name] || P.info} />
     </svg>
   );

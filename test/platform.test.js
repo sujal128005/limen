@@ -150,6 +150,14 @@ async function run() {
     ok(!JSON.stringify(loser).includes(String(recommendation.winner.total)), 'winning total not shown to the loser');
   });
 
+  await test('screening reads as plain sentences, and unstated specifications are named', async () => {
+    const all = views.flatMap((v) => [...v.screening.met, ...v.screening.missed]);
+    ok(all.length > 0, 'there are checks');
+    ok(!all.some((t) => /<=|>=|one of \[|'\]/.test(t)), `no engine notation: ${all.find((t) => /<=|>=|one of \[/.test(t))}`);
+    ok(all.some((t) => /^Minimum order .* ordered$/.test(t)), 'minimum order in words');
+    ok(views.every((v) => Array.isArray(v.screening.unverified)), 'unverified specifications are carried');
+  });
+
   await test('the projection module holds no capability', async () => {
     const src = fs.readFileSync(path.join(__dirname, '..', 'server', 'platform', 'projection.js'), 'utf8');
     const reqs = [...src.matchAll(/require\('([^']+)'\)/g)].map((m) => m[1]);
@@ -365,6 +373,13 @@ async function run() {
     ok(r.body.org.supplierId && r.body.org.supplierId.startsWith('SUP-'), 'supplier id');
     eq(r.body.desk, null, 'suppliers get no buyer desk');
     supOrg = r.body.org;
+  });
+
+  await test('a new supplier is told its first step is to add a product', async () => {
+    const r = await sup.call('GET', '/api/sp/overview');
+    eq(r.status, 200, JSON.stringify(r.body));
+    eq(r.body.tasks[0] && r.body.tasks[0].kind, 'listing', `first task: ${JSON.stringify(r.body.tasks[0])}`);
+    ok(r.body.tasks[0].action, 'with a button label');
   });
 
   await test('a material the request reader cannot name is refused', async () => {
