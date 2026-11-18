@@ -2589,6 +2589,7 @@ const releasePayment = wrap(async (req, res) => {
    * record says what was used. See fx.js.
    */
   const payable = fx.usdToInr(amount);
+  openDemoFloat(req, session);
   const available = floatOf(session);
   if (available < payable.amount) {
     throw new Error(
@@ -2778,9 +2779,40 @@ app.get('/api/payments/reconciliation', wrap(async (req, res) => {
 
 const floatOf = (session) => Number(session.paymentFloat || 0);
 
+/*
+ * Demo companies start with money in the bank.
+ *
+ * The public demo desk and the seeded demo company (Aarav Packaging) open with
+ * ₹50,00,000 in the payment float, so a visitor can walk a purchase all the way
+ * to payment without stopping to top up. It is recorded as an opening deposit
+ * in the float's history, never silently, and it is applied once: a float that
+ * has ever been set is never refilled. Real companies start at zero and fund
+ * the float through checkout. LIMEN_DEMO_FLOAT sets the amount (0 turns it off).
+ */
+const demoFloat = () => Math.max(0, Number(process.env.LIMEN_DEMO_FLOAT == null ? 5000000 : process.env.LIMEN_DEMO_FLOAT) || 0);
+function isDemoCompany(req) {
+  const org = req.account && req.account.org;
+  // A seeded demo company (Aarav Packaging) signed in with an account.
+  if (org) return !!org.demo;
+  // The public demo desk: no account, entered with the published demo codes.
+  // A deployment with its own LIMEN_ROLE_CODES is not a demo, and gets nothing.
+  return identity.usingDemoCodes();
+}
+function openDemoFloat(req, session) {
+  const amount = demoFloat();
+  if (!amount || session.paymentFloat != null || !isDemoCompany(req)) return false;
+  session.paymentFloat = amount;
+  session.floatTopUps = [...(session.floatTopUps || []), {
+    amount, paymentId: null, orderId: null, by: 'Limen demo',
+    at: new Date().toISOString(), simulated: true, opening: true,
+  }].slice(-20);
+  return true;
+}
+
 app.get('/api/payments/float', wrap(async (req, res) => {
   const session = sessionFor(req);
   guard(req, session, 'read');
+  openDemoFloat(req, session);
   res.json({
     balance: floatOf(session),
     currency: 'INR',
