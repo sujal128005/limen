@@ -90,7 +90,7 @@ function Platform({ me, path }) {
 }
 
 function Root() {
-  const { path, query } = usePath();
+  const { path } = usePath();
   const [me, setMe] = useState(undefined);
 
   useEffect(() => {
@@ -124,11 +124,10 @@ function Root() {
     );
   }
 
-  // The sourcing desk and the public landing page.
-  if (me.signedIn && me.org && me.org.kind === 'supplier' && !query.get('demo')) {
-    navigate('/supplier', { replace: true });
-    return null;
-  }
+  // The sourcing desk and the public landing page. A signed-in supplier sees
+  // the home page here, with a way back into their portal, rather than being
+  // bounced: bouncing made the home page unreachable and broke the back button.
+  window.__LIMEN_ME__ = me;
   prepareDesk(me);
   return <DeskLoader />;
 }

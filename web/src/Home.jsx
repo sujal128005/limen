@@ -150,6 +150,7 @@ export default function Home({ status, onDemo, onWallet, error, ready }) {
     setBusy(true); setSErr(null);
     try { await startSupplierDemo(); } catch (e) { setSErr(e.message); setBusy(false); }
   };
+  const me = typeof window !== 'undefined' ? window.__LIMEN_ME__ : null;
   const suppliers = status?.supplierCount || 15;
   const listings = status?.listingCount || 39;
 
@@ -165,8 +166,14 @@ export default function Home({ status, onDemo, onWallet, error, ready }) {
             <a href="#trust" onClick={() => setMenu(false)}>Safeguards</a>
           </nav>
           <div className="h2-bar-act">
-            <a className="h2-link" href="/login">Sign in</a>
-            <a className="h2-btn primary sm" href="/signup">Get started</a>
+            {me && me.signedIn && me.org ? (
+              <a className="h2-btn primary sm" href={me.org.kind === 'supplier' ? '/supplier' : '/'}>
+                {me.org.kind === 'supplier' ? 'Open your portal' : 'Open your desk'}
+              </a>
+            ) : (<>
+              <a className="h2-link" href="/login">Sign in</a>
+              <a className="h2-btn primary sm" href="/signup">Get started</a>
+            </>)}
             <button type="button" className="h2-burger" aria-label="Menu" aria-expanded={menu} onClick={() => setMenu(!menu)}>
               <span /><span /><span />
             </button>

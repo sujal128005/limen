@@ -5769,3 +5769,12 @@ tr.clickable:focus-visible { outline: 2px solid var(--pine); outline-offset: -2p
 .gem-badge.warn { color: var(--ink); border-color: var(--amber); background: var(--amber-wash); }
 .gem-inline { margin-top: 10px; font-size: 13.5px; line-height: 1.5; color: var(--ink-2); padding: 8px 12px; border-radius: var(--r-sm); background: var(--surface-2); border: 1px solid var(--hair); }
 .gem-inline.warn { background: var(--amber-wash); }
+
+/* The desk chooser's way back to the home page. */
+.door-back {
+  position: absolute; top: 20px; left: 20px; z-index: 2;
+  display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 14px 0 10px;
+  border: 1px solid var(--hair-strong); border-radius: 10px; background: var(--surface);
+  color: var(--ink); font: 600 14px var(--sans); cursor: pointer; box-shadow: var(--e1);
+}
+.door-back:hover { border-color: var(--ink-4); }

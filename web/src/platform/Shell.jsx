@@ -192,6 +192,28 @@ function Palette({ onClose, nav }) {
   );
 }
 
+/*
+ * Where "back" goes from a page that sits below a list: the list. Top-level
+ * pages have no parent, because the sidebar is already the way out of them.
+ */
+function parentOf(path, nav) {
+  const parts = path.split('/').filter(Boolean);
+  if (parts.length < 3 || parts[0] !== 'supplier' || parts[1] === 'settings') return null;
+  const to = `/${parts[0]}/${parts[1]}`;
+  const item = nav.flatMap((g) => g.items).find((it) => it.to === to);
+  return { to, label: item ? item.label : 'Back' };
+}
+/*
+ * Prefer the browser's own history when the previous page is the parent, so
+ * the list comes back at the scroll position and filters it was left with.
+ * Otherwise (a deep link, a notification) go to the parent directly.
+ */
+function goBack(to) {
+  const prev = window.__limenPrev;
+  if (prev === to && window.history.length > 1) window.history.back();
+  else navigate(to);
+}
+
 export function Shell({ path, children, badges = {} }) {
   const account = useAccount();
   const nav = useMemo(() => navFor(account), [account]);
@@ -204,6 +226,7 @@ export function Shell({ path, children, badges = {} }) {
   }, []);
   useEffect(() => { setSideOpen(false); }, [path]);
   const kind = account.org ? account.org.kind : null;
+  const parent = parentOf(path, nav);
   useEffect(() => {
     const items = nav.flatMap((g) => g.items);
     const hit = items.filter((it) => active(it, path)).sort((a, b) => b.to.length - a.to.length)[0];
@@ -213,23 +236,31 @@ export function Shell({ path, children, badges = {} }) {
   return (
     <div className="pf pf-shell">
       <aside className={`pf-side ${sideOpen ? 'open' : ''}`} aria-label="Main navigation">
-        <div className="pf-side-brand"><Mark /><b>Limen</b><span className="pf-app">{kind === 'supplier' ? 'Supplier' : 'Buyer'}</span></div>
+        <div className="pf-side-brand">
+          <a href="/" className="pf-side-home" title="Limen home"><Mark /><b>Limen</b></a>
+          <span className={`pf-app ${kind === 'supplier' ? 'seller' : ''}`}>{kind === 'supplier' ? 'Supplier' : 'Buyer'}</span>
+          <button type="button" className="pf-side-close" onClick={() => setSideOpen(false)} aria-label="Close navigation"><Icon name="x" size={18} /></button>
+        </div>
         {account.org && (
-          <div className="pf-orgswitch" title={account.org.name}>
-            {account.org.name}
-            <small>{account.membership ? account.membership.roleLabel : ''}{account.org.supplierId ? ` · ${account.org.supplierId}` : ''}</small>
+          <div className="pf-orgcard" title={account.org.name}>
+            <span className={`pf-org-av ${kind === 'supplier' ? 'seller' : ''}`}>{initials(account.org.name)}</span>
+            <span className="pf-org-t">
+              <b>{account.org.name}</b>
+              <small>{account.membership ? account.membership.roleLabel : ''}{account.org.supplierId ? ` · ${account.org.supplierId}` : ''}</small>
+              {account.user && account.user.demo && <span className="pf-org-demo">Demo account</span>}
+            </span>
           </div>
         )}
         <nav className="pf-nav">
           {nav.map((g, gi) => (
-            <div key={gi}>
+            <div key={gi} className="pf-nav-grp">
               {g.section && <div className="pf-nav-sec">{g.section}</div>}
               {g.items.filter((it) => !it.cap || can(account, it.cap)).map((it) => (
                 it.hard
-                  ? <a key={it.to} href={it.to}><Icon name={it.icon} />{it.label}</a>
+                  ? <a key={it.to} href={it.to}><Icon name={it.icon} /><span>{it.label}</span></a>
                   : (
                     <a key={it.to} className={active(it, path) ? 'on' : ''} aria-current={active(it, path) ? 'page' : undefined} {...linkProps(it.to)}>
-                      <Icon name={it.icon} />{it.label}{badges[it.badgeKey] ? <span className="pf-badge">{badges[it.badgeKey]}</span> : null}
+                      <Icon name={it.icon} /><span>{it.label}</span>{badges[it.badgeKey] ? <span className="pf-badge">{badges[it.badgeKey]}</span> : null}
                     </a>
                   )
               ))}
@@ -237,15 +268,24 @@ export function Shell({ path, children, badges = {} }) {
           ))}
         </nav>
         <div className="pf-side-foot">
-          {kind === 'supplier'
-            ? 'Your floor is enforced by the escrow contract. Nobody can sell below it, including your own agent.'
-            : 'Spending limits live in contract state. Your agent cannot raise its own.'}
+          <div className="pf-side-note">
+            <Icon name="shield" size={16} />
+            <span>{kind === 'supplier'
+              ? 'Your floor price is enforced by contract. No agent can sell below it.'
+              : 'Spending limits live in a contract. Your agent cannot raise its own.'}</span>
+          </div>
+          <a href="/" className="pf-side-back"><Icon name="back" size={16} /> Limen home</a>
         </div>
       </aside>
       {sideOpen && <div className="pf-scrim" style={{ zIndex: 45 }} onClick={() => setSideOpen(false)} />}
       <div className="pf-main">
         <header className="pf-top">
           <button className="pf-iconbtn pf-hamburger" onClick={() => setSideOpen(true)} aria-label="Open navigation"><Icon name="menu" /></button>
+          {parent && (
+            <a className="pf-backbtn" {...linkProps(parent.to)} onClick={(e) => { e.preventDefault(); goBack(parent.to); }}>
+              <Icon name="back" size={16} /><span>{parent.label}</span>
+            </a>
+          )}
           <button className="pf-search" onClick={() => setPalette(true)}><Icon name="search" size={16} /> Search Limen<kbd>Ctrl K</kbd></button>
           <div className="pf-top-right">
             <Notifications />
