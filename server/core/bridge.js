@@ -286,7 +286,7 @@ function gradeLabel(key, specs) {
 
 function specLines(specs) {
   return Object.entries(specs || {}).map(([k, v]) => {
-    const name = k.replace(/_/g, ' ');
+    const name = attrName(k);
     if (v.one_of && v.one_of.length) return `${name}: ${v.one_of.join(' or ').replace(/_/g, ' ')}`;
     if (v.min != null && v.max != null && v.min !== v.max) return `${name}: ${v.min}-${v.max}${v.unit ? ` ${v.unit}` : ''}`;
     if (v.min != null && v.max == null) return `${name}: at least ${v.min}${v.unit ? ` ${v.unit}` : ''}`;
@@ -420,7 +420,15 @@ function finishBrief(brief) {
 
 /* -------------------------------------------------------------- shortlist */
 
-const CHECK_LABEL = (name) => name.replace(/^spec:/, '').replace(/^cert:/, 'certification ').replace(/_/g, ' ');
+/* Engine attribute keys, as people say them. */
+const ATTR_NAMES = {
+  grade_type: 'grade', mfi_g_10min: 'melt flow (MFI)', density_g_cc: 'density', iv_dl_g: 'intrinsic viscosity (IV)',
+  steel_grade: 'steel grade', thickness_mm: 'thickness', width_mm: 'width', length_mm: 'length', height_mm: 'height',
+  purity_pct: 'purity', ply: 'ply', bursting_strength_kg_cm2: 'bursting strength', thickness_micron: 'film thickness',
+  lead_time: 'lead time', moq: 'minimum order', capacity: 'capacity',
+};
+const attrName = (k) => ATTR_NAMES[k] || k.replace(/_/g, ' ');
+const CHECK_LABEL = (name) => (name.startsWith('cert:') ? `certification ${name.slice(5)}` : attrName(name.replace(/^spec:/, '')));
 
 /**
  * Screen the catalogue for a brief. One row per supplier that lists the
