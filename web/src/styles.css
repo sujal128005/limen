@@ -51,7 +51,7 @@
   /* ---- radius. Controls read as instruments, panels read as paper. */
   --r-xs: 4px;
   --r-sm: 8px;
-  --r-md: 14px;
+  --r-md: 12px;
   --r-lg: 20px;
   --r-pill: 100px;
 
@@ -88,149 +88,147 @@
 [data-theme="light"] {
   color-scheme: light;
 
-  /* surfaces. Warm neutral ramp, never blue-grey. */
-  --canvas:      #F6F5F1;
-  --canvas-deep: #EDEBE5;
+  /* Light industrial: cool paper, deep navy ink, one blue for action and one
+     amber for the brand and anything waiting on a person. */
+  --canvas:      #F7F8FA;
+  --canvas-deep: #EEF1F5;
   --surface:     #FFFFFF;
-  --surface-2:   #FBFAF8;
-  --sunk:        #F1EFEA;
+  --surface-2:   #FAFBFC;
+  --sunk:        #F1F4F8;
 
-  /* ink */
-  --ink:    #101418;   /* 16.96:1 on canvas */
-  --ink-2:  #47525C;   /*  7.32:1 */
-  --ink-3:  #576169;   /*  5.80:1 */
-  --ink-4:  #626D76;   /*  4.85:1 */
+  --ink:    #0F1B2D;
+  --ink-2:  #3B4A5E;
+  --ink-3:  #4F5D72;
+  --ink-4:  #5E6C80;
 
-  /* the one inverted surface, used for the mandate, brand mark and drawer */
-  --invert-bg:  #12161A;
-  --invert-fg:  #F4F3F0;
-  --invert-dim: #9BA6AE;
-  --invert-line: rgba(255,255,255,.16);
-  --invert-hover: #1B2229;
+  --invert-bg:  #0F1B2D;
+  --invert-fg:  #F5F7FA;
+  --invert-dim: #A3B1C4;
+  --invert-line: rgba(255,255,255,.14);
+  --invert-hover: #18273D;
 
-  /* lines */
-  --hair:        #E4E1D9;
-  --hair-strong: #D2CEC4;
-  /* The adversary report was written against a --border token that was never
-     defined, so its card and table borders silently disappeared. */
+  --hair:        #E5E9F0;
+  --hair-strong: #D3D9E2;
   --border:      var(--hair-strong);
 
-  /* accent: deep pine. Action, focus, success. */
-  --pine:       #0B5F52;
-  --pine-deep:  #084A40;
-  --pine-lift:  #0E7161;
-  --pine-wash:  #E9F1EF;
-  --pine-line:  #B2CCC5;
+  /* accent: industrial blue. Action and focus. The token keeps its old name so
+     every component picks the new colour up without a rename. */
+  --pine:       #2563EB;
+  --pine-deep:  #1D4ED8;
+  --pine-lift:  #3B82F6;
+  --pine-wash:  #EFF4FF;
+  --pine-line:  #BFD3FE;
   --on-accent:     #FFFFFF;
-  --on-accent-dim: rgba(255,255,255,.72);
+  --on-accent-dim: rgba(255,255,255,.76);
+
+  /* brand amber, for marks and highlights; never for body text */
+  --brand:      #F5A524;
+  --brand-deep: #D98A06;
+  --brand-wash: #FFF6E5;
+  --on-brand:   #1A1205;
+
+  --ok:       #15803D;
+  --ok-wash:  #ECFDF3;
+  --ok-line:  #B7EBC9;
 
   /* caution: held, pending, waiting on a human */
-  --amber:      #8A5A00;
-  --amber-wash: #FAF2E2;
-  --amber-line: #E4CFA4;
+  --amber:      #A15C07;
+  --amber-wash: #FFF7E6;
+  --amber-line: #F6D9A1;
 
   /* refusal */
-  --crimson:      #9E1F33;
-  --crimson-wash: #FBEDEF;
-  --crimson-line: #E9C2C8;
+  --crimson:      #B42318;
+  --crimson-wash: #FEF1F0;
+  --crimson-line: #F5C4BE;
 
-  --slate-wash: #EEF0F1;
+  --slate-wash: #EEF1F5;
 
-  /* translucent layers */
-  --glass:      rgba(255,255,255,.80);
-  --glass-soft: rgba(255,255,255,.62);
-  --glass-thin: rgba(255,255,255,.50);
+  --glass:      rgba(255,255,255,.84);
+  --glass-soft: rgba(255,255,255,.66);
+  --glass-thin: rgba(255,255,255,.52);
   --sheen:      rgba(255,255,255,.16);
-  --scrim:      rgba(16,20,24,.34);
-  --scrim-soft: rgba(16,20,24,.20);
+  --scrim:      rgba(15,27,45,.36);
+  --scrim-soft: rgba(15,27,45,.20);
   --lip: inset 0 1px 0 rgba(255,255,255,.7);
-  --sidebar-veil: linear-gradient(180deg, rgba(255,255,255,.62), rgba(255,255,255,.30));
-  --bar-veil: rgba(246,245,241,.9);
+  --sidebar-veil: linear-gradient(180deg, rgba(255,255,255,.72), rgba(255,255,255,.40));
+  --bar-veil: rgba(247,248,250,.9);
 
-  /* documents keep a paper surface */
   --doc-bg: #FFFFFF;
 
-  /* elevation. Neutral ink only. No coloured shadows anywhere. */
-  --e1: 0 1px 2px rgba(16,20,24,.05);
-  --e2: 0 1px 2px rgba(16,20,24,.05), 0 6px 16px -8px rgba(16,20,24,.16);
-  --e3: 0 1px 3px rgba(16,20,24,.06), 0 18px 40px -18px rgba(16,20,24,.26);
-  --e4: 0 2px 6px rgba(16,20,24,.07), 0 40px 80px -32px rgba(16,20,24,.34);
-  --inset-well: inset 0 1px 3px rgba(16,20,24,.05);
+  --e1: 0 1px 2px rgba(15,27,45,.05);
+  --e2: 0 1px 2px rgba(15,27,45,.05), 0 6px 16px -8px rgba(15,27,45,.14);
+  --e3: 0 1px 3px rgba(15,27,45,.06), 0 18px 40px -18px rgba(15,27,45,.22);
+  --e4: 0 2px 6px rgba(15,27,45,.07), 0 40px 80px -32px rgba(15,27,45,.30);
+  --inset-well: inset 0 1px 3px rgba(15,27,45,.05);
 
-  /* ambient field tints */
-  --aura-1: rgba(11,95,82,.10);
-  --aura-1b: rgba(11,95,82,.035);
-  --aura-2: rgba(158,128,74,.11);
-  --aura-2b: rgba(158,128,74,.04);
-  --aura-3: rgba(84,104,118,.09);
-  --aura-3b: rgba(84,104,118,.03);
+  --aura-1: rgba(37,99,235,.08);
+  --aura-1b: rgba(37,99,235,.03);
+  --aura-2: rgba(245,165,36,.10);
+  --aura-2b: rgba(245,165,36,.035);
+  --aura-3: rgba(100,116,139,.08);
+  --aura-3b: rgba(100,116,139,.03);
 
-  --halo-line: rgba(16,20,24,.16);
+  --halo-line: rgba(15,27,45,.14);
 
-  /* ---- gradients. Four, and only four, so the product reads as one thing.
-     The AI gradient is the accent travelling through teal to a warm gold: it
-     belongs to the same family as the brand rather than arriving as a separate
-     "AI purple", which is the cliche this deliberately avoids. */
-  --grad-accent: linear-gradient(135deg, var(--pine-lift), var(--pine) 55%, var(--pine-deep));
-  --grad-ai:     linear-gradient(120deg, #0E7161, #14A88C 38%, #7FBF9A 66%, #C8A44E);
-  --grad-ok:     linear-gradient(135deg, #14A88C, var(--pine));
-  --grad-warn:   linear-gradient(135deg, #C9922B, #8A5A00);
+  --grad-accent: linear-gradient(135deg, #3B82F6, #2563EB 55%, #1D4ED8);
+  --grad-ai:     linear-gradient(120deg, #1D4ED8, #2563EB 35%, #60A5FA 65%, #F5A524);
+  --grad-ok:     linear-gradient(135deg, #22C55E, #15803D);
+  --grad-warn:   linear-gradient(135deg, #F5A524, #D98A06);
 
-  /* ---- AI glow. One shadow recipe, used wherever intelligence is working. */
-  --glow-ai:   0 0 0 1px rgba(20,168,140,.22), 0 8px 30px -8px rgba(20,168,140,.35);
-  --glow-soft: 0 0 0 1px rgba(20,168,140,.14), 0 4px 18px -6px rgba(20,168,140,.22);
-  --glow-warn: 0 0 0 1px rgba(201,146,43,.24), 0 8px 26px -8px rgba(201,146,43,.32);
+  --glow-ai:   0 0 0 1px rgba(37,99,235,.20), 0 8px 30px -8px rgba(37,99,235,.30);
+  --glow-soft: 0 0 0 1px rgba(37,99,235,.12), 0 4px 18px -6px rgba(37,99,235,.20);
+  --glow-warn: 0 0 0 1px rgba(245,165,36,.26), 0 8px 26px -8px rgba(245,165,36,.32);
 }
 
 [data-theme="dark"] {
   color-scheme: dark;
 
-  /* The canvas sits well below the surfaces rather than beside them. At the
-     old #101317 the page and the cards on it were seven values apart, which is
-     invisible: the whole workspace read as one flat sheet with hairlines drawn
-     on it. Dropping the canvas rather than lifting the cards keeps every
-     measured contrast ratio below intact, since text on a surface has not
-     moved and text on the canvas has more room, not less. */
-  --canvas:      #0A0D10;
-  --canvas-deep: #06090B;
-  --surface:     #171B20;
-  --surface-2:   #1C2127;
-  --sunk:        #12161A;
+  --canvas:      #0A1220;
+  --canvas-deep: #070D18;
+  --surface:     #121C2C;
+  --surface-2:   #172235;
+  --sunk:        #0E1726;
 
-  --ink:    #ECEAE5;   /* 15.49:1 on canvas */
-  --ink-2:  #B4BCC4;   /*  9.69:1 */
-  --ink-3:  #A3ACB4;   /*  7.9:1  */
-  --ink-4:  #838C95;   /*  5.45:1, and 4.74:1 on the lightest surface */
+  --ink:    #E8EDF4;
+  --ink-2:  #B6C2D2;
+  --ink-3:  #9DABBE;
+  --ink-4:  #8392A7;
 
-  /* inverted means lighter here. A white panel on a dark canvas is a glare
-     source, so this is an elevated grey rather than a flip to white. */
-  --invert-bg:  #262E35;
-  --invert-fg:  #ECEAE5;
-  --invert-dim: #A3ACB4;
+  --invert-bg:  #1B2840;
+  --invert-fg:  #E8EDF4;
+  --invert-dim: #9DABBE;
   --invert-line: rgba(255,255,255,.10);
-  --invert-hover: #303941;
+  --invert-hover: #24334F;
 
-  --hair:        #262C33;
-  --hair-strong: #343C44;
+  --hair:        #1F2B3D;
+  --hair-strong: #2B3A50;
 
-  /* the accent lightens so it stays legible on a dark surface */
-  --pine:       #3FBFA3;
-  --pine-deep:  #2E9E88;
-  --pine-lift:  #52D0B4;
-  --pine-wash:  #10241F;
-  --pine-line:  #1F4A40;
-  --on-accent:     #06120F;
-  --on-accent-dim: rgba(6,18,15,.72);
+  --pine:       #60A5FA;
+  --pine-deep:  #3B82F6;
+  --pine-lift:  #93C5FD;
+  --pine-wash:  #0F1E38;
+  --pine-line:  #1E3A66;
+  --on-accent:     #06101F;
+  --on-accent-dim: rgba(6,16,31,.72);
 
-  --amber:      #E5B45F;
-  --amber-wash: #241C0E;
-  --amber-line: #463619;
+  --brand:      #F5A524;
+  --brand-deep: #F7B84D;
+  --brand-wash: #2A1E08;
+  --on-brand:   #1A1205;
 
-  --crimson:      #FF8A9B;
-  --crimson-wash: #2A1418;
-  --crimson-line: #4A2028;
+  --ok:       #4ADE80;
+  --ok-wash:  #0C2416;
+  --ok-line:  #1A4A2C;
 
-  --slate-wash: #1E242A;
+  --amber:      #F5B84D;
+  --amber-wash: #261B08;
+  --amber-line: #4A3613;
+
+  --crimson:      #FF8A80;
+  --crimson-wash: #2A1414;
+  --crimson-line: #4A2222;
+
+  --slate-wash: #1A2436;
 
   --glass:      rgba(255,255,255,.045);
   --glass-soft: rgba(255,255,255,.03);
@@ -240,38 +238,33 @@
   --scrim-soft: rgba(0,0,0,.45);
   --lip: inset 0 1px 0 rgba(255,255,255,.05);
   --sidebar-veil: linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.012));
-  --bar-veil: rgba(10,13,16,.88);
+  --bar-veil: rgba(10,18,32,.88);
 
-  --doc-bg: #191D22;
+  --doc-bg: #141E2F;
 
-  /* shadows carry almost no weight on a dark canvas, so depth comes from a
-     hairline top light instead of a heavier drop */
   --e1: 0 1px 2px rgba(0,0,0,.34);
   --e2: 0 1px 2px rgba(0,0,0,.34), 0 6px 16px -8px rgba(0,0,0,.5);
   --e3: 0 1px 3px rgba(0,0,0,.4), 0 18px 40px -18px rgba(0,0,0,.62);
   --e4: 0 2px 6px rgba(0,0,0,.45), 0 40px 80px -32px rgba(0,0,0,.7);
   --inset-well: inset 0 1px 3px rgba(0,0,0,.4);
 
-  --aura-1: rgba(63,191,163,.10);
-  --aura-1b: rgba(63,191,163,.035);
-  --aura-2: rgba(229,180,95,.075);
-  --aura-2b: rgba(229,180,95,.025);
+  --aura-1: rgba(96,165,250,.09);
+  --aura-1b: rgba(96,165,250,.03);
+  --aura-2: rgba(245,165,36,.07);
+  --aura-2b: rgba(245,165,36,.025);
   --aura-3: rgba(120,150,180,.07);
   --aura-3b: rgba(120,150,180,.025);
 
   --halo-line: rgba(255,255,255,.18);
 
-  /* Dark carries the same four gradients, lifted so they read on a dark
-     surface. The AI gradient keeps its identity rather than becoming a
-     different colour in the other theme. */
-  --grad-accent: linear-gradient(135deg, #52D0B4, #3FBFA3 55%, #2E9E88);
-  --grad-ai:     linear-gradient(120deg, #3FBFA3, #52D0B4 38%, #8FD9C4 66%, #E5B45F);
-  --grad-ok:     linear-gradient(135deg, #52D0B4, #3FBFA3);
-  --grad-warn:   linear-gradient(135deg, #E5B45F, #B98A31);
+  --grad-accent: linear-gradient(135deg, #93C5FD, #60A5FA 55%, #3B82F6);
+  --grad-ai:     linear-gradient(120deg, #3B82F6, #60A5FA 38%, #93C5FD 66%, #F5B84D);
+  --grad-ok:     linear-gradient(135deg, #4ADE80, #22C55E);
+  --grad-warn:   linear-gradient(135deg, #F5B84D, #D98A06);
 
-  --glow-ai:   0 0 0 1px rgba(63,191,163,.30), 0 10px 34px -8px rgba(63,191,163,.42);
-  --glow-soft: 0 0 0 1px rgba(63,191,163,.18), 0 5px 20px -6px rgba(63,191,163,.26);
-  --glow-warn: 0 0 0 1px rgba(229,180,95,.28), 0 8px 26px -8px rgba(229,180,95,.34);
+  --glow-ai:   0 0 0 1px rgba(96,165,250,.30), 0 10px 34px -8px rgba(96,165,250,.40);
+  --glow-soft: 0 0 0 1px rgba(96,165,250,.18), 0 5px 20px -6px rgba(96,165,250,.24);
+  --glow-warn: 0 0 0 1px rgba(245,184,77,.28), 0 8px 26px -8px rgba(245,184,77,.34);
 }
 
 /* Theme changes are instant on load and animated when a person flips them,
@@ -295,10 +288,10 @@
  */
 /*
  * A second, lighter step for small type that sits inside a tinted chip. The
- * chip's own mint wash lifts the background, and 11px uppercase at #3FBFA3
+ * chip's own mint wash lifts the background, and 11px uppercase at #60A5FA
  * measured 3.87:1 against it in the dark theme, just under the AA floor.
  */
-:root { --invert-accent: #3FBFA3; --invert-accent-lift: #7FE3CC; }
+:root { --invert-accent: #60A5FA; --invert-accent-lift: #93C5FD; }
 
 * { box-sizing: border-box; }
 
@@ -558,7 +551,7 @@ button { font: inherit; color: inherit; }
 /* The mark is a shape now, not a letter in a box, so it takes the accent
    colour directly and carries no container of its own. A tile behind a logo is
    what a product does when the logo cannot hold its own weight. */
-.brand-mark { flex: none; color: var(--pine); display: block; }
+.brand-mark { flex: none; color: var(--ink); display: block; }
 .brand-name { display: block; font-size: 15.5px; font-weight: 620; letter-spacing: -.026em; line-height: 1.1; }
 .brand-role { display: block; font-size: 12px; color: var(--ink-3); letter-spacing: -.004em; margin-top: 2px; }
 
@@ -957,7 +950,7 @@ table.grid tbody tr:nth-child(n+6) { animation-delay: 170ms; }
 }
 .btn-secondary:active:not(:disabled) {
   transform: translateY(.5px) scale(.986);
-  box-shadow: inset 0 2px 5px rgba(16,20,24,.12); transition-duration: 70ms;
+  box-shadow: inset 0 2px 5px rgba(15,27,45,.12); transition-duration: 70ms;
 }
 
 /* One pass of light across the face on hover.
@@ -3019,8 +3012,8 @@ table.grid tr.winner td:first-child { box-shadow: inset 3px 0 0 var(--pine); }
 .hp-hero::before {
   content: ""; position: absolute; inset: 0; pointer-events: none;
   background:
-    radial-gradient(58% 74% at 88% 8%, rgba(63,191,163,.20), transparent 62%),
-    radial-gradient(46% 62% at 6% 96%, rgba(63,191,163,.10), transparent 68%);
+    radial-gradient(58% 74% at 88% 8%, rgba(96,165,250,.20), transparent 62%),
+    radial-gradient(46% 62% at 6% 96%, rgba(96,165,250,.10), transparent 68%);
 }
 /* Scoped to the wordmark rather than set on the whole bar. The theme switch
    brings its own surface and its own label colours, and inheriting a light
@@ -3047,7 +3040,7 @@ table.grid tr.winner td:first-child { box-shadow: inset 3px 0 0 var(--pine); }
 }
 .hp-eyedot {
   width: 7px; height: 7px; border-radius: 50%; background: var(--invert-accent);
-  box-shadow: 0 0 0 4px rgba(63,191,163,.18);
+  box-shadow: 0 0 0 4px rgba(96,165,250,.18);
   animation: breathe 2.6s var(--ease) infinite;
 }
 
@@ -3088,8 +3081,8 @@ table.grid tr.winner td:first-child { box-shadow: inset 3px 0 0 var(--pine); }
   border: 1px solid var(--invert-line);
   box-shadow:
     var(--e4),
-    0 0 0 1px rgba(63,191,163,.10),
-    0 28px 70px -30px rgba(63,191,163,.32),
+    0 0 0 1px rgba(96,165,250,.10),
+    0 28px 70px -30px rgba(96,165,250,.32),
     inset 0 1px 0 rgba(255,255,255,.08);
   backdrop-filter: blur(14px);
 }
@@ -3101,8 +3094,8 @@ table.grid tr.winner td:first-child { box-shadow: inset 3px 0 0 var(--pine); }
 .mn-badge {
   font-size: 11px; font-weight: 640; letter-spacing: .04em; text-transform: uppercase;
   padding: 5px 10px; border-radius: 100px;
-  background: rgba(63,191,163,.16); color: var(--invert-accent-lift);
-  border: 1px solid rgba(63,191,163,.32);
+  background: rgba(96,165,250,.16); color: var(--invert-accent-lift);
+  border: 1px solid rgba(96,165,250,.32);
 }
 
 .mn-ceiling {
@@ -3120,7 +3113,7 @@ table.grid tr.winner td:first-child { box-shadow: inset 3px 0 0 var(--pine); }
 }
 .mn-row:last-child { border-bottom: 0; }
 .mn-ico { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; }
-.mn-row.ok .mn-ico { background: rgba(63,191,163,.18); color: var(--invert-accent); }
+.mn-row.ok .mn-ico { background: rgba(96,165,250,.18); color: var(--invert-accent); }
 .mn-row.no .mn-ico { background: rgba(255,138,155,.15); color: #FF9BA9; }
 .mn-ico svg { width: 12px; height: 12px; }
 .mn-x { font-size: 11px; line-height: 1; }
@@ -3132,7 +3125,7 @@ table.grid tr.winner td:first-child { box-shadow: inset 3px 0 0 var(--pine); }
   font-size: 10.5px; font-weight: 640; letter-spacing: .07em; text-transform: uppercase;
   padding: 4px 9px; border-radius: 100px; flex: none;
 }
-.mn-row.ok .mn-tag { background: rgba(63,191,163,.15); color: var(--invert-accent-lift); }
+.mn-row.ok .mn-tag { background: rgba(96,165,250,.15); color: var(--invert-accent-lift); }
 .mn-row.no .mn-tag { background: rgba(255,138,155,.13); color: #FF9BA9; }
 
 .mn-foot {
@@ -4127,10 +4120,10 @@ button.handover:focus-visible { outline: 2px solid var(--pine); outline-offset: 
  * how real penumbra behaves.
  */
 [data-theme="light"], :root {
-  --e1: 0 1px 1px rgba(16,20,24,.04), 0 2px 4px -2px rgba(16,20,24,.06);
-  --e2: 0 1px 2px rgba(16,20,24,.05), 0 8px 16px -8px rgba(16,20,24,.14);
-  --e3: 0 2px 4px -1px rgba(16,20,24,.06), 0 20px 36px -16px rgba(16,20,24,.20);
-  --e4: 0 4px 8px -2px rgba(16,20,24,.07), 0 44px 76px -28px rgba(16,20,24,.28);
+  --e1: 0 1px 1px rgba(15,27,45,.04), 0 2px 4px -2px rgba(15,27,45,.06);
+  --e2: 0 1px 2px rgba(15,27,45,.05), 0 8px 16px -8px rgba(15,27,45,.14);
+  --e3: 0 2px 4px -1px rgba(15,27,45,.06), 0 20px 36px -16px rgba(15,27,45,.20);
+  --e4: 0 4px 8px -2px rgba(15,27,45,.07), 0 44px 76px -28px rgba(15,27,45,.28);
 }
 [data-theme="dark"] {
   --e1: 0 1px 1px rgba(0,0,0,.28), 0 2px 4px -2px rgba(0,0,0,.34);
@@ -4372,7 +4365,7 @@ h1, h2, h3 { text-wrap: balance; }
  */
 .hp-hero::before {
   background:
-    radial-gradient(72% 88% at 84% -6%, rgba(63,191,163,.22), transparent 58%),
+    radial-gradient(72% 88% at 84% -6%, rgba(96,165,250,.22), transparent 58%),
     radial-gradient(58% 70% at 2% 104%, rgba(90,140,255,.10), transparent 66%),
     radial-gradient(120% 100% at 50% 0%, rgba(255,255,255,.05), transparent 55%);
 }
@@ -4559,7 +4552,7 @@ h1, h2, h3 { text-wrap: balance; }
   position: absolute; inset: 0; pointer-events: none; overflow: hidden;
   border-radius: inherit; z-index: 0;
   background:
-    radial-gradient(64% 44% at 82% 4%, rgba(63,191,163,.14), transparent 62%),
+    radial-gradient(64% 44% at 82% 4%, rgba(96,165,250,.14), transparent 62%),
     radial-gradient(56% 40% at 6% 96%, rgba(96,132,255,.10), transparent 66%);
 }
 /*
@@ -4654,7 +4647,7 @@ h1, h2, h3 { text-wrap: balance; }
 /* ---- the control that opens it */
 .rationale-fab { color: var(--pine-lift); }
 .rationale-fab .lim-mark { width: 26px; height: 26px; }
-.rf-halo { background: radial-gradient(circle, rgba(63,191,163,.34), transparent 68%); }
+.rf-halo { background: radial-gradient(circle, rgba(96,165,250,.34), transparent 68%); }
 
 
 /*

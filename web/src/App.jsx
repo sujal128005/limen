@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom';
 import { AccountMenu } from './platform/Shell';
 import { startSupplierDemo } from './platform/core';
+import Home from './Home';
 /* eslint-disable react-hooks/exhaustive-deps */
 
 /* ---------------------------------------------------------------- helpers */
@@ -724,7 +725,7 @@ function BrandMark({ size = 26 }) {
         d="M6 33V13a4 4 0 0 1 4-4h28a4 4 0 0 1 4 4v20H33V20a3 3 0 0 0-3-3H18a3 3 0 0 0-3 3v13z"
         fill="currentColor"
       />
-      <rect x="4" y="36" width="40" height="7" rx="3.5" fill="currentColor" />
+      <rect x="4" y="36" width="40" height="7" rx="3.5" fill="#F5A524" />
     </svg>
   );
 }
@@ -3651,7 +3652,7 @@ function Desk() {
             // charged and nothing needs explaining.
             ondismiss: () => { setPay((p) => (p.phase === 'done' ? p : { ...p, phase: 'idle' })); resolve(); },
           },
-          theme: { color: '#0B5F52' },
+          theme: { color: '#2563EB' },
         });
         rz.on('payment.failed', (e) => {
           setFloatErr((e && e.error && e.error.description) || 'The payment did not go through.');
@@ -4290,8 +4291,7 @@ function Desk() {
   if (!entered) {
     return (
       <>
-        <Aura stage="entry" />
-        <Entry
+        <Home
           status={status}
           onWallet={() => { setEntryError(null); setGate(true); window.scrollTo({ top: 0, behavior: 'auto' }); }}
           onDemo={() => { setEntered(true); refreshStatus(); }}
@@ -5344,7 +5344,7 @@ function applyTheme(choice) {
   const dark = choice === 'dark' || (choice === 'system' && media.matches);
   document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
   const meta = document.querySelector('meta[name="theme-color"]:not([media])');
-  if (meta) meta.setAttribute('content', dark ? '#101317' : '#F6F5F1');
+  if (meta) meta.setAttribute('content', dark ? '#101317' : '#F7F8FA');
   return dark ? 'dark' : 'light';
 }
 
