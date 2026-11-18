@@ -53,7 +53,7 @@ async function run() {
     eq(b.materialKey, 'CORRUGATED_BOX', 'material');
     eq(b.unit, 'pcs', 'unit');
     eq(b.quantityKg, 20000, 'quantity in pieces');
-    ok(b.specs.some((s) => /length mm: 450/.test(s)), `dimensions: ${b.specs}`);
+    ok(b.specs.some((s) => /length: 450/.test(s)), `dimensions: ${b.specs}`);
   });
 
   await test('asks for what is missing instead of guessing', async () => {
