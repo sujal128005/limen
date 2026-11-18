@@ -82,6 +82,7 @@ export async function startSupplierDemo() {
 const listeners = new Set();
 export function navigate(to, { replace = false } = {}) {
   if (to === window.location.pathname + window.location.search) return;
+  if (!replace) window.__limenPrev = window.location.pathname + window.location.search;
   if (replace) window.history.replaceState({}, '', to);
   else window.history.pushState({}, '', to);
   window.scrollTo(0, 0);
@@ -187,3 +188,7 @@ export function ago(s) {
 }
 export const initials = (name) => String(name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('');
 export const shortHash = (h) => (h ? `${h.slice(0, 10)}…${h.slice(-6)}` : '—');
+
+/* A history step taken with the browser's own buttons makes the remembered
+   previous page meaningless, so forget it. */
+if (typeof window !== 'undefined') window.addEventListener('popstate', () => { window.__limenPrev = null; });

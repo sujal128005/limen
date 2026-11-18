@@ -900,7 +900,7 @@ function viewForNext(next, role) {
  * and it cannot, because the server signs it and reads it back out of the
  * signature rather than out of anything the browser sends.
  */
-function RoleDoor({ onIn, busy, error }) {
+function RoleDoor({ onIn, busy, error, onBack }) {
   const [role, setRole] = useState('sales');
   const [code, setCode] = useState('');
   const [desks, setDesks] = useState(null);
@@ -946,6 +946,12 @@ function RoleDoor({ onIn, busy, error }) {
 
   return (
     <div className="door">
+      {onBack && (
+        <button type="button" className="door-back" onClick={onBack}>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M19 12H5M11 18l-6-6 6-6" /></svg>
+          Back to home
+        </button>
+      )}
       <form className="door-card" onSubmit={submit}>
         <div className="door-head">
           <BrandMark />
@@ -3221,7 +3227,7 @@ function Desk() {
   // ?demo opens the demo desk directly. The sign-in page links here as "try
   // the public demo desk", and without this the link only showed the landing
   // page again.
-  const [entered, setEntered] = useState(() => !!SESSION || new URLSearchParams(window.location.search).has('demo'));
+  const [entered, setEntered] = useState(() => !!window.__LIMEN_ACCOUNT__ || new URLSearchParams(window.location.search).has('demo'));
 
   /* Who is at this desk, and what the server says about the purchase. Both come
      from the server; neither is inferred here. */
@@ -3231,7 +3237,22 @@ function Desk() {
   const [doorBusy, setDoorBusy] = useState(false);
   const [doorError, setDoorError] = useState(null);
   const [purchase, setPurchase] = useState(null);
-  const [view, setView] = useState('run');
+  const [view, setViewState] = useState(() => new URLSearchParams(window.location.search).get('view') || 'run');
+  /*
+   * The desk keeps its place in the browser history.
+   *
+   * Which screen is open, and whether the visitor is past the home page, are
+   * written into the address and into history.state on every change, so the
+   * browser's back and forward buttons step through the screens a person
+   * actually visited instead of leaving the site. A change that came from the
+   * back button itself is not written again.
+   */
+  const fromPop = useRef(false);
+  const replaceNext = useRef(false);
+  const setView = useCallback((v, opts) => {
+    if (opts && opts.replace) replaceNext.current = true;
+    setViewState(v);
+  }, []);
   /* The three screens that used to be dead links. Loaded when the screen is
      opened rather than on sign-in, because two of them read the chain. */
   const [suppliers, setSuppliers] = useState(null);
@@ -3309,7 +3330,7 @@ function Desk() {
          start over from: landing on an empty request box would hide the reason
          the last one was refused. */
       const needsReading = p && (!CAN_START_OVER.includes(p.state) || p.state === 'REJECTED');
-      setView(home === 'run' && needsReading ? 'review' : home);
+      setView(home === 'run' && needsReading ? 'review' : home, { replace: true });
     } catch (e) {
       setDoorError(e.message);
     } finally {
@@ -4195,8 +4216,60 @@ function Desk() {
 
   /* The gate is its own screen rather than a modal, because it is a decision
      about which workspace you are working in, not an interruption. */
-  const [gate, setGate] = useState(false);
+  const [gate, setGate] = useState(() => new URLSearchParams(window.location.search).has('wallet'));
   const [connecting, setConnecting] = useState(false);
+
+  useEffect(() => {
+    if (fromPop.current) { fromPop.current = false; return; }
+    const st = { entered, view: entered ? view : null, gate: !entered && gate };
+    const q = new URLSearchParams(window.location.search);
+    const account = !!window.__LIMEN_ACCOUNT__;
+    if (st.entered && !account) q.set('demo', '1'); else q.delete('demo');
+    if (st.view) q.set('view', st.view); else q.delete('view');
+    if (st.gate) q.set('wallet', '1'); else q.delete('wallet');
+    const url = window.location.pathname + (q.toString() ? `?${q}` : '') + window.location.hash;
+    const cur = window.history.state && window.history.state.limenDesk;
+    const same = cur && cur.entered === st.entered && cur.view === st.view && cur.gate === st.gate;
+    if (same) return;
+    if (!cur || replaceNext.current) window.history.replaceState({ limenDesk: st }, '', url);
+    else {
+      // Remember that home is one step back, so "Back to home" can use the
+      // browser's own history instead of stacking another copy of the page.
+      if (st.entered && !cur.entered) window.__limenHomeBehind = true;
+      window.history.pushState({ limenDesk: st }, '', url);
+    }
+    replaceNext.current = false;
+  }, [entered, view, gate]);
+
+  const live = useRef({ entered, view, gate });
+  live.current = { entered, view, gate };
+  useEffect(() => {
+    const onPop = (e) => {
+      const q = new URLSearchParams(window.location.search);
+      const st = (e.state && e.state.limenDesk) || {
+        entered: !!window.__LIMEN_ACCOUNT__ || q.has('demo'),
+        view: q.get('view') || 'run',
+        gate: q.has('wallet'),
+      };
+      const now = live.current;
+      const nextView = st.view || now.view;
+      if (now.entered === st.entered && now.view === nextView && now.gate === !!st.gate) return;
+      fromPop.current = true;
+      setEntered(st.entered);
+      setViewState(nextView);
+      setGate(!!st.gate);
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
+  /* A screen from the address that this desk does not have (an old link, or a
+     link from another desk) opens the desk's own home instead of a blank page. */
+  useEffect(() => {
+    const desk = session && ROLE_DESKS[session.role];
+    if (desk && !desk.nav.includes(view)) setView(desk.home, { replace: true });
+  }, [session, view, setView]);
 
   async function enterWithWallet() {
     setEntryError(null);
@@ -4283,7 +4356,7 @@ function Desk() {
     return (
       <>
         <Aura stage="entry" />
-        <RoleDoor onIn={signIn} busy={doorBusy} error={doorError} />
+        <RoleDoor onIn={signIn} busy={doorBusy} error={doorError} onBack={() => { if (window.__limenHomeBehind) { window.__limenHomeBehind = false; window.history.back(); } else setEntered(false); }} />
       </>
     );
   }
