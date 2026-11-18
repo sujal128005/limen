@@ -34,21 +34,38 @@ function go(me) {
 
 function Art({ kind }) {
   const supplier = kind === 'supplier';
+  const [busy, setBusy] = useState(false);
+  const h = useLoad('/api/platform/health');
+  const demos = !(h.data && h.data.publicDemo === false);
+  const supplierDemo = async () => {
+    setBusy(true);
+    try { await startSupplierDemo(); } catch (_) { setBusy(false); }
+  };
   return (
-    <aside className="pf-auth-art">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, position: 'relative' }}>
-        <Mark /> <b style={{ fontSize: 18 }}>Limen</b>
+    <aside className={`pf-auth-art ${supplier ? 'seller' : ''}`}>
+      <a href="/" className="pf-auth-brand"><Mark size={30} /> <b>Limen</b></a>
+      <div className="pf-auth-art-body">
+        <span className="pf-auth-kicker">{supplier ? 'For suppliers' : 'For buyers'}</span>
+        <h2>{supplier ? 'Win orders without giving away your margin.' : 'Your agent buys. You keep the signature.'}</h2>
+        <p>{supplier
+          ? 'List what you make. Buyers\' agents find you and negotiate with your agent above a floor only you set. You are paid from escrow once delivery is confirmed.'
+          : 'Limen finds qualified suppliers, compares true landed cost and negotiates. Your spending limit is enforced outside the AI, and your team approves every rupee.'}</p>
+        <ul>
+          {(supplier
+            ? ['Your floor price stays private. No agent can sell below it.', 'Buyers are named to you once they approve.', 'Paid from escrow on delivery, so no chasing invoices.']
+            : ['A spending ceiling the AI cannot cross.', 'Sales raises, the head approves, finance pays.', 'Ranked on landed cost, with GST and freight included.']
+          ).map((t) => <li key={t}><Icon name="check" />{t}</li>)}
+        </ul>
       </div>
-      <h2>{supplier ? 'Sell to buyers whose agents already want your price.' : 'Hand an agent the chequebook. Keep the signature.'}</h2>
-      <p>{supplier
-        ? 'List what you make. Buyers\' agents find you, negotiate with your agent inside a floor only you set, and pay through escrow the moment delivery is confirmed.'
-        : 'Your agent sources and negotiates. Your spending limit lives in a contract it cannot touch, and three desks share the work so nobody raises, approves and pays.'}</p>
-      <ul>
-        {(supplier
-          ? ['Your floor price is enforced on chain. No agent, yours or ours, sells below it.', 'Buyers are named to you once they approve, never before.', 'Paid from escrow on delivery. No chasing invoices.']
-          : ['Spending ceilings in contract state, not in a prompt.', 'Sales raises, the head approves, finance pays.', 'Every figure traceable to the clause or quote it came from.']
-        ).map((t) => <li key={t}><Icon name="check" />{t}</li>)}
-      </ul>
+      {demos && (
+        <div className="pf-auth-try">
+          <div><b>Not ready to register?</b><span>Try a demo with sample companies. No account needed.</span></div>
+          <div className="pf-auth-try-act">
+            <a className="pf-auth-try-btn" href="/?demo=1">Buyer demo</a>
+            <button type="button" className="pf-auth-try-btn" onClick={supplierDemo} disabled={busy}>{busy ? 'Opening…' : 'Supplier demo'}</button>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }
@@ -120,8 +137,9 @@ export function Login() {
       <Art />
       <main className="pf-auth-form">
         <form className="pf-auth-card" onSubmit={submit}>
-          <h1>{mfa ? 'Two-step sign-in' : 'Sign in to Limen'}</h1>
-          <p className="lead">{mfa ? 'Enter the six-digit code from your authenticator app, or a recovery code.' : 'Buyers land at their desk. Suppliers land in their portal.'}</p>
+          <a href="/" className="pf-auth-mbrand"><Mark size={26} /> <b>Limen</b></a>
+          <h1>{mfa ? 'Two-step sign-in' : 'Welcome back'}</h1>
+          <p className="lead">{mfa ? 'Enter the six-digit code from your authenticator app, or a recovery code.' : 'Sign in to Limen. Buyers go to their desk, suppliers to their portal.'}</p>
           {expired && !error && <div className="pf-err">Your session ended. Sign in again to continue.</div>}
           <ErrorBox error={error} />
           {!mfa ? (
@@ -175,14 +193,17 @@ export function Signup() {
       <Art kind={kind} />
       <main className="pf-auth-form">
         <form className="pf-auth-card" onSubmit={submit}>
-          <h1>Create your company account</h1>
-          <p className="lead">Free to start. You can invite the rest of your team once you are in.</p>
+          <a href="/" className="pf-auth-mbrand"><Mark size={26} /> <b>Limen</b></a>
+          <h1>Register your company</h1>
+          <p className="lead">{kind === 'supplier'
+            ? 'Free to start. Next you add your products, prices and private floor, then invite your team.'
+            : 'Free to start. Next you set your spending limits, then invite the rest of your team.'}</p>
           <div className="pf-kind" role="radiogroup" aria-label="Account type">
             <button type="button" role="radio" aria-checked={kind === 'buyer'} className={kind === 'buyer' ? 'on' : ''} onClick={() => setKind('buyer')}>
-              <b>I buy</b><span>Source, negotiate and pay suppliers under a spending limit.</span>
+              <span className="pf-kind-ic"><Icon name="building" /></span><b>I'm buying</b><span>Source, negotiate and pay suppliers under a spending limit.</span>
             </button>
             <button type="button" role="radio" aria-checked={kind === 'supplier'} className={kind === 'supplier' ? 'on' : ''} onClick={() => setKind('supplier')}>
-              <b>I sell</b><span>List products and win orders from buyers' agents.</span>
+              <span className="pf-kind-ic"><Icon name="box" /></span><b>I'm supplying</b><span>List products and win orders from buyers' agents.</span>
             </button>
           </div>
           <ErrorBox error={error} />
@@ -203,7 +224,7 @@ export function Signup() {
               ]} />
             </Field>
           )}
-          <Button type="submit" variant="primary" size="lg" block busy={busy}>Create account</Button>
+          <Button type="submit" variant="primary" size="lg" block busy={busy}>{kind === 'supplier' ? 'Create supplier account' : 'Create buyer account'}</Button>
           <div className="pf-auth-alt">Already have an account? <a {...linkProps('/login')}>Sign in</a></div>
           <p className="muted small" style={{ marginTop: 14 }}>By creating an account you agree to the terms of service and privacy notice of the company operating this deployment.</p>
         </form>

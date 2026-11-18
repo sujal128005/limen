@@ -48,9 +48,9 @@ export function Icon({ name, size, ...rest }) {
 
 export function Mark({ size = 26 }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true">
-      <path d="M6 33V13a4 4 0 0 1 4-4h28a4 4 0 0 1 4 4v20H33V20a3 3 0 0 0-3-3H18a3 3 0 0 0-3 3v13z" fill="#3FBFA3" />
-      <rect x="4" y="36" width="40" height="7" rx="3.5" fill="#3FBFA3" />
+    <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true" className="pf-mark">
+      <path d="M6 33V13a4 4 0 0 1 4-4h28a4 4 0 0 1 4 4v20H33V20a3 3 0 0 0-3-3H18a3 3 0 0 0-3 3v13z" fill="currentColor" />
+      <rect x="4" y="36" width="40" height="7" rx="3.5" fill="#F5A524" />
     </svg>
   );
 }
