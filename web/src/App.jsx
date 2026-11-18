@@ -3218,7 +3218,11 @@ function Desk() {
    */
   const fromPop = useRef(false);
   const replaceNext = useRef(false);
+  /* Counts every navigation, so a choice made while something was loading is
+     not overwritten when the load finishes. */
+  const navTick = useRef(0);
   const setView = useCallback((v, opts) => {
+    navTick.current += 1;
     if (opts && opts.replace) replaceNext.current = true;
     setViewState(v);
   }, []);
@@ -3284,6 +3288,7 @@ function Desk() {
       const s = await api.post('/api/session/login', { role, code });
       setSessionToken(s);
       setSession(s);
+      const tick = navTick.current;
       /*
        * Land where the work is.
        *
@@ -3299,7 +3304,10 @@ function Desk() {
          start over from: landing on an empty request box would hide the reason
          the last one was refused. */
       const needsReading = p && (!CAN_START_OVER.includes(p.state) || p.state === 'REJECTED');
-      setView(home === 'run' && needsReading ? 'review' : home, { replace: true });
+      /* The desk is on screen while the purchase loads, and on a server that
+         has just woken that takes seconds. Someone who has already opened a
+         screen keeps it. */
+      if (navTick.current === tick) setView(home === 'run' && needsReading ? 'review' : home, { replace: true });
     } catch (e) {
       setDoorError(e.message);
     } finally {
