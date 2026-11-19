@@ -46,7 +46,7 @@ function headers(req, res, next) {
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
       "connect-src 'self' https://api.razorpay.com https://lumberjack.razorpay.com",
-      "frame-src https://api.razorpay.com https://checkout.razorpay.com",
+      "frame-src 'self' blob: https://api.razorpay.com https://checkout.razorpay.com",
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",

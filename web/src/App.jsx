@@ -3774,6 +3774,9 @@ function Desk() {
       });
     } else if (mine && !was.mine) {
       setToast({ kind: 'turn', title: 'Your move', detail: next.action, go: ROLE_DESKS[session.role].home });
+    } else if (!mine && was.mine) {
+      // The step was taken, so a "your move" prompt for it is now out of date.
+      setToast((t) => (t && t.kind === 'turn' ? null : t));
     }
   }, [session, view, purchase && purchase.unreadMessages,
       purchase && purchase.progress && purchase.progress.next && purchase.progress.next.mine]);
@@ -5604,17 +5607,17 @@ function CeilingDemo() {
       <div className="cd-track" aria-hidden="true">
         <div className="cd-settled">
           <span className="cd-lab">Agent negotiates</span>
-          <span className="cd-val">$1,175</span>
+          <span className="cd-val">₹5,68,996</span>
         </div>
         <div className="cd-attempt">
           <span className="cd-lab">Agent then attempts</span>
-          <span className="cd-val">$1,250</span>
+          <span className="cd-val">₹6,25,000</span>
         </div>
         <div className="cd-wall">
           {/* Not "your limit". Nothing is configured yet, and labelling an
               example figure as the reader's own is the exact misreading this
               caption exists to prevent. */}
-          <span className="cd-wall-lab">Buyer's limit $1,200</span>
+          <span className="cd-wall-lab">Buyer's limit ₹6,00,000</span>
         </div>
       </div>
 
@@ -6403,7 +6406,7 @@ function RequestPanel({
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="e.g. 500 kg of bottle-grade PET resin, budget $1,200, delivered within 14 days, FDA food-contact certified"
+          placeholder="e.g. 5 MT of bottle-grade PET resin, budget ₹6 lakh, delivered to Chennai within 10 days, food-contact certified"
           aria-label="Procurement request"
           spellCheck={false}
         />
