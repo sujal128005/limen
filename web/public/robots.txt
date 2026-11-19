@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /supplier
+Disallow: /settings
+Disallow: /account
+Disallow: /reset-password
+Disallow: /verify-email
+Disallow: /invite
+
+Sitemap: https://limen-peqe.onrender.com/sitemap.xml

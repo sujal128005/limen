@@ -4,10 +4,25 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Limen | AI procurement for Indian manufacturers</title>
-    <meta name="description" content="Procurement agents that source and negotiate, with spending authority enforced by contract." />
+    <meta name="description" content="AI procurement for Indian manufacturers. Agents find qualified suppliers and negotiate the deal, your team approves every rupee, and suppliers are paid on delivery." />
+    <link rel="canonical" href="https://limen-peqe.onrender.com/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Limen" />
+    <meta property="og:title" content="Limen | AI procurement for Indian manufacturers" />
+    <meta property="og:description" content="Agents find qualified suppliers and negotiate the deal. Your team approves every rupee. Suppliers are paid on delivery." />
+    <meta property="og:url" content="https://limen-peqe.onrender.com/" />
+    <meta property="og:image" content="https://limen-peqe.onrender.com/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Limen: Buy smarter. Sell fairer. Never overspend." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Limen | AI procurement for Indian manufacturers" />
+    <meta name="twitter:description" content="Agents find qualified suppliers and negotiate the deal. Your team approves every rupee." />
+    <meta name="twitter:image" content="https://limen-peqe.onrender.com/og.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="icon" type="image/svg+xml" href='data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"%3E%3Cpath d="M6.8 29.6V20.8Q6.8 12 15.6 12H32.4Q41.2 12 41.2 20.8V25.2" fill="none" stroke="%23174A40" stroke-width="5.2" stroke-linejoin="round"/%3E%3Cpath d="M4.2 32.8H23.6L21.2 38H4.2z" fill="%23E2B862"/%3E%3C/svg%3E' />
     <meta name="color-scheme" content="light dark" />
-    <meta name="theme-color" content="#F7F8FA" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#174A40" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#0A1220" media="(prefers-color-scheme: dark)" />
 
     <!--
@@ -25,15 +40,17 @@
     -->
     <script>
       /*
-       * Limen is built for screens of 11 inches and up: laptops, desktops and
-       * large tablets, which get the responsive layout. A phone (shortest side
-       * under 600 CSS pixels; no laptop is that small) is shown the laptop layout instead, at 1280px
-       * wide, which it can pinch and zoom like any desktop site.
+       * The home page and legal pages are responsive on phones. Everything else
+       * is built for screens of 11 inches and up, so a phone (shortest side
+       * under 600 CSS pixels) gets it at laptop width, 1280px, and a one-time
+       * notice (src/screen.js).
        */
       (function () {
         try {
           var s = window.screen;
-          if (s && Math.min(s.width, s.height) < 600) {
+          var home = (location.pathname === '/' && !/[?&]demo=/.test(location.search))
+            || /^\/(privacy|terms)$/.test(location.pathname);
+          if (s && Math.min(s.width, s.height) < 600 && !home) {
             var vp = document.querySelector('meta[name="viewport"]');
             if (vp) vp.setAttribute('content', 'width=1280');
             document.documentElement.setAttribute('data-device', 'phone');

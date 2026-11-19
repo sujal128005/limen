@@ -12,6 +12,7 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { startSupplierDemo } from './platform/core';
+import { screenMode } from './screen';
 import './home.css';
 
 const reduced = () => typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -551,6 +552,7 @@ export default function Home({ status, onDemo, onWallet, error, ready }) {
   const [storyPlay, setStoryPlay] = useState(!reduced());
   const [scrolled, setScrolled] = useState(false);
 
+  useEffect(() => { screenMode('home'); return () => screenMode('app'); }, []);
   const supplierDemo = async () => {
     setBusy(true); setSErr(null);
     try { await startSupplierDemo(); } catch (e) { setSErr(e.message); setBusy(false); }
@@ -584,7 +586,7 @@ export default function Home({ status, onDemo, onWallet, error, ready }) {
             <a href="#scenarios" onClick={() => setMenu(false)}>Scenarios</a>
           </nav>
           <div className="h3-bar-act">
-            {me && me.signedIn && me.org ? (
+            {me && me.signedIn && me.org && !(me.user && me.user.demo) ? (
               <a className="h3-btn blue sm" href={me.org.kind === 'supplier' ? '/supplier' : '/'}>
                 {me.org.kind === 'supplier' ? 'Open your portal' : 'Open your desk'}
               </a>

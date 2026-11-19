@@ -278,6 +278,8 @@ function makeAuth({ store, mailer, audit, identity, onOrgCreated, ensureSupplier
     if (problems.length) throw httpError(422, problems[0], { extra: { problems } });
     if (process.env.LIMEN_SIGNUPS === 'closed') throw httpError(403, 'Sign-ups are closed on this deployment. Ask for an invitation.');
     throttle(`signup:${req.ip}`);
+    // A hidden field people never see; a bot that fills every field fills this.
+    if (b.website) throw httpError(422, 'We could not create this account. Please try again.');
 
     const desk = kind === 'buyer' ? (roles.validDesk(b.desk) ? b.desk : 'head') : null;
     const user = await store.insert('users', {

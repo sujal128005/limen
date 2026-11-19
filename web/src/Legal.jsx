@@ -222,3 +222,25 @@ export function Terms() {
     </Page>
   );
 }
+
+export function NotFound() {
+  React.useEffect(() => { document.title = 'Page not found | Limen'; }, []);
+  return (
+    <div className="h3 lg">
+      <header className="h3-bar scrolled">
+        <div className="h3-bar-in">
+          <a className="h3-brand" href="/" aria-label="Limen home"><Mark /><span>Limen</span></a>
+        </div>
+      </header>
+      <main className="lg-main nf">
+        <p className="lg-kicker">Error 404</p>
+        <h1>This page does not exist</h1>
+        <p>The link may be old or mistyped. Everything in Limen starts from the home page.</p>
+        <div className="nf-act">
+          <a className="h3-btn blue" href="/">Go to the home page</a>
+          <a className="h3-btn ghost" href="/?demo=1">Open the buyer demo</a>
+        </div>
+      </main>
+    </div>
+  );
+}
