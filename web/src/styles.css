@@ -113,18 +113,18 @@
 
   /* accent: industrial blue. Action and focus. The token keeps its old name so
      every component picks the new colour up without a rename. */
-  --pine:       #2563EB;
-  --pine-deep:  #1D4ED8;
-  --pine-lift:  #3B82F6;
-  --pine-wash:  #EFF4FF;
-  --pine-line:  #BFD3FE;
+  --pine:       #174A40;
+  --pine-deep:  #0F3830;
+  --pine-lift:  #2A7A66;
+  --pine-wash:  #E8F2EF;
+  --pine-line:  #B9D6CE;
   --on-accent:     #FFFFFF;
   --on-accent-dim: rgba(255,255,255,.76);
 
   /* brand amber, for marks and highlights; never for body text */
-  --brand:      #F5A524;
-  --brand-deep: #D98A06;
-  --brand-wash: #FFF6E5;
+  --brand:      #E2B862;
+  --brand-deep: #B8873A;
+  --brand-wash: #FBF4E3;
   --on-brand:   #1A1205;
 
   --ok:       #15803D;
@@ -161,23 +161,23 @@
   --e4: 0 2px 6px rgba(15,27,45,.07), 0 40px 80px -32px rgba(15,27,45,.30);
   --inset-well: inset 0 1px 3px rgba(15,27,45,.05);
 
-  --aura-1: rgba(37,99,235,.08);
-  --aura-1b: rgba(37,99,235,.03);
-  --aura-2: rgba(245,165,36,.10);
-  --aura-2b: rgba(245,165,36,.035);
+  --aura-1: rgba(23,74,64,.08);
+  --aura-1b: rgba(23,74,64,.03);
+  --aura-2: rgba(226,184,98,.10);
+  --aura-2b: rgba(226,184,98,.035);
   --aura-3: rgba(100,116,139,.08);
   --aura-3b: rgba(100,116,139,.03);
 
   --halo-line: rgba(15,27,45,.14);
 
-  --grad-accent: linear-gradient(135deg, #3B82F6, #2563EB 55%, #1D4ED8);
-  --grad-ai:     linear-gradient(120deg, #1D4ED8, #2563EB 35%, #60A5FA 65%, #F5A524);
+  --grad-accent: linear-gradient(135deg, #2A7A66, #174A40 55%, #0F3830);
+  --grad-ai:     linear-gradient(120deg, #0F3830, #174A40 35%, #4FB89C 65%, #E2B862);
   --grad-ok:     linear-gradient(135deg, #22C55E, #15803D);
-  --grad-warn:   linear-gradient(135deg, #F5A524, #D98A06);
+  --grad-warn:   linear-gradient(135deg, #E2B862, #B8873A);
 
-  --glow-ai:   0 0 0 1px rgba(37,99,235,.20), 0 8px 30px -8px rgba(37,99,235,.30);
-  --glow-soft: 0 0 0 1px rgba(37,99,235,.12), 0 4px 18px -6px rgba(37,99,235,.20);
-  --glow-warn: 0 0 0 1px rgba(245,165,36,.26), 0 8px 26px -8px rgba(245,165,36,.32);
+  --glow-ai:   0 0 0 1px rgba(23,74,64,.20), 0 8px 30px -8px rgba(23,74,64,.30);
+  --glow-soft: 0 0 0 1px rgba(23,74,64,.12), 0 4px 18px -6px rgba(23,74,64,.20);
+  --glow-warn: 0 0 0 1px rgba(226,184,98,.26), 0 8px 26px -8px rgba(226,184,98,.32);
 }
 
 [data-theme="dark"] {
@@ -203,17 +203,17 @@
   --hair:        #1F2B3D;
   --hair-strong: #2B3A50;
 
-  --pine:       #60A5FA;
-  --pine-deep:  #3B82F6;
-  --pine-lift:  #93C5FD;
-  --pine-wash:  #0F1E38;
-  --pine-line:  #1E3A66;
+  --pine:       #4FB89C;
+  --pine-deep:  #2A7A66;
+  --pine-lift:  #7FD3BC;
+  --pine-wash:  #0E2622;
+  --pine-line:  #1F4A40;
   --on-accent:     #06101F;
   --on-accent-dim: rgba(6,16,31,.72);
 
-  --brand:      #F5A524;
-  --brand-deep: #F7B84D;
-  --brand-wash: #2A1E08;
+  --brand:      #E2B862;
+  --brand-deep: #F0CF85;
+  --brand-wash: #2A220F;
   --on-brand:   #1A1205;
 
   --ok:       #4ADE80;
@@ -250,17 +250,17 @@
 
   --aura-1: rgba(96,165,250,.09);
   --aura-1b: rgba(96,165,250,.03);
-  --aura-2: rgba(245,165,36,.07);
-  --aura-2b: rgba(245,165,36,.025);
+  --aura-2: rgba(226,184,98,.07);
+  --aura-2b: rgba(226,184,98,.025);
   --aura-3: rgba(120,150,180,.07);
   --aura-3b: rgba(120,150,180,.025);
 
   --halo-line: rgba(255,255,255,.18);
 
-  --grad-accent: linear-gradient(135deg, #93C5FD, #60A5FA 55%, #3B82F6);
-  --grad-ai:     linear-gradient(120deg, #3B82F6, #60A5FA 38%, #93C5FD 66%, #F5B84D);
+  --grad-accent: linear-gradient(135deg, #7FD3BC, #4FB89C 55%, #2A7A66);
+  --grad-ai:     linear-gradient(120deg, #2A7A66, #4FB89C 38%, #7FD3BC 66%, #F5B84D);
   --grad-ok:     linear-gradient(135deg, #4ADE80, #22C55E);
-  --grad-warn:   linear-gradient(135deg, #F5B84D, #D98A06);
+  --grad-warn:   linear-gradient(135deg, #F5B84D, #B8873A);
 
   --glow-ai:   0 0 0 1px rgba(96,165,250,.30), 0 10px 34px -8px rgba(96,165,250,.40);
   --glow-soft: 0 0 0 1px rgba(96,165,250,.18), 0 5px 20px -6px rgba(96,165,250,.24);
@@ -288,10 +288,10 @@
  */
 /*
  * A second, lighter step for small type that sits inside a tinted chip. The
- * chip's own mint wash lifts the background, and 11px uppercase at #60A5FA
+ * chip's own mint wash lifts the background, and 11px uppercase at #4FB89C
  * measured 3.87:1 against it in the dark theme, just under the AA floor.
  */
-:root { --invert-accent: #60A5FA; --invert-accent-lift: #93C5FD; }
+:root { --invert-accent: #4FB89C; --invert-accent-lift: #7FD3BC; }
 
 * { box-sizing: border-box; }
 
@@ -551,7 +551,7 @@ button { font: inherit; color: inherit; }
 /* The mark is a shape now, not a letter in a box, so it takes the accent
    colour directly and carries no container of its own. A tile behind a logo is
    what a product does when the logo cannot hold its own weight. */
-.brand-mark { flex: none; color: var(--ink); display: block; }
+.brand-mark { flex: none; color: var(--pine); display: block; }
 .brand-name { display: block; font-size: 15.5px; font-weight: 620; letter-spacing: -.026em; line-height: 1.1; }
 .brand-role { display: block; font-size: 12px; color: var(--ink-3); letter-spacing: -.004em; margin-top: 2px; }
 

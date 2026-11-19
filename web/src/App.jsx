@@ -720,11 +720,8 @@ function BrandMark({ size = 26 }) {
       width={size} height={size} viewBox="0 0 48 48" fill="none"
       className="brand-mark" aria-hidden="true"
     >
-      <path
-        d="M6 33V13a4 4 0 0 1 4-4h28a4 4 0 0 1 4 4v20H33V20a3 3 0 0 0-3-3H18a3 3 0 0 0-3 3v13z"
-        fill="currentColor"
-      />
-      <rect x="4" y="36" width="40" height="7" rx="3.5" fill="#F5A524" />
+      <path d="M6.8 29.6V20.8Q6.8 12 15.6 12H32.4Q41.2 12 41.2 20.8V25.2" fill="none" stroke="currentColor" strokeWidth="5.2" strokeLinejoin="round" />
+      <path d="M4.2 32.8H23.6L21.2 38H4.2z" fill="#E2B862" />
     </svg>
   );
 }
@@ -3650,7 +3647,7 @@ function Desk() {
             // charged and nothing needs explaining.
             ondismiss: () => { setPay((p) => (p.phase === 'done' ? p : { ...p, phase: 'idle' })); resolve(); },
           },
-          theme: { color: '#2563EB' },
+          theme: { color: '#174A40' },
         });
         rz.on('payment.failed', (e) => {
           setFloatErr((e && e.error && e.error.description) || 'The payment did not go through.');

@@ -10,7 +10,7 @@
 
 .dk-notes { margin: 14px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; }
 .dk-notes li { font-size: 13px; color: var(--ink-2); padding-left: 16px; position: relative; }
-.dk-notes li::before { content: ''; position: absolute; left: 4px; top: 8px; width: 5px; height: 5px; border-radius: 50%; background: var(--brand, #F5A524); }
+.dk-notes li::before { content: ''; position: absolute; left: 4px; top: 8px; width: 5px; height: 5px; border-radius: 50%; background: var(--brand, #E2B862); }
 
 .dk-method { margin-top: 16px; padding: 12px 14px; border-radius: 10px; background: var(--sunk); font-size: 13px; color: var(--ink-2); line-height: 1.55; }
 .dk-method b { color: var(--ink); }

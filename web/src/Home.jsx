@@ -21,8 +21,8 @@ const reduced = () => typeof window !== 'undefined' && window.matchMedia && wind
 function Mark({ size = 28 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true" className="h3-mark">
-      <path d="M6 33V13a4 4 0 0 1 4-4h28a4 4 0 0 1 4 4v20H33V20a3 3 0 0 0-3-3H18a3 3 0 0 0-3 3v13z" fill="currentColor" />
-      <rect x="4" y="36" width="40" height="7" rx="3.5" fill="#F5A524" />
+      <path d="M6.8 29.6V20.8Q6.8 12 15.6 12H32.4Q41.2 12 41.2 20.8V25.2" fill="none" stroke="currentColor" strokeWidth="5.2" strokeLinejoin="round" />
+      <path d="M4.2 32.8H23.6L21.2 38H4.2z" fill="#E2B862" />
     </svg>
   );
 }
@@ -770,7 +770,7 @@ export default function Home({ status, onDemo, onWallet, error, ready }) {
         <div className="h3-foot-in">
           <div className="h3-foot-brand">
             <a className="h3-brand" href="/"><Mark size={26} /><span>Limen</span></a>
-            <p>AI procurement for India’s manufacturers. A Nexara9 venture.</p>
+            <p>AI procurement for India’s manufacturers. A <a className="h3-n9" href="https://nexara9.me" target="_blank" rel="noreferrer noopener">Nexara9</a> venture.</p>
           </div>
           <nav aria-label="Product">
             <b>Product</b>
@@ -787,7 +787,7 @@ export default function Home({ status, onDemo, onWallet, error, ready }) {
           </nav>
           <nav aria-label="Company">
             <b>Company</b>
-            <a href="https://nexara9.me/ventures/" target="_blank" rel="noreferrer noopener">Nexara9</a>
+            <a href="https://nexara9.me" target="_blank" rel="noreferrer noopener" style={{ color: '#E2B862', fontWeight: 650 }}>Nexara9</a>
             <a href="/login">Sign in</a>
           </nav>
         </div>
