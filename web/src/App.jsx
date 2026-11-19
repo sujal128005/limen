@@ -4402,6 +4402,7 @@ function Desk() {
         settled={purchase ? purchase.state === 'SETTLED' : !!release}
         onPalette={() => setPaletteOpen(true)}
         session={session}
+        purchaseState={purchase ? purchase.state : null}
         onSwitchDesk={signOut}
       />
 
@@ -4804,7 +4805,7 @@ const TENDER_STATE_LABEL = {
   REVERSED: 'Reversed',
 };
 
-function TenderSwitcher({ session }) {
+function TenderSwitcher({ session, stamp }) {
   const [open, setOpen] = useState(false);
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(null);
@@ -4823,7 +4824,9 @@ function TenderSwitcher({ session }) {
     }
   }, []);
 
-  useEffect(() => { if (session) load(); }, [session, load]);
+  // Reload when the purchase moves on, so its name appears as soon as the
+  // agent has read the request rather than after the next sign-in.
+  useEffect(() => { if (session) load(); }, [session, load, stamp]);
 
   // Close on an outside click or Escape, which is what every other popover on
   // this page does and what a reader expects without being told.
@@ -4947,7 +4950,7 @@ function TenderSwitcher({ session }) {
   );
 }
 
-function TopBar({ onHome, status, wallet, busy, counts, needsApproval, settled, onPalette, session, onSwitchDesk }) {
+function TopBar({ onHome, status, wallet, busy, counts, needsApproval, settled, onPalette, session, onSwitchDesk, purchaseState }) {
   const env = status?.mode === 'in-process' || !status?.mode ? 'Demo' : 'Live';
   return (
     <header className="topbar">
@@ -4963,7 +4966,7 @@ function TopBar({ onHome, status, wallet, busy, counts, needsApproval, settled, 
           nobody is signed in there is nothing to list, so the old crumb stands
           in - a company's purchases are not an anonymous question. */}
       {session
-        ? <TenderSwitcher session={session} />
+        ? <TenderSwitcher session={session} stamp={purchaseState} />
         : (
           <span className="tb-crumb">
             <span className="tb-crumb-k">Workspace</span>

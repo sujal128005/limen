@@ -603,33 +603,34 @@ export default function Home({ status, onDemo, onWallet, error, ready }) {
 
       {/* --------------------------------------------------------------- hero */}
       <section className="h3-hero">
-        <div className="h3-hero-glow" aria-hidden="true" />
-        <span className="h3-spark s1" aria-hidden="true"><Icon name="spark" size={28} /></span>
-        <span className="h3-spark s2" aria-hidden="true"><Icon name="spark" size={18} /></span>
-        <div className="h3-hero-in">
-          <span className="h3-eyebrow"><i />AI procurement for Indian manufacturers</span>
-          <h1>Buy smarter. Sell fairer.<br /><span>Never overspend.</span></h1>
-          <p className="h3-sub">
-            Limen’s agents find qualified suppliers, compare what you will really pay and negotiate the deal.
-            Your team approves every rupee before it moves, and suppliers are paid the day delivery is confirmed.
-          </p>
-          <div className="h3-hero-act">
-            <button type="button" className="h3-btn white lg" onClick={onDemo} disabled={!ready}>
-              {ready ? <><Icon name="factory" size={18} />Try the buyer demo</> : 'Starting up…'}
-            </button>
-            <button type="button" className="h3-btn glass lg" onClick={supplierDemo} disabled={!ready || busy}>
-              {busy ? 'Opening the portal…' : <><Icon name="box" size={18} />Try the supplier demo</>}
-            </button>
+        <div className="h3-hero-grid">
+          <div className="h3-hero-in">
+            <p className="h3-tagline">Procurement, rebuilt for both sides</p>
+            <h1>Buy smarter.<br />Sell fairer.<br /><span>Never overspend.</span></h1>
+            <p className="h3-sub">
+              Limen’s agents find qualified suppliers, compare what you will really pay and negotiate the deal.
+              Your team approves every rupee before it moves.
+            </p>
+            <div className="h3-hero-act">
+              <button type="button" className="h3-btn white lg" onClick={onDemo} disabled={!ready}>
+                {ready ? <><Icon name="factory" size={18} />Try the buyer demo</> : 'Starting up…'}
+              </button>
+              <button type="button" className="h3-btn outline lg" onClick={supplierDemo} disabled={!ready || busy}>
+                {busy ? 'Opening the portal…' : <><Icon name="box" size={18} />Try the supplier demo</>}
+              </button>
+            </div>
+            {error && <div className="h3-err" role="alert">{error} The demo still works.</div>}
+            {sErr && <div className="h3-err" role="alert">{sErr}</div>}
+            <p className="h3-reg">
+              Ready for your company?
+              <a href="/signup?as=buyer">Register as a buyer</a>
+              <a href="/signup?as=supplier">Register as a supplier</a>
+            </p>
           </div>
-          {error && <div className="h3-err" role="alert">{error} The demo still works.</div>}
-          {sErr && <div className="h3-err" role="alert">{sErr}</div>}
-          <p className="h3-hero-note">The demos need no account.</p>
-          <div className="h3-register" aria-label="Register a company">
-            <span>Ready to use Limen for your company?</span>
-            <a href="/signup?as=buyer"><Icon name="factory" size={16} />Register as a buyer</a>
-            <a href="/signup?as=supplier"><Icon name="box" size={16} />Register as a supplier</a>
-            <a className="quiet" href="/login">Sign in</a>
-          </div>
+          <figure className="h3-hero-shot" aria-hidden="true">
+            <div className="h3-hero-shot-bar"><i /><i /><i /></div>
+            <img src="/hero-deal.webp" width="2000" height="1250" alt="" fetchpriority="high" decoding="async" />
+          </figure>
         </div>
         <h2 className="h3-hero-tail" id="walkthrough">See one deal from both sides of the table</h2>
       </section>
