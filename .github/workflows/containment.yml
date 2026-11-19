@@ -62,6 +62,7 @@ jobs:
         env:
           LIMEN_LOCAL_SETTLE_MS: '3600000'
           LIMEN_RATE_LIMIT: '2000'
+          LIMEN_DEMO_HISTORY: 'false'
           GIT_COMMIT_SHA: ${{ github.sha }}
 
       # Without this a failure shows the CLI's one-line complaint and nothing

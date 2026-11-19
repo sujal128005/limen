@@ -310,7 +310,7 @@ async function run() {
         key: 'k', amount: 100, currency: 'INR', supplier: 'sup-1', reference: 'r', fundAccountId: 'fa_1',
       });
     } catch (e) { threw = e; }
-    ok(threw && /RAZORPAY_ACCOUNT_NUMBER/.test(threw.message), threw && threw.message);
+    ok(threw && /payout fund account|RAZORPAY_ACCOUNT_NUMBER/.test(threw.message), threw && threw.message);
   });
 
   group('A stale shell variable does not stop the local demo');

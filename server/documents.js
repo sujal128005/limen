@@ -209,7 +209,7 @@ function settlementRecord(session, ctx) {
     },
 
     disclaimer:
-      'Escrow settlement statement. The tax invoice is issued separately by the supplier.',
+      'Escrow settlement statement, not a tax invoice. The GST tax invoice is issued separately by the supplier.',
   };
 }
 

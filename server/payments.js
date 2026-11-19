@@ -128,7 +128,7 @@ function razorpayClient() {
     mode: 'razorpay',
     calls: 0,
     async createPayout({ key, amount, currency, supplier, reference, fundAccountId }) {
-      if (!ACCOUNT) { console.warn('[payments] RAZORPAY_ACCOUNT_NUMBER is not set'); throw new Error('Payouts are not available right now. Please try again later.'); }
+      if (!ACCOUNT) { console.warn('[payments] RAZORPAY_ACCOUNT_NUMBER is not set'); throw new Error('Payouts are not set up yet: no payout fund account is configured for this platform.'); }
       if (!fundAccountId) {
         throw new Error(
           `No fund account on file for ${supplier}. A payout needs the supplier's verified bank details.`
