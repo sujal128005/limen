@@ -179,6 +179,7 @@ export function Signup() {
       const me = await api.post('/api/auth/signup', {
         name: form.name, email: form.email, password: form.password, desk: form.desk,
         company: { name: form.company, kind, country: form.country, city: form.city },
+        website: form.website || '',
       });
       go(me);
     } catch (err) {
@@ -224,6 +225,10 @@ export function Signup() {
               ]} />
             </Field>
           )}
+          {/* Left empty by people; filled by form-filling bots. Hidden from sight and from screen readers. */}
+          <div aria-hidden="true" style={{ position: 'absolute', left: '-10000px', width: 1, height: 1, overflow: 'hidden' }}>
+            <label>Website<input tabIndex={-1} autoComplete="off" value={form.website || ''} onChange={set('website')} /></label>
+          </div>
           <Button type="submit" variant="primary" size="lg" block busy={busy}>{kind === 'supplier' ? 'Create supplier account' : 'Create buyer account'}</Button>
           <div className="pf-auth-alt">Already have an account? <a {...linkProps('/login')}>Sign in</a></div>
           <p className="muted small" style={{ marginTop: 14 }}>By creating an account you agree to Limen's <a href="/terms" target="_blank" rel="noreferrer">terms of use</a> and <a href="/privacy" target="_blank" rel="noreferrer">privacy policy</a>.</p>

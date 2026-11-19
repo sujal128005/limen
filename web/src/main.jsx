@@ -5,7 +5,9 @@ import './platform/platform.css';
 import { api, usePath, navigate, match, AccountContext } from './platform/core';
 import { ToastHost, Spinner } from './platform/ui';
 import { Login, Signup, Forgot, Reset, VerifyEmail, Invite, landingFor } from './platform/Auth';
-import { Privacy, Terms } from './Legal';
+import { Privacy, Terms, NotFound } from './Legal';
+import { screenMode, RESPONSIVE_PATHS } from './screen';
+import { cookieNotice } from './consent';
 import { Shell } from './platform/Shell';
 import {
   SupplierHome, Opportunities, OpportunityDetail, Orders, OrderDetail, Catalogue, Floor, Customers, Payouts, PayoutAccount, Analytics,
@@ -90,9 +92,19 @@ function Platform({ me, path }) {
   return <div className="pf-empty"><b>Page not found</b><a href={landingFor(me)}>Go home</a></div>;
 }
 
+const KNOWN = (path) => path === '/' || path === '/app' || path === '/account' || !!PUBLIC[path]
+  || path === '/supplier' || path.startsWith('/supplier/') || path === '/settings' || path.startsWith('/settings/');
+
 function Root() {
   const { path } = usePath();
   const [me, setMe] = useState(undefined);
+
+  // Phones: the home page and legal pages are responsive; the rest opens at
+  // laptop width with a one-time notice. The home page itself reports 'home'.
+  useEffect(() => {
+    if (RESPONSIVE_PATHS.has(path) || !KNOWN(path)) screenMode('home');
+    else if (path !== '/' || /[?&]demo=/.test(window.location.search)) screenMode('app');
+  }, [path]);
 
   useEffect(() => {
     let alive = true;
@@ -102,7 +114,16 @@ function Root() {
     return () => { alive = false; window.removeEventListener('limen:signed-out', out); };
   }, []);
 
-  if (me === undefined) return <div className="pf"><Spinner label="Loading" /></div>;
+  /* The shared supplier demo is not anyone's account. Someone who tried it and
+     then chose to register or sign in gets the real form, signed out of the demo. */
+  const onDemoAccount = !!(me && me.signedIn && me.user && me.user.demo);
+  const leavingDemo = onDemoAccount && (path === '/login' || path === '/signup');
+  useEffect(() => {
+    if (!leavingDemo) return;
+    api.post('/api/auth/logout', {}).catch(() => {}).finally(() => setMe({ signedIn: false }));
+  }, [leavingDemo]);
+
+  if (me === undefined || leavingDemo) return <div className="pf"><Spinner label="Loading" /></div>;
 
   if (PUBLIC[path]) {
     // Signed-in people asking for the sign-in page are sent to their work,
@@ -113,6 +134,7 @@ function Root() {
   }
 
   if (path === '/app') { window.location.replace(landingFor(me)); return null; }
+  if (!KNOWN(path)) return <NotFound />;
 
   if (path.startsWith('/supplier') || path.startsWith('/settings') || path === '/account') {
     if (!me.signedIn) { navigate(`/login?next=${encodeURIComponent(path)}`, { replace: true }); return null; }
@@ -134,3 +156,4 @@ function Root() {
 }
 
 createRoot(document.getElementById('root')).render(<Root />);
+cookieNotice();
