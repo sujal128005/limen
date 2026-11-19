@@ -226,7 +226,7 @@ export function Signup() {
           )}
           <Button type="submit" variant="primary" size="lg" block busy={busy}>{kind === 'supplier' ? 'Create supplier account' : 'Create buyer account'}</Button>
           <div className="pf-auth-alt">Already have an account? <a {...linkProps('/login')}>Sign in</a></div>
-          <p className="muted small" style={{ marginTop: 14 }}>By creating an account you agree to the terms of service and privacy notice of the company operating this deployment.</p>
+          <p className="muted small" style={{ marginTop: 14 }}>By creating an account you agree to Limen's <a href="/terms" target="_blank" rel="noreferrer">terms of use</a> and <a href="/privacy" target="_blank" rel="noreferrer">privacy policy</a>.</p>
         </form>
       </main>
     </div>

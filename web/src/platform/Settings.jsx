@@ -325,7 +325,7 @@ function describeDetail(d) {
   const value = (v) => {
     if (v === true) return 'yes';
     if (v === false) return 'no';
-    if (v == null) return '—';
+    if (v == null) return '-';
     if (Array.isArray(v)) return v.map(value).join(', ');
     if (typeof v === 'object') return Object.entries(v).map(([k, x]) => `${label(k).toLowerCase()} ${value(x)}`).join(', ');
     return String(v);

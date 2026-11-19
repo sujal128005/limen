@@ -160,7 +160,7 @@ async function run() {
 
   await test('invoice metadata names the invoice and reference', () => {
     const t = pdfText(invoicePdf);
-    ok(t.includes('Invoice'), 'title');
+    ok(t.includes('Settlement statement'), 'title');
     ok(t.includes('Limen'), 'author');
   });
 

@@ -5,6 +5,7 @@ import './platform/platform.css';
 import { api, usePath, navigate, match, AccountContext } from './platform/core';
 import { ToastHost, Spinner } from './platform/ui';
 import { Login, Signup, Forgot, Reset, VerifyEmail, Invite, landingFor } from './platform/Auth';
+import { Privacy, Terms } from './Legal';
 import { Shell } from './platform/Shell';
 import {
   SupplierHome, Opportunities, OpportunityDetail, Orders, OrderDetail, Catalogue, Floor, Customers, Payouts, PayoutAccount, Analytics,
@@ -22,7 +23,7 @@ import { CompanyProfile, Team, AccountSecurity, AuditLog } from './platform/Sett
  * so the supplier portal never pays for its weight.
  */
 
-const PUBLIC = { '/login': Login, '/signup': Signup, '/forgot-password': Forgot, '/reset-password': Reset, '/verify-email': VerifyEmail, '/invite': Invite };
+const PUBLIC = { '/login': Login, '/signup': Signup, '/forgot-password': Forgot, '/reset-password': Reset, '/verify-email': VerifyEmail, '/invite': Invite, '/privacy': Privacy, '/terms': Terms };
 
 const read = (k) => { try { return localStorage.getItem(k); } catch (_) { return null; } };
 const write = (k, v) => { try { localStorage.setItem(k, v); } catch (_) { /* private mode */ } };

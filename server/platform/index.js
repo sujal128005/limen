@@ -90,7 +90,7 @@ function createPlatform({ identity, workspace, payments, taxonomy, store: givenS
       publishFloor: (o, p) => chainOps.publishFloor(o, p),
       attestShipment: (ws, o, p) => chainOps.attestShipment(ws, o, p),
     },
-    workspaceOps: { mutate: (id, fn, meta) => workspaceOps.mutate(id, fn, meta) },
+    workspaceOps: { mutate: (id, fn, meta) => workspaceOps.mutate(id, fn, meta), load: (id) => workspaceOps.load(id) },
     payments: {
       registerFundAccount: async (args) => {
         const r = await payments.registerFundAccount(args);
@@ -171,6 +171,8 @@ function createPlatform({ identity, workspace, payments, taxonomy, store: givenS
   };
 
   async function projectPurchase(workspaceId, state, companyId) {
+    // A demo buyer's copy of a past order is already on the supplier's side once.
+    if (state && state.demoClone) return;
     let co = companyId;
     if (!co) {
       const row = await workspace.getStore().load(workspaceId);
@@ -181,8 +183,10 @@ function createPlatform({ identity, workspace, payments, taxonomy, store: givenS
     const meta = {
       workspaceId,
       buyerOrgId: buyerOrg ? buyerOrg.id : null,
-      buyerName: buyerOrg ? buyerOrg.name : 'Demo buyer workspace',
+      buyerName: buyerOrg ? buyerOrg.name : state && state.historyBuyer ? state.historyBuyer.name : 'Demo buyer workspace',
       buyerCountry: buyerOrg ? buyerOrg.country : null,
+      // A past demo order keeps the date it happened, not the date it was recorded.
+      updatedAt: state && state.demoHistory && state.historyAt ? state.historyAt : undefined,
     };
     const views = project(state, meta).map((v) => ({ ...v, demo: !buyerOrg }));
     const prior = new Map((await store.list('opportunities', { refId: workspaceId, limit: 500 })).map((p) => [p.id, p]));

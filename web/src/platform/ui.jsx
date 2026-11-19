@@ -214,7 +214,7 @@ export function DL({ rows }) {
   return (
     <dl className="pf-dl">
       {rows.filter(Boolean).map(([k, v]) => (
-        <React.Fragment key={k}><dt>{k}</dt><dd>{v == null || v === '' ? '—' : v}</dd></React.Fragment>
+        <React.Fragment key={k}><dt>{k}</dt><dd>{v == null || v === '' ? '-' : v}</dd></React.Fragment>
       ))}
     </dl>
   );

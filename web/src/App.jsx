@@ -255,7 +255,7 @@ async function request(path, { method = 'GET', body, timeout, key } = {}) {
       // A proxy or a crashed process returns HTML. Saying "Unexpected token <"
       // helps nobody.
       throw new ApiError(
-        r.ok ? 'The server replied in a format this build does not understand.'
+        r.ok ? 'Limen sent an unexpected reply. Please try again.'
              : `The server returned ${r.status}.`,
         { status: r.status }
       );
@@ -347,7 +347,7 @@ const api = {
       });
       const ct = r.headers.get('content-type') || '';
       if (!ct.includes('application/json')) {
-        throw new ApiError(r.ok ? 'The server replied in a format this build does not understand.'
+        throw new ApiError(r.ok ? 'Limen sent an unexpected reply. Please try again.'
           : `The server returned ${r.status}.`, { status: r.status });
       }
       const j = await r.json();
@@ -1008,9 +1008,8 @@ function RoleDoor({ onIn, busy, error, onBack }) {
             tells a reader which of the two they are looking at. */}
         {hint && (
           <p className="door-hint">
-            Test environment. The codes are published, so this gate separates the
-            desks rather than securing them. Setting LIMEN_ROLE_CODES replaces
-            them and removes this line.
+            Demo desks. The access code is filled in for you. A registered company signs in
+            with its own accounts instead.
           </p>
         )}
 
@@ -1560,7 +1559,7 @@ function PaymentSheet({ open, amount, live, phase, error, onPay, onClose }) {
         ) : (
           <>
             <div className="pay-head">
-              <span className="pay-rail">{live ? 'Razorpay, test mode' : 'Local stand-in'}</span>
+              <span className="pay-rail">{live ? 'Razorpay, test mode' : 'Demo payment'}</span>
               <button className="toast-x" onClick={onClose} aria-label="Cancel">&#10005;</button>
             </div>
             <div className="pay-amount">{inr(amount)}</div>
@@ -1587,7 +1586,7 @@ function PaymentSheet({ open, amount, live, phase, error, onPay, onClose }) {
             <p className="pay-note">
               {live
                 ? 'Test mode. Razorpay shows a mock bank page with Success and Failure, and no real money moves. The float is credited only after this server verifies the payment signature, never because this page reported success.'
-                : 'No Razorpay credentials are configured, so this is a local stand-in for the gateway. It signs and verifies through exactly the same server code as the live path, so the check that matters is the one being exercised.'}
+                : 'Demo payment. Nothing is charged; the payment is signed and verified exactly as a live one is.'}
             </p>
 
             {live && (
@@ -1609,22 +1608,6 @@ function PaymentSheet({ open, amount, live, phase, error, onPay, onClose }) {
               * gateway was never built. Naming the two variables and the
               * restart turns a disclosure into something fixable.
               */}
-            {!live && (
-              <div className="pay-enable">
-                <span className="pay-enable-h">To use the real gateway</span>
-                <ol>
-                  <li>
-                    Put your test key pair in <code>.env</code>:
-                    <code className="pay-env">RAZORPAY_KEY_ID</code>
-                    <code className="pay-env">RAZORPAY_KEY_SECRET</code>
-                  </li>
-                  <li>Restart the server. Credentials are read once at startup.</li>
-                  <li>
-                    Check it took: <code className="pay-env">npm run check:razorpay</code>
-                  </li>
-                </ol>
-              </div>
-            )}
           </>
         )}
       </div>
@@ -2404,8 +2387,8 @@ function SupplierDetail({ data, loading, error, onClose }) {
                     <tr key={pr.sku}>
                       <td className="mono">{pr.sku}</td>
                       <td>{pr.material}{pr.grade ? `, ${pr.grade}` : ''}</td>
-                      <td className="num">{pr.listUnitPrice != null ? usd(pr.listUnitPrice) : '—'}</td>
-                      <td className="num">{pr.moqKg != null ? `${Number(pr.moqKg).toLocaleString('en-IN')} ${pr.unit || 'kg'}` : '—'}</td>
+                      <td className="num">{pr.listUnitPrice != null ? usd(pr.listUnitPrice) : '-'}</td>
+                      <td className="num">{pr.moqKg != null ? `${Number(pr.moqKg).toLocaleString('en-IN')} ${pr.unit || 'kg'}` : '-'}</td>
                       <td className="num">{pr.leadTimeDays}d</td>
                     </tr>
                   ))}
@@ -2560,9 +2543,9 @@ function SuppliersView({ suppliers, loading, currentSupplierId }) {
                       {(s.certifications || []).map((c) => <span key={c} className="chip">{c}</span>)}
                     </div>
                   </td>
-                  <td className="num">{Number.isFinite(s.leadTimeDays) ? `${s.leadTimeDays}d` : '—'}</td>
-                  <td className="num">{s.onChain && s.onChain.settledCount != null ? s.onChain.settledCount : '—'}</td>
-                  <td className="num">{s.onChain && s.onChain.settledVolume != null ? usd0(s.onChain.settledVolume) : '—'}</td>
+                  <td className="num">{Number.isFinite(s.leadTimeDays) ? `${s.leadTimeDays}d` : '-'}</td>
+                  <td className="num">{s.onChain && s.onChain.settledCount != null ? s.onChain.settledCount : '-'}</td>
+                  <td className="num">{s.onChain && s.onChain.settledVolume != null ? usd0(s.onChain.settledVolume) : '-'}</td>
                 </tr>
               ))}
             </tbody>
@@ -2587,6 +2570,16 @@ function SuppliersView({ suppliers, loading, currentSupplierId }) {
 
 function DocumentsView({ purchase, summaryDoc, settlementDoc, onPreview }) {
   const settled = purchase && purchase.state === 'SETTLED';
+  /* The order paperwork both parties hold: purchase order, the supplier's
+     acknowledgement, tax invoice, delivery challan, goods receipt note and
+     payment advice. Each appears once its event has happened. */
+  const [orderDocs, setOrderDocs] = useState([]);
+  const stateKey = purchase ? `${purchase.state}|${purchase.reference || ''}` : '';
+  useEffect(() => {
+    let live = true;
+    api.get('/api/documents').then((d) => { if (live) setOrderDocs(Array.isArray(d) ? d : []); }).catch(() => { if (live) setOrderDocs([]); });
+    return () => { live = false; };
+  }, [stateKey]);
   const reference = (purchase && purchase.reference) || (summaryDoc && summaryDoc.reference);
   const sig = summaryDoc && summaryDoc.signature;
 
@@ -2606,8 +2599,8 @@ function DocumentsView({ purchase, summaryDoc, settlementDoc, onPreview }) {
   if (settled) {
     docs.push({
       id: 'invoice',
-      title: 'Settlement invoice',
-      sub: 'Issued after the payment settled',
+      title: 'Escrow settlement statement',
+      sub: 'Issued after the escrow released the payment',
       state: 'issued',
       path: '/api/document/invoice.pdf',
       file: `${reference || 'invoice'}-invoice.pdf`,
@@ -2620,16 +2613,41 @@ function DocumentsView({ purchase, summaryDoc, settlementDoc, onPreview }) {
         <div className="eyebrow">Documents</div>
         <h2>Contracts and invoices</h2>
         <p className="sub">
-          Every figure in these is derived from server-side state at the moment the file is
-          generated, so a document cannot disagree with the purchase it describes.
+          Every document is generated from the purchase as recorded, so it always matches what was agreed.
+          The supplier holds identical copies of the order paperwork.
         </p>
       </div>
+
+      {orderDocs.length > 0 && (
+        <div className="panel" style={{ marginBottom: 18 }}>
+          <div className="panel-head"><span className="panel-title">Order paperwork</span><span className="hint">{orderDocs.length} of 6 issued</span></div>
+          <div className="doclist" style={{ padding: 12 }}>
+            {orderDocs.map((d) => (
+              <div key={d.kind} className="doccard">
+                <span className="doccard-ico" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none"><path d="M7 4h7l4 4v12H7z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /><path d="M14 4v4h4M9.5 12.5h5M9.5 15.5h5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>
+                </span>
+                <div className="doccard-body">
+                  <div className="doccard-t">{d.title}</div>
+                  <div className="doccard-s">Issued by the {d.issuer} on {new Date(d.at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+                  <div className="doccard-r mono">{d.number}</div>
+                </div>
+                <div className="doccard-act">
+                  <button className="btn btn-secondary" onClick={() => onPreview({ path: `/api/documents/${d.kind}.pdf`, title: d.title })}>Open</button>
+                  <button className="btn btn-secondary" onClick={() => downloadPdf(`/api/documents/${d.kind}.pdf`, `${d.number.replace(/\//g, '-')}.pdf`)}>Download</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {!docs.length ? (
         <div className="panel">
           <div className="lempty" style={{ padding: 22 }}>
-            Nothing to show yet. A purchase agreement appears once the agent has recommended a
-            deal, and an invoice once the payment settles.
+            Nothing to show yet. The purchase agreement appears once the agent recommends a deal.
+            The purchase order follows approval, and the invoice, challan, receipt note and payment
+            advice follow each step of delivery.
           </div>
         </div>
       ) : (
@@ -2995,7 +3013,7 @@ function Dashboard({ profile: prof, history, purchase, suppliers, onGo }) {
             <div className="dash-now-k">In flight</div>
             <div className="dash-now-v">
               {purchase.supplier ? purchase.supplier.name : 'A purchase'}
-              {(purchase.requestedAmount ?? purchase.amount) ? ` — ${usd0(purchase.requestedAmount ?? purchase.amount)}` : ''}
+              {(purchase.requestedAmount ?? purchase.amount) ? ` · ${usd0(purchase.requestedAmount ?? purchase.amount)}` : ''}
             </div>
             <div className="dash-now-s">{STATE_BLURB[purchase.state] || purchase.state}</div>
           </>
@@ -3012,12 +3030,12 @@ function Dashboard({ profile: prof, history, purchase, suppliers, onGo }) {
       <div className="dash-grid">
         <div className="dash-card">
           <div className="dash-k">Settled purchases</div>
-          <div className="dash-v mono">{sum && sum.hasHistory ? sum.settled : '—'}</div>
+          <div className="dash-v mono">{sum && sum.hasHistory ? sum.settled : '-'}</div>
           <div className="dash-s">{sum && sum.hasHistory ? `${sum.runs} sourcing run${sum.runs === 1 ? '' : 's'}` : 'Nothing bought through Limen yet.'}</div>
         </div>
         <div className="dash-card">
           <div className="dash-k">Spent</div>
-          <div className="dash-v mono">{sum && sum.settled ? usd0(sum.spend) : '—'}</div>
+          <div className="dash-v mono">{sum && sum.settled ? usd0(sum.spend) : '-'}</div>
           <div className="dash-s">{sum && sum.settled ? `${usd0(sum.savedAgainstList)} below list across those deals` : 'No money has moved.'}</div>
         </div>
         <div className="dash-card">
@@ -3026,12 +3044,12 @@ function Dashboard({ profile: prof, history, purchase, suppliers, onGo }) {
           <div className="dash-s">
             {onChain && onChain.active
               ? `Chain enforces ${usd0(onChain.maxPerDeal)}`
-              : 'No policy published on chain — the agent cannot spend at all.'}
+              : 'No spending policy published yet, so the agent cannot spend.'}
           </div>
         </div>
         <div className="dash-card">
           <div className="dash-k">Suppliers</div>
-          <div className="dash-v mono">{suppliers ? suppliers.length : '—'}</div>
+          <div className="dash-v mono">{suppliers ? suppliers.length : '-'}</div>
           <div className="dash-s">
             {suppliers ? `${verifiedCount} with a verified registration number` : ''}
             {limits && limits.requireVerifiedSuppliers ? ' · unverified are excluded' : ''}
@@ -3047,8 +3065,7 @@ function Dashboard({ profile: prof, history, purchase, suppliers, onGo }) {
         </div>
         {!topSuppliers.length ? (
           <p className="sub" style={{ padding: '0 16px 16px' }}>
-            No supplier has been dealt with yet, so there is nothing here. This fills itself as runs complete —
-            and an empty table is the honest state, not a broken one.
+            No suppliers yet. This fills in as purchases complete.
           </p>
         ) : (
           <div className="tablewrap">
@@ -3070,7 +3087,7 @@ function Dashboard({ profile: prof, history, purchase, suppliers, onGo }) {
                     <td className="num">{h.runs}</td>
                     <td className="num">{h.agreed}</td>
                     <td className="num">{h.walkedAway}</td>
-                    <td className="num">{h.avgConcession != null ? `${(h.avgConcession * 100).toFixed(1)}%` : '—'}</td>
+                    <td className="num">{h.avgConcession != null ? `${(h.avgConcession * 100).toFixed(1)}%` : '-'}</td>
                     {/* A rate computed over two runs is not a rate, and the
                         column that says so is doing more work than the one
                         beside it. */}
@@ -4928,7 +4945,7 @@ function TenderSwitcher({ session }) {
 }
 
 function TopBar({ onHome, status, wallet, busy, counts, needsApproval, settled, onPalette, session, onSwitchDesk }) {
-  const env = status?.mode === 'in-process' || !status?.mode ? 'Test environment' : status.mode;
+  const env = status?.mode === 'in-process' || !status?.mode ? 'Demo' : 'Live';
   return (
     <header className="topbar">
       <button type="button" className="tb-brand" onClick={onHome} title="Back to the home page">
@@ -5017,7 +5034,7 @@ function VerdictBadge({ verdict }) {
   if (!verdict || verdict === 'queued') return <span className="adv-verdict queued">queued</span>;
   if (verdict === 'running') return <span className="adv-verdict running">running…</span>;
   if (verdict === 'PASS') return <span className="adv-verdict pass">CONTAINED</span>;
-  if (verdict === 'BREACH') return <span className="adv-verdict breach" role="alert">⚠ BREACH</span>;
+  if (verdict === 'BREACH') return <span className="adv-verdict breach" role="alert">BREACH</span>;
   if (verdict === 'SKIPPED') return <span className="adv-verdict skipped">SKIPPED</span>;
   return <span className="adv-verdict error">ERROR</span>;
 }
@@ -5116,7 +5133,7 @@ function AdversaryConsole({ run, busy, error, desk, onRun }) {
         <h2>
           {isComplete
             ? (hasBreaches
-              ? <span style={{ color: 'var(--crimson)' }}>⚠ {stats.score} contained — {breachCount} breach{breachCount !== 1 ? 'es' : ''}</span>
+              ? <span style={{ color: 'var(--crimson)' }}>{stats.score} contained, {breachCount} breach{breachCount !== 1 ? 'es' : ''}</span>
               : <span style={{ color: 'var(--pine)' }}>{stats.score} contained</span>)
             : 'Boundary containment check'}
         </h2>
@@ -5170,7 +5187,7 @@ function AdversaryConsole({ run, busy, error, desk, onRun }) {
           <div className="adv-score-row">
             {hasBreaches ? (
               <div className="adv-breach-banner" role="alert">
-                <strong>BREACH DETECTED</strong> — {breachCount} attack{breachCount !== 1 ? 's' : ''} reached a boundary that did not hold.
+                <strong>Breach detected:</strong> {breachCount} attack{breachCount !== 1 ? 's' : ''} reached a boundary that did not hold.
                 This is evidence of a regression. Do not suppress this result.
               </div>
             ) : (
@@ -5206,7 +5223,7 @@ function AdversaryConsole({ run, busy, error, desk, onRun }) {
         <div className="view-empty">
           <p>The adversary console runs a set of attacks against this server and reports which layer refused each one.</p>
           <p>Every run creates an isolated shadow workspace, seeds it with the standard catalogue, and tears it down after.</p>
-          <p>A CONTAINED result means each boundary held for this build. It is evidence about this code, not a security audit.</p>
+          <p>A contained result means the safeguard held against that attack in this release.</p>
         </div>
       )}
     </section>
@@ -6345,7 +6362,7 @@ function DocumentEvidence({ doc, brief, onRun, onClear, busy, disabled, onCheck,
           onClick={onRun}
           disabled={!!busy || disabled || !brief.complete}
         >
-          {busy ? 'Running' : 'These are right — run sourcing'}
+          {busy ? 'Running' : 'Looks right, run sourcing'}
         </button>
       </div>
     </div>
@@ -6508,7 +6525,7 @@ function RequestPanel({
 /* --------------------------------------------------------- requirements */
 
 const unitOf = (x) => (x && x.unit) || 'kg';
-const pctOf = (p) => (p == null ? '—' : `${Math.round(Number(p) * 100)}%`);
+const pctOf = (p) => (p == null ? '-' : `${Math.round(Number(p) * 100)}%`);
 const paiseToRupees = (p) => Math.round(Number(p || 0)) / 100;
 
 function BriefPanel({ brief }) {
@@ -6583,7 +6600,7 @@ function MatchMeter({ score }) {
 }
 
 function RiskChip({ p }) {
-  if (p == null) return <span className="dk-risk na">—</span>;
+  if (p == null) return <span className="dk-risk na">-</span>;
   const tone = p <= 0.08 ? 'low' : p <= 0.2 ? 'mid' : 'high';
   return <span className={`dk-risk ${tone}`} title="Estimated chance of a late delivery, from this supplier's record">{pctOf(p)}</span>;
 }
@@ -6749,7 +6766,7 @@ function NegotiationPanel({ results, revealed, brief }) {
                   <div><div className="k">Unit price</div><div className="v">{usd(neg.unitPrice)}</div></div>
                   <div><div className="k">Credit</div><div className="v">{neg.creditDays}<small className="dk-small">days</small></div></div>
                   <div><div className="k">Delivery</div><div className="v">{neg.leadTimeDays}<small className="dk-small">days</small></div></div>
-                  <div><div className="k">Under budget by</div><div className="v">{neg.budgetHeadroom != null ? usd0(neg.budgetHeadroom) : '—'}</div></div>
+                  <div><div className="k">Under budget by</div><div className="v">{neg.budgetHeadroom != null ? usd0(neg.budgetHeadroom) : '-'}</div></div>
                   {neg.partialNote && <div className="dk-partial">{neg.partialNote}</div>}
                 </div>
               )}
@@ -6846,7 +6863,7 @@ function QuoteComparison({ rows, winnerId, unit }) {
                   <td className="right num">{usd(c.unitPrice)}</td>
                   <td className="right num">{usd(c.landedPerUnit)}</td>
                   <td className="right num">{usd0(c.payable)}</td>
-                  <td className="right num">{c.deliveryDays != null ? `${c.deliveryDays}d` : '—'}</td>
+                  <td className="right num">{c.deliveryDays != null ? `${c.deliveryDays}d` : '-'}</td>
                   <td className="right"><RiskChip p={c.reliability && c.reliability.p_late} /></td>
                   <td className="right num"><b>{usd0(c.expectedTotalCost)}</b></td>
                 </tr>
@@ -7892,8 +7909,7 @@ function SettlementRecord({ doc, onPreview }) {
             </div>
           </div>
           <div className="doc-auth-note">
-            Every hash above is a transaction that actually executed. On a public network these
-            resolve in a block explorer; this build runs a local EVM, so they resolve in the node.
+            Every hash above is a transaction that actually executed on Limen's settlement network.
           </div>
         </div>
 
@@ -9045,12 +9061,9 @@ function DecisionBrief({ point, deps = [] }) {
 function Disclosure() {
   return (
     <div className="disclosure">
-      <b>What is real and what is simulated.</b> The contracts, transactions, escrow, gas and
-      reputation writes are genuine EVM execution on a local chain, and the same bytecode deploys to
-      Base or any EVM network unchanged. The supplier catalogue is seeded demo data, supplier
-      counterparties are simulated agents holding private reservation prices, and delivery is
-      confirmed by the buyer rather than a logistics oracle. Those three are integration points,
-      not solved problems.
+      <b>About this demo.</b> The companies, suppliers and prices in the demo are sample data, and
+      no real money moves. Sourcing, negotiation, approvals, escrow and settlement run exactly as
+      they do for a registered company.
     </div>
   );
 }

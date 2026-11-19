@@ -348,9 +348,8 @@ function agreementPdf(d, sig) {
             + `threshold of ${sig.rule && sig.rule.autoApproveBelow != null ? inrText(sig.rule.autoApproveBelow, { decimals: 0 }) : 'unknown'}, `
             + `set by ${sig.rule && sig.rule.setBy ? sig.rule.setBy : 'an unrecorded role'}. `
             + 'The on-chain spending ceiling was enforced by the escrow contract regardless. '
-          : 'The approval was captured as a typed name and is a demonstration e-signature, not a '
-            + 'cryptographic one. ') +
-      'Supplier records are seeded demo data.',
+          : 'The approval was recorded in Limen against the approver\'s signed-in desk. ') +
+      'The GST tax invoice is issued separately by the supplier.',
     draw(doc) {
       let y = header(doc, {
         title: 'Negotiated Purchase Agreement',
@@ -448,14 +447,14 @@ function invoicePdf(d, sig) {
   const l = d.line;
   const c = d.charges;
   return render({
-    info: { Title: `Invoice ${d.reference}`, Author: 'Limen', Subject: 'Settlement invoice' },
+    info: { Title: `Settlement statement ${d.reference}`, Author: 'Limen', Subject: 'Escrow settlement statement' },
     createdAt: d.settlement.settledAt,
     disclaimer:
-      'Internal settlement record. Not a tax invoice: this build does not compute or remit tax. ' +
-      'Delivery is confirmed by the buyer rather than a carrier. Supplier records are seeded demo data.',
+      'Escrow settlement statement. The GST tax invoice is issued separately by the supplier. ' +
+      'Delivery is confirmed by the buyer\'s receiving desk.',
     draw(doc) {
       let y = header(doc, {
-        title: 'Invoice',
+        title: 'Settlement Statement',
         reference: d.reference,
         version: 1,
         issued: new Date(d.settlement.settledAt).toISOString().slice(0, 16).replace('T', ' ') + ' UTC',
@@ -479,7 +478,7 @@ function invoicePdf(d, sig) {
       ], [
         { label: 'Goods subtotal', value: money(c.goods) },
         { label: `Platform fee (${(c.feeRate * 100).toFixed(1)}% of settled value)`, value: money(c.platformFee) },
-        { label: 'Tax', value: 'Not applicable in this build' },
+        { label: 'GST', value: 'On the supplier\'s tax invoice' },
         { label: 'Saved against list price', value: money(l.saving), tone: 'pos' },
         { label: 'Total settled', value: money(l.amount), strong: true },
       ]);

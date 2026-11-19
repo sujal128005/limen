@@ -590,7 +590,7 @@ export default function Home({ status, onDemo, onWallet, error, ready }) {
               </a>
             ) : (<>
               <a className="h3-link" href="/login">Sign in</a>
-              <a className="h3-btn blue sm" href="/signup">Get started</a>
+              <a className="h3-btn blue sm" href="/signup">Register your company</a>
             </>)}
             <button type="button" className="h3-burger" aria-label="Menu" aria-expanded={menu} onClick={() => setMenu(!menu)}>
               <span /><span /><span />
@@ -621,10 +621,13 @@ export default function Home({ status, onDemo, onWallet, error, ready }) {
           </div>
           {error && <div className="h3-err" role="alert">{error} The demo still works.</div>}
           {sErr && <div className="h3-err" role="alert">{sErr}</div>}
-          <p className="h3-hero-note">
-            No account needed. Already registered? <a href="/login">Sign in</a>
-            {onWallet && <> or <button type="button" className="h3-linkbtn" onClick={onWallet}>connect a wallet</button></>}.
-          </p>
+          <p className="h3-hero-note">The demos need no account.</p>
+          <div className="h3-register" aria-label="Register a company">
+            <span>Ready to use Limen for your company?</span>
+            <a href="/signup?as=buyer"><Icon name="factory" size={16} />Register as a buyer</a>
+            <a href="/signup?as=supplier"><Icon name="box" size={16} />Register as a supplier</a>
+            <a className="quiet" href="/login">Sign in</a>
+          </div>
         </div>
         <h2 className="h3-hero-tail" id="walkthrough">See one deal from both sides of the table</h2>
       </section>
@@ -790,10 +793,15 @@ export default function Home({ status, onDemo, onWallet, error, ready }) {
             <a href="https://nexara9.me" target="_blank" rel="noreferrer noopener" style={{ color: '#E2B862', fontWeight: 650 }}>Nexara9</a>
             <a href="/login">Sign in</a>
           </nav>
+          <nav aria-label="Legal">
+            <b>Legal</b>
+            <a href="/privacy">Privacy policy</a>
+            <a href="/terms">Terms of use</a>
+          </nav>
         </div>
         <div className="h3-foot-base">
-          <span>© {new Date().getFullYear()} Nexara9 Ventures. Limen is in early access.</span>
-          <span>Made in India</span>
+          <span>© {new Date().getFullYear()} Nexara9 Ventures. All rights reserved.</span>
+          <span><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></span>
         </div>
       </footer>
 

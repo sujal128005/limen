@@ -79,7 +79,7 @@ function scoreSupplier(supplier, verification, onChain) {
     parts.push({
       key: 'settlement', label: 'Settled trade', weight: WEIGHTS.settlement,
       value: NEUTRAL, provenance: 'earned', confidence: 'provisional',
-      detail: 'No completed deals yet. Held at neutral until there is something to judge — '
+      detail: 'No completed deals yet. Held at neutral until there is something to judge; '
         + 'scoring a newcomer at zero is how a marketplace closes to everyone who was not already in it.',
     });
   } else {
@@ -97,7 +97,7 @@ function scoreSupplier(supplier, verification, onChain) {
       value: clamp01(depth * (1 - penalty)), provenance: 'earned', confidence: settled >= 3 ? 'good' : 'thin',
       detail: `${settled} deal${settled === 1 ? '' : 's'} settled on chain`
         + `${disputes ? `, ${disputes} disputed` : ', none disputed'}. `
-        + 'Written by the escrow contract on real fund movement and by nothing else — '
+        + 'Written by the escrow contract on real fund movement and by nothing else; '
         + 'it cannot be bought, self-reported, or reset by moving platform.',
       evidence: { settledCount: settled, disputes: disputes || 0, registryScore: onChain.score ?? null },
     });
@@ -115,7 +115,7 @@ function scoreSupplier(supplier, verification, onChain) {
          issued; it does not prove it is live or that it belongs to the company
          presenting it. The ceiling is where the unverifiable part would go. */
       ? 'Registration number is well formed and its check digit is correct. '
-        + 'Not confirmed as active or as belonging to this company — that needs a registry Limen is not connected to.'
+        + 'Not confirmed as active or as belonging to this company; that needs a registry Limen is not connected to.'
       : vstatus === 'failed'
         ? 'A registration number was supplied and it is not one that was ever issued. '
           + 'This is the strongest negative signal available here.'
@@ -164,7 +164,7 @@ function scoreSupplier(supplier, verification, onChain) {
     detail: certs.length
       ? `${certs.length} certification${certs.length === 1 ? '' : 's'} listed (${certs.join(', ')})`
         + `${statedCapacity ? ', and capacity stated' : ', capacity not stated'}. `
-        + 'Self-declared and unaudited — worth something because a supplier can be held to a figure it states, '
+        + 'Self-declared and unaudited; worth something because a supplier can be held to a figure it states, '
         + 'and worth much less than the components above.'
       : 'No certifications listed and nothing self-declared to hold them to.',
     evidence: { certifications: certs, capacityStated: statedCapacity },
