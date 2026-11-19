@@ -53,6 +53,9 @@ const INDEX = {
   payout_accounts: (r) => ({ orgId: r.orgId, refId: null, key: r.orgId }),
   // One row per one-time job the server has run, by name (server/upgrade.js).
   meta:          (r) => ({ orgId: null, refId: null, key: r.name }),
+  // Company registrations (onboarding.js): a draft is found by its cookie token.
+  applications:  (r) => ({ orgId: r.orgId || null, refId: r.status || null, key: r.tokenHash || null }),
+  kyc_files:     (r) => ({ orgId: r.orgId || null, refId: r.applicationId, key: null }),
 };
 
 function indexOf(collection, rec) {

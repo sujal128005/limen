@@ -83,7 +83,9 @@ function makeCatalogue({ store }) {
   async function build() {
     if (!base) captureBase();
     const out = clone(base);
-    const orgs = (await store.list('orgs', { limit: 5000 })).filter((o) => o.kind === 'supplier' && o.status !== 'closed' && o.supplierId);
+    // A company is offered to buyers' agents only once it is verified.
+    const orgs = (await store.list('orgs', { limit: 5000 })).filter((o) => o.kind === 'supplier' && o.status !== 'closed' && o.supplierId
+      && (!o.kyb || o.kyb.status === 'verified'));
     for (const org of orgs) {
       const existing = out.find((s) => s.id === org.supplierId);
       // Stable order: a claimed supplier keeps its base listings in their

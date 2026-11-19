@@ -3912,7 +3912,7 @@ if (require('fs').existsSync(dist)) {
   app.use(express.static(dist, { index: false, maxAge: '1h', setHeaders: (res, p) => { if (/[\/]assets[\/]/.test(p)) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable'); } }));
   // Pages the app knows answer 200; anything else gets the same page with a
   // real 404 status, so a mistyped link is not indexed as content.
-  const KNOWN_PAGE = /^\/(|app|account|login|signup|forgot-password|reset-password|verify-email|invite|privacy|terms|supplier(\/.*)?|settings(\/.*)?)$/;
+  const KNOWN_PAGE = /^\/(|app|account|login|signup|forgot-password|reset-password|verify-email|invite|privacy|terms|onboarding\/status|admin\/verification|supplier(\/.*)?|settings(\/.*)?)$/;
   app.get('*', (req, res) => res.status(KNOWN_PAGE.test(req.path) ? 200 : 404).sendFile(path.join(dist, 'index.html')));
 }
 

@@ -37,6 +37,9 @@ const S = require('./secure');
 /* Company ids minted for accounts start with this. Client-minted demo company
    ids never do, which lets the binding check below be a prefix test instead of
    a database read on every request. */
+const { makeOnboarding, isVerified } = require('./onboarding');
+const { makeSms } = require('./sms');
+
 const ACCOUNT_PREFIX = 'org_';
 
 function createPlatform({ identity, workspace, payments, taxonomy, store: givenStore }) {
@@ -101,6 +104,12 @@ function createPlatform({ identity, workspace, payments, taxonomy, store: givenS
     onCatalogueChanged,
   });
 
+  /* ------------------------------------------------------ registration */
+  const onboarding = makeOnboarding({
+    store, auth, activity, mailer, taxonomy, onOrgCreated, onCatalogueChanged,
+    sms: makeSms(), gemini: (() => { try { return require('../google/gemini'); } catch (_) { return null; } })(),
+  });
+
   /* --------------------------------------------------------- binding */
 
   /*
@@ -113,8 +122,11 @@ function createPlatform({ identity, workspace, payments, taxonomy, store: givenS
    *     refused outright, before any purchase route sees it.
    */
   function bindCompany(req, res, next) {
-    if (!req.path.startsWith('/api/') || /^\/api\/(auth|org|sp|platform)(\/|$)/.test(req.path)) return next();
+    if (!req.path.startsWith('/api/') || /^\/api\/(auth|org|sp|platform|onboarding|admin)(\/|$)/.test(req.path)) return next();
     const a = req.account;
+    if (a && a.org && a.org.kind === 'buyer' && a.membership && !isVerified(a.org) && !['GET', 'HEAD'].includes(req.method)) {
+      return res.status(403).json({ error: 'Your company is being verified. You can run purchases once verification is complete.', verification: a.org.kyb.status });
+    }
     if (a && a.org && a.org.kind === 'buyer' && a.membership) {
       req.headers['x-company'] = a.org.id;
       const ws = String(req.headers['x-workspace'] || '');
@@ -247,6 +259,8 @@ function createPlatform({ identity, workspace, payments, taxonomy, store: givenS
 
   function mount(app) {
     app.use('/api/auth', auth.router);
+    app.use('/api/onboarding', onboarding.router);
+    app.use('/api/admin/verification', onboarding.admin);
     app.use('/api/org', org.router);
     app.use('/api/sp', supplier.router);
     app.get('/api/platform/health', async (req, res) => {
@@ -268,7 +282,7 @@ function createPlatform({ identity, workspace, payments, taxonomy, store: givenS
   }
 
   return {
-    store, auth, activity, catalogue, mailer,
+    store, auth, activity, catalogue, mailer, onboarding,
     init, mount, middleware, bindActor, registerPortalSuppliers, onCatalogueChanged, projectPurchase,
     flush: async () => { await Promise.all([...queues.values()]); },
     ACCOUNT_PREFIX,
