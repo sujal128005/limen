@@ -134,11 +134,48 @@ function RobotCheck({ token, onToken }) {
 
 /* ------------------------------------------------------------------ steps */
 
-function Footer({ captcha, setCaptcha, nonce, busy, onBack, label = 'Save and continue', children }) {
+/* What went wrong, said next to the button that was pressed. */
+const ERR_TITLE = {
+  incomplete: 'Some details are missing.', details: 'Please check your details.', captcha: 'The captcha did not match.',
+  'captcha-empty': 'The captcha is empty.', human: 'The robot check is not done.', 'human-expired': 'The robot check expired.',
+  network: 'Could not reach Limen.', upload: 'The document was not uploaded.',
+};
+function useStepError(setNonce, onHumanReset) {
+  const [err, setErr] = useState(null);
+  return {
+    err,
+    clear: () => setErr(null),
+    set: (kind, msg, field) => setErr({ kind, msg, field: field || null }),
+    missing: (pairs) => setErr({ kind: 'incomplete', msg: `Please fill in: ${pairs.map((x) => x[1]).join(', ')}.`, fields: pairs.map((x) => x[0]) }),
+    fromServer(x) {
+      const field = (x && x.body && x.body.field) || null;
+      const kind = !x || !x.status ? 'network' : ['captcha', 'captcha-empty', 'human', 'human-expired'].includes(field) ? field : 'details';
+      // Only a challenge the server actually used up is replaced.
+      if (field === 'captcha' || field === 'human-expired') setNonce((n) => n + 1);
+      if (field === 'human-expired' && onHumanReset) onHumanReset();
+      setErr({ kind, msg: x.message, field });
+    },
+    fieldErr(k) {
+      if (!err) return null;
+      if (err.fields && err.fields.includes(k)) return 'Required';
+      return err.field === k ? err.msg : null;
+    },
+  };
+}
+/* Required fields that are empty, as [key, label] pairs. */
+const emptyOf = (f, pairs) => pairs.filter(([k]) => (Array.isArray(f[k]) ? !f[k].length : !String(f[k] == null ? '' : f[k]).trim()));
+
+function Footer({ captcha, setCaptcha, nonce, busy, onBack, label = 'Save and continue', children, error }) {
   return (
     <div className="ob-foot">
       {children}
       <Captcha value={captcha} onChange={setCaptcha} nonce={nonce} />
+      {error && (
+        <div className="ob-error" role="alert" ref={(el) => el && el.scrollIntoView({ block: 'nearest', behavior: 'smooth' })}>
+          <Icon size={18} name="alert" />
+          <div><b>{ERR_TITLE[error.kind] || ERR_TITLE.details}</b><span>{error.msg}</span></div>
+        </div>
+      )}
       <div className="ob-foot-act">
         {onBack && <Button onClick={onBack}>Back</Button>}
         <Button type="submit" variant="primary" busy={busy}>{label}</Button>
@@ -164,7 +201,7 @@ function CompanyStep({ opts, app, kind, onSaved }) {
   const [captcha, setCaptcha] = useState(null);
   const [nonce, setNonce] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState(null);
+  const E = useStepError(setNonce, () => setHuman(null));
   const con = opts.constitutions.find((x) => x.id === f.constitution);
   // Fill PAN and state from the GSTIN, which contains both.
   const onGstin = (e) => {
@@ -174,43 +211,49 @@ function CompanyStep({ opts, app, kind, onSaved }) {
     if (g.length >= 2 && !f.state && opts.states.some((s) => s.code === g.slice(0, 2))) set('state')({ target: { value: g.slice(0, 2) } });
   };
   async function submit(e) {
-    e.preventDefault(); setBusy(true); setErr(null);
+    e.preventDefault(); E.clear();
+    const miss = emptyOf(f, [['legalName', 'Registered legal name'], ['constitution', 'Constitution'], ['yearIncorporated', 'Year of incorporation'], ['gstin', 'GSTIN'], ['pan', 'Company PAN'],
+      ...(con && con.needsCin ? [['cin', con.needsCin === 'llp' ? 'LLPIN' : 'CIN']] : []), ['address', 'Address'], ['city', 'City'], ['state', 'State'], ['pin', 'PIN code'],
+      ['industry', 'Industry'], ['website', 'Company website'], ['turnover', 'Annual turnover'], ['employees', 'Employees']]);
+    if (miss.length) return E.missing(miss);
+    if (!app && !human) return E.set('human', 'Tick "I\'m not a robot" and slide the piece into place.', 'human');
+    if (!captcha || !String(captcha.answer || '').trim()) return E.set('captcha-empty', 'Type the characters shown in the image.', 'captcha');
+    setBusy(true);
     try {
       const body = { company: f, captcha };
       const saved = app ? await api.put('/api/onboarding/application/company', body) : await api.post('/api/onboarding/application', { ...body, kind, human });
       onSaved(saved);
-    } catch (x) { setErr(x.message); setNonce((n) => n + 1); if (!app) setHuman(null); } finally { setBusy(false); }
+    } catch (x) { E.fromServer(x); } finally { setBusy(false); }
   }
   return (
     <form onSubmit={submit} className="ob-form" noValidate>
-      <ErrorBox error={err} />
       <div className="ob-sec">Legal identity</div>
       <div className="pf-grid pf-g2">
-        <Field label="Registered legal name" required hint="Exactly as on the GST certificate."><Input value={f.legalName} onChange={set('legalName')} maxLength={160} required /></Field>
-        <Field label="Trade or brand name" hint="If different."><Input value={f.tradeName} onChange={set('tradeName')} maxLength={120} /></Field>
-        <Field label="Constitution of business" required><Select value={f.constitution} onChange={set('constitution')} placeholder="Choose" options={opts.constitutions.map((x) => ({ value: x.id, label: x.label }))} /></Field>
-        <Field label="Year of incorporation or registration" required><Input type="number" min="1850" max={new Date().getFullYear()} value={f.yearIncorporated} onChange={set('yearIncorporated')} /></Field>
-        <Field label="GSTIN" required hint="15 characters. PAN and state are filled from it."><Input value={f.gstin} onChange={onGstin} maxLength={15} className="pf-input mono" placeholder="27AAPCA1234F1ZV" /></Field>
+        <Field label="Registered legal name" required hint="Exactly as on the GST certificate." error={E.fieldErr('legalName')}><Input value={f.legalName} onChange={set('legalName')} maxLength={160} required /></Field>
+        <Field label="Trade or brand name" hint="If different." error={E.fieldErr('tradeName')}><Input value={f.tradeName} onChange={set('tradeName')} maxLength={120} /></Field>
+        <Field label="Constitution of business" required error={E.fieldErr('constitution')}><Select value={f.constitution} onChange={set('constitution')} placeholder="Choose" options={opts.constitutions.map((x) => ({ value: x.id, label: x.label }))} /></Field>
+        <Field label="Year of incorporation or registration" required error={E.fieldErr('yearIncorporated')}><Input type="number" min="1850" max={new Date().getFullYear()} value={f.yearIncorporated} onChange={set('yearIncorporated')} /></Field>
+        <Field label="GSTIN" required hint="15 characters. PAN and state are filled from it." error={E.fieldErr('gstin')}><Input value={f.gstin} onChange={onGstin} maxLength={15} className="pf-input mono" placeholder="27AAPCA1234F1ZV" /></Field>
         <Field label="Company PAN" required hint="Characters 3 to 12 of the GSTIN."><Input value={f.pan} onChange={(e) => set('pan')({ target: { value: e.target.value.toUpperCase().slice(0, 10) } })} maxLength={10} className="pf-input mono" /></Field>
         {con && con.needsCin === 'company' && <Field label="Corporate identity number (CIN)" required hint="21 characters, from the certificate of incorporation."><Input value={f.cin} onChange={(e) => set('cin')({ target: { value: e.target.value.toUpperCase().slice(0, 21) } })} className="pf-input mono" /></Field>}
         {con && con.needsCin === 'llp' && <Field label="LLP identification number (LLPIN)" required hint="For example AAB-1234."><Input value={f.cin} onChange={(e) => set('cin')({ target: { value: e.target.value.toUpperCase().slice(0, 8) } })} className="pf-input mono" /></Field>}
         <Field label="Udyam (MSME) registration number" hint="Optional. UDYAM-XX-00-0000000."><Input value={f.udyam} onChange={(e) => set('udyam')({ target: { value: e.target.value.toUpperCase().slice(0, 19) } })} className="pf-input mono" /></Field>
       </div>
       <div className="ob-sec">Registered office</div>
-      <Field label="Address" required><Textarea rows={2} value={f.address} onChange={set('address')} maxLength={240} /></Field>
+      <Field label="Address" required error={E.fieldErr('address')}><Textarea rows={2} value={f.address} onChange={set('address')} maxLength={240} /></Field>
       <div className="pf-grid pf-g3">
-        <Field label="City" required><Input value={f.city} onChange={set('city')} maxLength={60} /></Field>
-        <Field label="State" required><Select value={f.state} onChange={set('state')} placeholder="Choose" options={opts.states.map((s) => ({ value: s.code, label: s.name }))} /></Field>
+        <Field label="City" required error={E.fieldErr('city')}><Input value={f.city} onChange={set('city')} maxLength={60} /></Field>
+        <Field label="State" required error={E.fieldErr('state')}><Select value={f.state} onChange={set('state')} placeholder="Choose" options={opts.states.map((s) => ({ value: s.code, label: s.name }))} /></Field>
         <Field label="PIN code" required><Input inputMode="numeric" value={f.pin} onChange={(e) => set('pin')({ target: { value: e.target.value.replace(/\D/g, '').slice(0, 6) } })} /></Field>
       </div>
       <div className="ob-sec">About the company</div>
       <div className="pf-grid pf-g2">
-        <Field label="Industry" required><Select value={f.industry} onChange={set('industry')} placeholder="Choose" options={opts.industries} /></Field>
-        <Field label="Company website" required hint="Your work email should be on the same domain."><Input value={f.website} onChange={set('website')} placeholder="www.yourcompany.in" maxLength={120} /></Field>
-        <Field label="Annual turnover" required><Select value={f.turnover} onChange={set('turnover')} placeholder="Choose" options={opts.turnover} /></Field>
-        <Field label="Employees" required><Select value={f.employees} onChange={set('employees')} placeholder="Choose" options={opts.employees} /></Field>
+        <Field label="Industry" required error={E.fieldErr('industry')}><Select value={f.industry} onChange={set('industry')} placeholder="Choose" options={opts.industries} /></Field>
+        <Field label="Company website" required hint="Your work email should be on the same domain." error={E.fieldErr('website')}><Input value={f.website} onChange={set('website')} placeholder="www.yourcompany.in" maxLength={120} /></Field>
+        <Field label="Annual turnover" required error={E.fieldErr('turnover')}><Select value={f.turnover} onChange={set('turnover')} placeholder="Choose" options={opts.turnover} /></Field>
+        <Field label="Employees" required error={E.fieldErr('employees')}><Select value={f.employees} onChange={set('employees')} placeholder="Choose" options={opts.employees} /></Field>
       </div>
-      <Footer captcha={captcha} setCaptcha={setCaptcha} nonce={nonce} busy={busy} label={app ? 'Save and continue' : 'Start application'}>
+      <Footer error={E.err} captcha={captcha} setCaptcha={setCaptcha} nonce={nonce} busy={busy} label={app ? 'Save and continue' : 'Start application'}>
         {!app && <RobotCheck token={human} onToken={setHuman} />}
       </Footer>
     </form>
@@ -223,24 +266,31 @@ function ApplicantStep({ app, onSaved, onBack }) {
   const [captcha, setCaptcha] = useState(null);
   const [nonce, setNonce] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState(null);
+  const E = useStepError(setNonce);
   async function submit(e) {
-    e.preventDefault(); setBusy(true); setErr(null);
-    try { onSaved(await api.put('/api/onboarding/application/applicant', { applicant: f, captcha })); } catch (x) { setErr(x.message); setNonce((n) => n + 1); } finally { setBusy(false); }
+    e.preventDefault(); E.clear();
+    const miss = emptyOf(f, [['name', 'Full name'], ['designation', 'Designation'], ['email', 'Work email'], ['mobile', 'Mobile number'],
+      ...(a.passwordSet ? [] : [['password', 'Password'], ['passwordConfirm', 'Confirm password']])]);
+    if (!f.authorised) miss.push(['authorised', 'the authorisation confirmation']);
+    if (miss.length) return E.missing(miss);
+    if (f.mobile.length !== 10) return E.set('details', 'The mobile number must have 10 digits.', 'mobile');
+    if (f.password && f.password !== f.passwordConfirm) return E.set('details', 'The two passwords do not match.', 'passwordConfirm');
+    if (!captcha || !String(captcha.answer || '').trim()) return E.set('captcha-empty', 'Type the characters shown in the image.', 'captcha');
+    setBusy(true);
+    try { onSaved(await api.put('/api/onboarding/application/applicant', { applicant: f, captcha })); } catch (x) { E.fromServer(x); } finally { setBusy(false); }
   }
   return (
     <form onSubmit={submit} className="ob-form" noValidate>
-      <ErrorBox error={err} />
       <div className="pf-grid pf-g2">
-        <Field label="Full name" required hint="As on your PAN or Aadhaar."><Input value={f.name} onChange={set('name')} maxLength={80} autoComplete="name" /></Field>
-        <Field label="Designation" required hint="For example Director, Purchase Manager."><Input value={f.designation} onChange={set('designation')} maxLength={80} /></Field>
-        <Field label="Work email" required hint="On your company's domain where possible. We send a code to it."><Input type="email" value={f.email} onChange={set('email')} autoComplete="email" /></Field>
+        <Field label="Full name" required hint="As on your PAN or Aadhaar." error={E.fieldErr('name')}><Input value={f.name} onChange={set('name')} maxLength={80} autoComplete="name" /></Field>
+        <Field label="Designation" required hint="For example Director, Purchase Manager." error={E.fieldErr('designation')}><Input value={f.designation} onChange={set('designation')} maxLength={80} /></Field>
+        <Field label="Work email" required hint="On your company's domain where possible. We send a code to it." error={E.fieldErr('email')}><Input type="email" value={f.email} onChange={set('email')} autoComplete="email" /></Field>
         <Field label="Mobile number" required hint="We send a code to it."><div className="ob-phone"><span>+91</span><Input inputMode="numeric" value={f.mobile} onChange={(e) => set('mobile')({ target: { value: e.target.value.replace(/\D/g, '').slice(0, 10) } })} autoComplete="tel-national" /></div></Field>
-        <Field label={a.passwordSet ? 'New password (leave blank to keep)' : 'Password'} required={!a.passwordSet} hint="At least 12 characters. A short sentence works well."><Input type="password" value={f.password} onChange={set('password')} autoComplete="new-password" /></Field>
-        <Field label="Confirm password" required={!a.passwordSet}><Input type="password" value={f.passwordConfirm} onChange={set('passwordConfirm')} autoComplete="new-password" /></Field>
+        <Field label={a.passwordSet ? 'New password (leave blank to keep)' : 'Password'} required={!a.passwordSet} hint="At least 12 characters. A short sentence works well." error={E.fieldErr('password')}><Input type="password" value={f.password} onChange={set('password')} autoComplete="new-password" /></Field>
+        <Field label="Confirm password" required={!a.passwordSet} error={E.fieldErr('passwordConfirm')}><Input type="password" value={f.passwordConfirm} onChange={set('passwordConfirm')} autoComplete="new-password" /></Field>
       </div>
       <label className="pf-check ob-decl"><input type="checkbox" checked={f.authorised} onChange={set('authorised')} /> I am authorised by {app.company.legalName} to register it on Limen and to accept orders and terms on its behalf.</label>
-      <Footer captcha={captcha} setCaptcha={setCaptcha} nonce={nonce} busy={busy} onBack={onBack} />
+      <Footer error={E.err} captcha={captcha} setCaptcha={setCaptcha} nonce={nonce} busy={busy} onBack={onBack} />
     </form>
   );
 }
@@ -257,29 +307,36 @@ function BusinessStep({ opts, app, onSaved, onBack }) {
   const [captcha, setCaptcha] = useState(null);
   const [nonce, setNonce] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState(null);
+  const E = useStepError(setNonce);
   const toggle = (m) => setF((x) => ({ ...x, materials: x.materials.includes(m) ? x.materials.filter((y) => y !== m) : [...x.materials, m] }));
   const cert = (i, k) => (e) => setF((x) => ({ ...x, certifications: x.certifications.map((c, j) => (j === i ? { ...c, [k]: e.target.value } : c)) }));
   async function submit(e) {
-    e.preventDefault(); setBusy(true); setErr(null);
+    e.preventDefault(); E.clear();
+    const miss = emptyOf(f, supplier
+      ? [['businessType', 'Nature of business'], ['materials', 'Materials you supply'], ['plantAddress', 'Plant address'], ['plantCity', 'Plant city'], ['capacity', 'Monthly capacity'],
+        ['holder', 'Account holder name'], ['bankName', 'Bank name'], ...(bank.last4 ? [] : [['accountNumber', 'Account number'], ['accountConfirm', 'Confirm account number']]), ['ifsc', 'IFSC']]
+      : [['materials', 'Materials you buy'], ['spend', 'Typical monthly purchases'], ['deliveryCities', 'Delivery cities']]);
+    if (miss.length) return E.missing(miss);
+    if (supplier && f.accountNumber && f.accountNumber !== f.accountConfirm) return E.set('details', 'The two account numbers do not match.', 'accountConfirm');
+    if (!captcha || !String(captcha.answer || '').trim()) return E.set('captcha-empty', 'Type the characters shown in the image.', 'captcha');
     const business = supplier
       ? { businessType: f.businessType, materials: f.materials, plantAddress: f.plantAddress, plantCity: f.plantCity, capacity: f.capacity, certifications: f.certifications,
         bank: { holder: f.holder, bankName: f.bankName, ifsc: f.ifsc, accountNumber: f.accountNumber, accountConfirm: f.accountConfirm } }
       : { materials: f.materials, spend: f.spend, deliveryCities: f.deliveryCities.split(',').map((s) => s.trim()).filter(Boolean), purpose: f.purpose };
-    try { onSaved(await api.put('/api/onboarding/application/business', { business, captcha })); } catch (x) { setErr(x.message); setNonce((n) => n + 1); } finally { setBusy(false); }
+    setBusy(true);
+    try { onSaved(await api.put('/api/onboarding/application/business', { business, captcha })); } catch (x) { E.fromServer(x); } finally { setBusy(false); }
   }
   return (
     <form onSubmit={submit} className="ob-form" noValidate>
-      <ErrorBox error={err} />
-      {supplier && <Field label="Nature of business" required><Select value={f.businessType} onChange={set('businessType')} placeholder="Choose" options={opts.businessTypes.map((x) => ({ value: x.id, label: x.label }))} /></Field>}
+      {supplier && <Field label="Nature of business" required error={E.fieldErr('businessType')}><Select value={f.businessType} onChange={set('businessType')} placeholder="Choose" options={opts.businessTypes.map((x) => ({ value: x.id, label: x.label }))} /></Field>}
       <div className="ob-sec">{supplier ? 'Materials you supply' : 'Materials you buy'}<span className="req">*</span></div>
       <div className="ob-chips">{opts.materials.map((m) => <button type="button" key={m} className={f.materials.includes(m) ? 'on' : ''} onClick={() => toggle(m)}>{f.materials.includes(m) && <Icon size={18} name="check" />}{m}</button>)}</div>
       {supplier ? (<>
         <div className="ob-sec">Plant or warehouse you ship from</div>
-        <Field label="Address" required><Textarea rows={2} value={f.plantAddress} onChange={set('plantAddress')} maxLength={240} /></Field>
+        <Field label="Address" required error={E.fieldErr('plantAddress')}><Textarea rows={2} value={f.plantAddress} onChange={set('plantAddress')} maxLength={240} /></Field>
         <div className="pf-grid pf-g2">
-          <Field label="City" required><Input value={f.plantCity} onChange={set('plantCity')} maxLength={60} /></Field>
-          <Field label="Monthly capacity" required hint="For example 500 tonnes, or 2 lakh boxes."><Input value={f.capacity} onChange={set('capacity')} maxLength={80} /></Field>
+          <Field label="City" required error={E.fieldErr('plantCity')}><Input value={f.plantCity} onChange={set('plantCity')} maxLength={60} /></Field>
+          <Field label="Monthly capacity" required hint="For example 500 tonnes, or 2 lakh boxes." error={E.fieldErr('capacity')}><Input value={f.capacity} onChange={set('capacity')} maxLength={80} /></Field>
         </div>
         <div className="ob-sec">Certifications</div>
         {f.certifications.map((c, i) => (
@@ -293,20 +350,20 @@ function BusinessStep({ opts, app, onSaved, onBack }) {
         <div className="ob-sec">Bank account for payouts</div>
         <p className="small muted ob-p">Payments for your orders are released to this account. It must be in the company's name; the account number is encrypted and shown only as its last four digits.</p>
         <div className="pf-grid pf-g2">
-          <Field label="Account holder name" required><Input value={f.holder} onChange={set('holder')} maxLength={120} /></Field>
-          <Field label="Bank name" required><Input value={f.bankName} onChange={set('bankName')} maxLength={80} /></Field>
+          <Field label="Account holder name" required error={E.fieldErr('holder')}><Input value={f.holder} onChange={set('holder')} maxLength={120} /></Field>
+          <Field label="Bank name" required error={E.fieldErr('bankName')}><Input value={f.bankName} onChange={set('bankName')} maxLength={80} /></Field>
           <Field label={bank.last4 ? `Account number (ending ${bank.last4}; leave blank to keep)` : 'Account number'} required={!bank.last4}><Input inputMode="numeric" value={f.accountNumber} onChange={(e) => set('accountNumber')({ target: { value: e.target.value.replace(/\D/g, '').slice(0, 18) } })} autoComplete="off" /></Field>
           <Field label="Confirm account number" required={!bank.last4}><Input inputMode="numeric" value={f.accountConfirm} onChange={(e) => set('accountConfirm')({ target: { value: e.target.value.replace(/\D/g, '').slice(0, 18) } })} autoComplete="off" onPaste={(e) => e.preventDefault()} /></Field>
           <Field label="IFSC" required hint="11 characters, on your cheque book."><Input value={f.ifsc} onChange={(e) => set('ifsc')({ target: { value: e.target.value.toUpperCase().slice(0, 11) } })} className="pf-input mono" /></Field>
         </div>
       </>) : (<>
         <div className="pf-grid pf-g2">
-          <Field label="Typical monthly purchases" required><Select value={f.spend} onChange={set('spend')} placeholder="Choose" options={opts.spend} /></Field>
-          <Field label="Delivery cities" required hint="Separate with commas, for example Pune, Chennai."><Input value={f.deliveryCities} onChange={set('deliveryCities')} maxLength={300} /></Field>
+          <Field label="Typical monthly purchases" required error={E.fieldErr('spend')}><Select value={f.spend} onChange={set('spend')} placeholder="Choose" options={opts.spend} /></Field>
+          <Field label="Delivery cities" required hint="Separate with commas, for example Pune, Chennai." error={E.fieldErr('deliveryCities')}><Input value={f.deliveryCities} onChange={set('deliveryCities')} maxLength={300} /></Field>
         </div>
-        <Field label="What will you use Limen for?" hint="Optional. A sentence helps the reviewer."><Textarea rows={2} value={f.purpose} onChange={set('purpose')} maxLength={300} /></Field>
+        <Field label="What will you use Limen for?" hint="Optional. A sentence helps the reviewer." error={E.fieldErr('purpose')}><Textarea rows={2} value={f.purpose} onChange={set('purpose')} maxLength={300} /></Field>
       </>)}
-      <Footer captcha={captcha} setCaptcha={setCaptcha} nonce={nonce} busy={busy} onBack={onBack} />
+      <Footer error={E.err} captcha={captcha} setCaptcha={setCaptcha} nonce={nonce} busy={busy} onBack={onBack} />
     </form>
   );
 }
@@ -318,15 +375,18 @@ function TeamStep({ opts, app, onSaved, onBack }) {
   const [captcha, setCaptcha] = useState(null);
   const [nonce, setNonce] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState(null);
+  const E = useStepError(setNonce);
   const upd = (i, k) => (e) => setTeam((t) => t.map((m, j) => (j === i ? { ...m, [k]: e.target.value } : m)));
   async function submit(e) {
-    e.preventDefault(); setBusy(true); setErr(null);
-    try { onSaved(await api.put('/api/onboarding/application/team', { team, captcha })); } catch (x) { setErr(x.message); setNonce((n) => n + 1); } finally { setBusy(false); }
+    e.preventDefault(); E.clear();
+    const bad = team.find((m) => !m.name.trim() || !m.email.trim() || !m.role);
+    if (bad) return E.set('incomplete', 'For each person, fill in the full name, work email and role, or remove the row.', 'team');
+    if (!captcha || !String(captcha.answer || '').trim()) return E.set('captcha-empty', 'Type the characters shown in the image.', 'captcha');
+    setBusy(true);
+    try { onSaved(await api.put('/api/onboarding/application/team', { team, captcha })); } catch (x) { E.fromServer(x); } finally { setBusy(false); }
   }
   return (
     <form onSubmit={submit} className="ob-form" noValidate>
-      <ErrorBox error={err} />
       <p className="small muted ob-p">
         {supplier
           ? 'Invite the people who will handle sales, dispatch and payments. They receive an invitation by email and can join once your company is verified.'
@@ -342,7 +402,7 @@ function TeamStep({ opts, app, onSaved, onBack }) {
         </div>
       ))}
       {team.length < 8 && <Button size="sm" icon="plus" onClick={() => setTeam((t) => [...t, { name: '', email: '', designation: '', role: '' }])}>Add a person</Button>}
-      <Footer captcha={captcha} setCaptcha={setCaptcha} nonce={nonce} busy={busy} onBack={onBack} label={team.length ? 'Save and continue' : 'Skip for now'} />
+      <Footer error={E.err} captcha={captcha} setCaptcha={setCaptcha} nonce={nonce} busy={busy} onBack={onBack} label={team.length ? 'Save and continue' : 'Skip for now'} />
     </form>
   );
 }
@@ -354,12 +414,12 @@ function DocumentsStep({ opts, app, onSaved, onBack }) {
   const [nonce, setNonce] = useState(0);
   const [busy, setBusy] = useState(false);
   const [up, setUp] = useState(null);
-  const [err, setErr] = useState(null);
+  const E = useStepError(setNonce);
   async function upload(kind, file) {
     if (!file) return;
-    setErr(null);
-    if (file.size > 5 * 1024 * 1024) { setErr('Files can be up to 5 MB.'); return; }
-    if (!/^(application\/pdf|image\/jpeg|image\/png)$/.test(file.type)) { setErr('Upload a PDF, JPG or PNG.'); return; }
+    E.clear();
+    if (file.size > 5 * 1024 * 1024) { E.set('upload', `${file.name} is larger than 5 MB.`); return; }
+    if (!/^(application\/pdf|image\/jpeg|image\/png)$/.test(file.type)) { E.set('upload', `${file.name} is not a PDF, JPG or PNG.`); return; }
     setUp(kind);
     try {
       const res = await fetch(`/api/onboarding/application/files?kind=${encodeURIComponent(kind)}`, {
@@ -369,14 +429,18 @@ function DocumentsStep({ opts, app, onSaved, onBack }) {
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error || 'The upload did not complete.');
       onSaved(j, true);
-    } catch (x) { setErr(x.message); } finally { setUp(null); }
+    } catch (x) { E.set('upload', x.message); } finally { setUp(null); }
   }
   async function remove(id) {
-    try { onSaved(await api.del(`/api/onboarding/application/files/${id}`), true); } catch (x) { setErr(x.message); }
+    try { onSaved(await api.del(`/api/onboarding/application/files/${id}`), true); } catch (x) { E.set('upload', x.message); }
   }
   async function submit(e) {
-    e.preventDefault(); setBusy(true); setErr(null);
-    try { onSaved(await api.put('/api/onboarding/application/documents', { captcha })); } catch (x) { setErr(x.message); setNonce((n) => n + 1); } finally { setBusy(false); }
+    e.preventDefault(); E.clear();
+    const missingDocs = app.required.filter((k) => !app.files.some((x) => x.kind === k));
+    if (missingDocs.length) return E.set('incomplete', `Upload: ${missingDocs.map((k) => opts.documents[k]).join('; ')}.`, 'documents');
+    if (!captcha || !String(captcha.answer || '').trim()) return E.set('captcha-empty', 'Type the characters shown in the image.', 'captcha');
+    setBusy(true);
+    try { onSaved(await api.put('/api/onboarding/application/documents', { captcha })); } catch (x) { E.fromServer(x); } finally { setBusy(false); }
   }
   const row = (kind, required) => {
     const files = app.files.filter((f) => f.kind === kind);
@@ -395,13 +459,12 @@ function DocumentsStep({ opts, app, onSaved, onBack }) {
   };
   return (
     <form onSubmit={submit} className="ob-form" noValidate>
-      <ErrorBox error={err} />
       <p className="small muted ob-p">Upload clear scans or photos, PDF, JPG or PNG, up to 5 MB each. The details on them must match what you entered; our reviewer checks every document.</p>
       <div className="ob-sec">Required</div>
       {app.required.map((k) => row(k, true))}
       <div className="ob-sec">Optional</div>
       {OPTIONAL_DOCS.filter((k) => !app.required.includes(k)).map((k) => row(k, false))}
-      <Footer captcha={captcha} setCaptcha={setCaptcha} nonce={nonce} busy={busy} onBack={onBack} />
+      <Footer error={E.err} captcha={captcha} setCaptcha={setCaptcha} nonce={nonce} busy={busy} onBack={onBack} />
     </form>
   );
 }
@@ -445,15 +508,21 @@ function ConfirmStep({ app, onSaved, onBack, onDone }) {
   const [captcha, setCaptcha] = useState(null);
   const [nonce, setNonce] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState(null);
+  const E = useStepError(setNonce);
   const c = app.company;
   async function submit(e) {
-    e.preventDefault(); setBusy(true); setErr(null);
-    try { onDone(await api.post('/api/onboarding/application/submit', { declarations: d, captcha })); } catch (x) { setErr(x.message); setNonce((n) => n + 1); } finally { setBusy(false); }
+    e.preventDefault(); E.clear();
+    const todo = [];
+    if (!(app.otp && app.otp.email && app.otp.email.verified)) todo.push('confirm your work email with its code');
+    if (!(app.otp && app.otp.mobile && app.otp.mobile.verified)) todo.push('confirm your mobile number with its code');
+    if (!(d.accurate && d.authorised && d.terms)) todo.push('tick all three declarations');
+    if (todo.length) return E.set('incomplete', `Before submitting, ${todo.join(', ')}.`, 'confirm');
+    if (!captcha || !String(captcha.answer || '').trim()) return E.set('captcha-empty', 'Type the characters shown in the image.', 'captcha');
+    setBusy(true);
+    try { onDone(await api.post('/api/onboarding/application/submit', { declarations: d, captcha })); } catch (x) { E.fromServer(x); } finally { setBusy(false); }
   }
   return (
     <form onSubmit={submit} className="ob-form" noValidate>
-      <ErrorBox error={err} />
       <div className="ob-summary">
         <div><span>Company</span><b>{c.legalName}</b></div>
         <div><span>GSTIN</span><b className="mono">{c.gstin}</b></div>
@@ -469,7 +538,7 @@ function ConfirmStep({ app, onSaved, onBack, onDone }) {
       <label className="pf-check ob-decl"><input type="checkbox" checked={d.accurate} onChange={set('accurate')} /> The information and documents I have provided are true, complete and belong to {c.legalName}.</label>
       <label className="pf-check ob-decl"><input type="checkbox" checked={d.authorised} onChange={set('authorised')} /> I am authorised to act for {c.legalName}, and I understand that false information will end its access to Limen.</label>
       <label className="pf-check ob-decl"><input type="checkbox" checked={d.terms} onChange={set('terms')} /> I agree to the <a href="/terms" target="_blank" rel="noreferrer">terms of use</a> and <a href="/privacy" target="_blank" rel="noreferrer">privacy policy</a>, and consent to Limen verifying these details.</label>
-      <Footer captcha={captcha} setCaptcha={setCaptcha} nonce={nonce} busy={busy} onBack={onBack} label="Submit for verification" />
+      <Footer error={E.err} captcha={captcha} setCaptcha={setCaptcha} nonce={nonce} busy={busy} onBack={onBack} label="Submit for verification" />
     </form>
   );
 }
@@ -554,8 +623,7 @@ export function Onboarding() {
           )}
           {app && <p className="small muted">Application {app.reference} · registering as a {app.kind}</p>}
         </div>
-        <ErrorBox error={err} />
-        {!opts || app === undefined ? <Spinner /> : (
+          {!opts || app === undefined ? <Spinner /> : (
           <>
             {step === 'company' && <CompanyStep opts={opts} app={app} kind={kind} onSaved={saved('company')} />}
             {step === 'applicant' && app && <ApplicantStep app={app} onSaved={saved('applicant')} onBack={() => go('company')} />}
@@ -676,8 +744,7 @@ function ReviewOne({ id, onDecided }) {
       {(a.team || []).length > 0 && <Card title="Team"><div className="ob-summary">{a.team.map((m) => <div key={m.email}><span>{m.role}</span><b>{m.name}, {m.email}</b></div>)}</div></Card>}
       {['pending', 'in_review'].includes(v.status) && (
         <Card title="Decision">
-          <ErrorBox error={err} />
-          <Field label="Note to the applicant" hint="Required to reject. Say what to correct."><Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} /></Field>
+              <Field label="Note to the applicant" hint="Required to reject. Say what to correct."><Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} /></Field>
           <div className="ob-foot-act"><Button variant="danger" busy={busy === 'rejected'} onClick={() => decide('rejected')}>Reject</Button><Button variant="primary" busy={busy === 'verified'} onClick={() => decide('verified')}>Approve company</Button></div>
         </Card>
       )}
