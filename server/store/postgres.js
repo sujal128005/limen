@@ -207,15 +207,20 @@ function create({ url, pg, ssl } = {}) {
                 ? false
                 : { rejectUnauthorized: process.env.DATABASE_SSL_STRICT === 'true' },
           max: Number(process.env.DATABASE_POOL_MAX || 10),
-          idleTimeoutMillis: 30000,
+          // Opening a connection to a hosted database is several round trips
+          // (TCP, TLS, authentication). Keep idle connections for five minutes
+          // so a click after a pause does not pay for a new one.
+          idleTimeoutMillis: 5 * 60 * 1000,
+          keepAlive: true,
           connectionTimeoutMillis: 10000,
         }
       : {}
   );
+  require('../perf').instrumentPool(pool);
 
   const q = (text, params) => pool.query(text, params);
 
-  return {
+  return withReadCache({
     kind: 'postgres',
 
     async init() {
@@ -695,7 +700,61 @@ function create({ url, pg, ssl } = {}) {
       }
       return ids.length;
     },
+  });
+}
+
+/*
+ * A short read cache for workspaces and company settings.
+ *
+ * One request reads the same purchase several times, and the database may be
+ * in another region, a fifth of a second away. Reads in the last few seconds
+ * are served from memory. Every write still goes to the database first, with
+ * its version check, and only then updates or drops the cached copy, so a
+ * stale write is still refused by the database. The time limit bounds how
+ * stale a read can be if a second server process wrote the same row.
+ */
+function withReadCache(store, ttlMs = Number(process.env.LIMEN_CACHE_TTL_MS || 15000)) {
+  const orig = { ...store };
+  const clone = (v) => (v == null ? v : JSON.parse(JSON.stringify(v)));
+  const ws = new Map();
+  const co = new Map();
+  const fresh = (e) => e && e.exp > Date.now();
+  const put = (m, id, v) => { if (m.size > 2000) m.clear(); m.set(id, { v: clone(v), exp: Date.now() + ttlMs }); };
+  const wrap = {
+    async load(id) {
+      const e = ws.get(id);
+      if (fresh(e)) return clone(e.v);
+      const row = await orig.load(id);
+      if (row) put(ws, id, row); else ws.delete(id);
+      return row;
+    },
+    async create(id, state, companyId) { ws.delete(id); const row = await orig.create(id, state, companyId); if (row) put(ws, id, row); return row; },
+    async save(id, state, version) {
+      const prev = ws.get(id);
+      ws.delete(id);
+      const r = await orig.save(id, state, version);
+      if (prev) put(ws, id, { state, version: r.version, companyId: prev.v.companyId });
+      return r;
+    },
+    async remove(id) { ws.delete(id); return orig.remove(id); },
+    async archiveWorkspace(id, prefix) { ws.delete(id); return orig.archiveWorkspace(id, prefix); },
+    async assignCompany(id, companyId) { ws.delete(id); return orig.assignCompany(id, companyId); },
+    async prune(max) { ws.clear(); co.clear(); return orig.prune(max); },
+    async loadCompany(id) {
+      const e = co.get(id);
+      if (fresh(e)) return clone(e.v);
+      const row = await orig.loadCompany(id);
+      if (row) put(co, id, row); else co.delete(id);
+      return row;
+    },
+    async saveCompany(id, profileValue, version) {
+      co.delete(id);
+      const r = await orig.saveCompany(id, profileValue, version);
+      put(co, id, { profile: profileValue === undefined ? null : profileValue, version: r.version });
+      return r;
+    },
   };
+  return Object.assign(store, Object.fromEntries(Object.entries(wrap).filter(([k]) => typeof orig[k] === 'function')));
 }
 
 module.exports = { create };

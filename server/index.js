@@ -107,6 +107,7 @@ app.disable('x-powered-by');
 if (process.env.LIMEN_TRUST_PROXY !== 'false' && (process.env.NODE_ENV === 'production' || process.env.LIMEN_TRUST_PROXY === 'true')) {
   app.set('trust proxy', 1);
 }
+app.use(require('./perf').middleware);
 app.use(security.headers);
 /*
  * Cross-origin access. The app is served from the same origin as the API, so a

@@ -285,6 +285,122 @@ function postgres({ pool }) {
   };
 }
 
+/* ------------------------------------------------------------------ cache */
+
+/*
+ * A read cache in front of a durable adapter.
+ *
+ * The database can be a long way from the server (a hosted Postgres in another
+ * region is a fifth of a second per round trip), and one page asks for the
+ * same few records again and again: the session, the person, the company, the
+ * membership. So records read in the last few seconds are served from memory.
+ *
+ * Writes always go to the database first and only then update the cache, so a
+ * failed write never shows up as a success. The version check stays in the
+ * database: a put() against a stale version still fails there, and a conflict
+ * drops the cached copy. Lists are dropped whenever their collection is
+ * written. The time limit bounds how stale a read can be if another server
+ * process wrote the same record, for example while a deploy overlaps.
+ *
+ * Records are copied in and out, so a caller mutating a result cannot change
+ * what the next caller reads.
+ */
+function cached(inner, { ttlMs = Number(process.env.LIMEN_CACHE_TTL_MS || 15000), maxEntries = 5000 } = {}) {
+  const recs = new Map();   // "collection\0id" -> { rec, exp }
+  const keys = new Map();   // "collection\0key" -> id
+  const lists = new Map();  // collection -> Map(query -> { rows, exp })
+  const now = () => Date.now();
+  const rk = (c, id) => `${c}\0${id}`;
+  const fresh = (e) => e && e.exp > now();
+
+  const remember = (c, rec) => {
+    if (!rec || !rec.id) return rec;
+    if (recs.size >= maxEntries) { recs.clear(); keys.clear(); }
+    recs.set(rk(c, rec.id), { rec: clone(rec), exp: now() + ttlMs });
+    const k = indexOf(c, rec).key;
+    if (k) keys.set(rk(c, k), rec.id);
+    return rec;
+  };
+  const forget = (c, id) => { recs.delete(rk(c, id)); };
+  const dropLists = (c) => { lists.delete(c); };
+  const listCache = (c) => { if (!lists.has(c)) lists.set(c, new Map()); return lists.get(c); };
+
+  return {
+    kind: inner.kind,
+    cached: true,
+    init: (...a) => inner.init(...a),
+    close: (...a) => (inner.close ? inner.close(...a) : undefined),
+
+    async get(c, id) {
+      const e = recs.get(rk(c, id));
+      if (fresh(e)) return clone(e.rec);
+      const rec = await inner.get(c, id);
+      if (rec) remember(c, rec); else forget(c, id);
+      return rec;
+    },
+
+    async getByKey(c, key) {
+      const id = keys.get(rk(c, key));
+      if (id) {
+        const e = recs.get(rk(c, id));
+        if (fresh(e) && indexOf(c, e.rec).key === key) return clone(e.rec);
+        keys.delete(rk(c, key));
+      }
+      const rec = await inner.getByKey(c, key);
+      if (rec) remember(c, rec);
+      return rec;
+    },
+
+    async insert(c, rec) {
+      const out = await inner.insert(c, rec);
+      dropLists(c);
+      remember(c, out);
+      return out;
+    },
+
+    async put(c, rec, expectedVersion) {
+      try {
+        const out = await inner.put(c, rec, expectedVersion);
+        dropLists(c);
+        remember(c, out);
+        return out;
+      } catch (e) {
+        forget(c, rec && rec.id);
+        dropLists(c);
+        throw e;
+      }
+    },
+
+    async remove(c, id) {
+      const r = await inner.remove(c, id);
+      forget(c, id);
+      dropLists(c);
+      return r;
+    },
+
+    async list(c, opts = {}) {
+      const q = `l:${JSON.stringify(opts)}`;
+      const lc = listCache(c);
+      const e = lc.get(q);
+      if (fresh(e)) return clone(e.rows);
+      const rows = await inner.list(c, opts);
+      lc.set(q, { rows: clone(rows), exp: now() + ttlMs });
+      for (const r of rows) remember(c, r);
+      return rows;
+    },
+
+    async count(c, opts = {}) {
+      const q = `n:${JSON.stringify(opts)}`;
+      const lc = listCache(c);
+      const e = lc.get(q);
+      if (fresh(e)) return e.rows;
+      const n = await inner.count(c, opts);
+      lc.set(q, { rows: n, exp: now() + ttlMs });
+      return n;
+    },
+  };
+}
+
 /**
  * Pick an adapter. Same rule as the purchase store: a connection string is the
  * whole decision, so the two stores can never disagree about durability.
@@ -300,12 +416,16 @@ function createPlatformStore(opts = {}) {
       connectionString: url,
       max: Number(process.env.DATABASE_POOL_MAX || 10),
       ssl: local ? false : { rejectUnauthorized: strict },
+      idleTimeoutMillis: 5 * 60 * 1000,
+      keepAlive: true,
     });
-    const s = postgres({ pool });
-    s.close = () => pool.end();
+    require('../perf').instrumentPool(pool);
+    const s = cached(postgres({ pool }));
+    const close = s.close;
+    s.close = async () => { await close(); await pool.end(); };
     return s;
   }
   return memory();
 }
 
-module.exports = { createPlatformStore, memory, postgres, INDEX, SCHEMA };
+module.exports = { createPlatformStore, memory, postgres, cached, INDEX, SCHEMA };
