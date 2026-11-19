@@ -131,7 +131,28 @@ AI-powered B2B purchasing for India's mid-sized manufacturers (resins, metals, p
 - **Mechanical resume:** https://sujalnegi.tech/resume-m (file name Sujal_Resume_M). Shortlisted practical mechanical coursework, CATIA, AutoCAD, GD&T, DFM/DFA, CNC, MATLAB/Simulink, MS Office; projects in order: autonomous vehicle (Project Navya), Limen (supply-chain angle), Navyam drone, FlexDrop. No Project Udaan.
 - Roblox APM application: answered "Identify a Roblox feature to build" with **"Robux Clarity"** (real-money view at checkout, teen self-set budgets, weekly spend recap), under 250 words, framed around the player since Roblox already has parental limits. Work-authorisation answer depends on job location (US role: needs sponsorship, answer Yes).
 
-## 9. How to behave
+## 9. Where everything is saved
+
+All of this lives in the private `sujal128005/limen` repo, branch `limen-v2`, folder `founder-ops/`:
+
+| Path | What |
+|---|---|
+| `CLAUDE_HANDOFF.md` | This file |
+| `outreach/outreach_tracker.md` | Every investor emailed, address, source and status |
+| `outreach/TODO_for_Sujal.md` | Forms and portals Sujal fills himself |
+| `outreach/antler_answers.md` | Standard answers to paste into investor forms |
+| `outreach/investor_emails.md` | The investor email template and first personal lines |
+| `outreach/limen_preseed_investors.md` | First research shortlist of pre-seed investors |
+| `outreach/linkedin_profile_update.md` | Sujal's LinkedIn profile text |
+| `outreach/nexara9_linkedin/` | Nexara9 page guide, logo, banner, post 1 and post 2 images, post 2 video, cover and text |
+| `decks/Limen_Pre-Seed_Investor_Deck_Nov2026.pdf` | The deck sent to investors (same as the Drive link) |
+| `decks/` (others) | Original Investor Overview, Dolphin Tank India deck, Google AI Startup Buildathon deck |
+| `resumes-archive/` | Resume versions Sujal uploaded (the live ones are in the portfolio repo) |
+| `brand/` | Logo options, the chosen colours and the logo SVG |
+
+Live resumes and their sources are in `sujal128005/sujalnegi.github.io` (`_resume/`). The website content is in `sujal128005/nexara9` (`src/content.mjs`).
+
+## 10. How to behave
 
 - Check first, then act. Read the repo, the inbox or the site before changing anything.
 - For anything public or outward-facing (sending emails, publishing, deploying), follow his rules above; when in doubt, show him the draft first.
