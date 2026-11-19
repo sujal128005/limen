@@ -332,6 +332,14 @@ const wrap = (fn) => async (req, res) => {
     }
     // Client-side mistakes (wrong order, wrong role, empty workspace) are normal
     // 4xx traffic, not server faults. One line keeps the console readable.
+    /* A fault in the code or the database is not the caller's business: they
+       get a plain sentence and the details stay in the server log. */
+    const internal = !e.status && (e instanceof TypeError || e instanceof ReferenceError || e instanceof SyntaxError
+      || e instanceof RangeError || (e.severity && /^[0-9A-Z]{5}$/.test(String(e.code || ''))));
+    if (internal) {
+      console.error('[api] %s %s failed:', req.method, req.path, e);
+      return res.status(500).json({ error: 'Something went wrong on our side. Please try again.' });
+    }
     console.warn('[api] %s %s -> %s', req.method, req.path, e.shortMessage || e.message);
     const msg = String(e.shortMessage || e.message || 'Request failed');
     /*

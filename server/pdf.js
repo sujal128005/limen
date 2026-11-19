@@ -450,7 +450,7 @@ function invoicePdf(d, sig) {
     info: { Title: `Settlement statement ${d.reference}`, Author: 'Limen', Subject: 'Escrow settlement statement' },
     createdAt: d.settlement.settledAt,
     disclaimer:
-      'Escrow settlement statement. The GST tax invoice is issued separately by the supplier. ' +
+      'Escrow settlement statement, not a tax invoice. The GST tax invoice is issued separately by the supplier. ' +
       'Delivery is confirmed by the buyer\'s receiving desk.',
     draw(doc) {
       let y = header(doc, {

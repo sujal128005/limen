@@ -56,6 +56,14 @@ services:
       # This blueprint is the public demo: demo accounts on. For a real
       # deployment set NODE_ENV=production, LIMEN_DEMO_ACCOUNTS=false and
       # LIMEN_PUBLIC_DEMO=false, and see docs/DEPLOYMENT.md.
+      # Behind Render's proxy: read the visitor's address from X-Forwarded-For,
+      # so rate limits and the sign-in lockout apply per visitor, not to everyone.
+      - key: LIMEN_TRUST_PROXY
+        value: "true"
+      # Session cookies only over HTTPS.
+      - key: LIMEN_SECURE_COOKIES
+        value: "true"
+
       - key: LIMEN_DEMO_ACCOUNTS
         value: "true"
 
