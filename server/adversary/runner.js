@@ -69,7 +69,9 @@ function makeCall(base) {
 /*  Canonical run builder                                                       */
 /* -------------------------------------------------------------------------- */
 
-const CANONICAL_REQUEST = 'I need 500 kg of bottle-grade PET resin. Budget is $1,200 total. Delivery within 14 days. Must be FDA food-contact certified.';
+// The demo's reference purchase. Amounts are rupees: a dollar figure is not a
+// budget this version reads, and a run without a budget cannot publish a policy.
+const CANONICAL_REQUEST = 'Need 5 MT of bottle-grade PET resin, IV 0.78-0.82, food grade, delivered to Chennai within 10 days. Budget ₹6 lakh.';
 const CODES = { sales: '2481', head: '7390', finance: '5162' };
 
 async function buildCanonicalRun(call, ws) {

@@ -505,10 +505,14 @@ const C1 = {
     const deterministic = plain(f);
 
     // Remove the total from the rewrite
+    // Rupees now, dollars before: either symbol, Indian or Western grouping.
     const dropped = deterministic.replace(
-      /\$[\d,]+(?:\.\d+)?/,
+      /[₹$][\d,]+(?:\.\d+)?/,
       '[REDACTED]'
     );
+    if (dropped === deterministic) {
+      return { verdict: 'BREACH', expected: 'a figure to remove', observed: 'the summary has no amount to drop, so this attack proved nothing', proof: deterministic.slice(0, 200) };
+    }
 
     const reason = rejectRewrite(deterministic, dropped);
     const proof = JSON.stringify({ deterministic: deterministic.slice(0, 200), dropped: dropped.slice(0, 200), reason });
@@ -1550,7 +1554,7 @@ const H3 = {
 
     const before = await ctx.call('GET', '/api/run', null, { workspace: ws, token: ctx.tokens.sales });
     const typed = await ctx.call('POST', '/api/brief',
-      { text: 'I need 500 kg of bottle-grade PET resin. Budget is $1,200 total. Delivery within 14 days.' },
+      { text: 'Need 5 MT of bottle-grade PET resin, food grade, delivered to Chennai within 10 days. Budget ₹6 lakh.' },
       { workspace: ws, token: ctx.tokens.sales });
     const after = await ctx.call('GET', '/api/run', null, { workspace: ws, token: ctx.tokens.sales });
 
