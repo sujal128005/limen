@@ -650,3 +650,7 @@ a.pf-kpi:hover { border-color: var(--pine-line); }
 .ob-review-one h2 { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 22px; }
 .pf-g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 @media (max-width: 1100px) { .ob { grid-template-columns: 1fr; } .ob-rail { position: static; height: auto; } .ob-main { padding: 28px 24px; } .ob-track { grid-template-columns: 1fr 1fr; } .pf-g4 { grid-template-columns: 1fr 1fr; } .ob-review-grid { grid-template-columns: 1fr; } }
+.ob-error { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border-radius: 12px; background: rgba(179,38,30,.07); border: 1px solid rgba(179,38,30,.35); color: var(--ink); }
+.ob-error svg { color: var(--crimson); margin-top: 2px; }
+.ob-error b { display: block; font-size: 14.5px; color: var(--crimson); }
+.ob-error span { font-size: 14px; line-height: 1.5; }

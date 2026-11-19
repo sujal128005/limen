@@ -53,7 +53,8 @@ const BUYER_TEAM_DESKS = ['sales', 'head', 'finance'];
 
 const clean = (v, n = 200) => String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n);
 const upper = (v, n) => clean(v, n).toUpperCase().replace(/\s+/g, '');
-const fail = (msg, field) => { const e = httpError(422, msg); if (field) e.field = field; return e; };
+/* field tells the form which input to point at, and whether the captcha or robot check was used up. */
+const fail = (msg, field) => httpError(422, msg, { extra: { field: field || null } });
 
 function cookieHeader(value, maxAgeMs) {
   const parts = [`${COOKIE}=${encodeURIComponent(value)}`, 'Path=/api/onboarding', 'HttpOnly', 'SameSite=Lax', `Max-Age=${Math.floor(maxAgeMs / 1000)}`];
@@ -128,7 +129,9 @@ function makeOnboarding({ store, auth, activity, mailer, taxonomy, onOrgCreated,
 
   function needCaptcha(req) {
     limit(`capfail:${ip(req)}`, 40, 15 * 60 * 1000, 'Too many attempts. Please wait a few minutes and try again.');
-    if (!captcha.check((req.body || {}).captcha)) throw fail('The characters did not match. Type the new characters shown.', 'captcha');
+    const c = (req.body || {}).captcha;
+    if (!c || !String(c.answer || '').trim()) throw fail('Type the characters shown in the image.', 'captcha-empty');
+    if (!captcha.check(c)) throw fail('The characters did not match the image. A new image is shown; type those characters.', 'captcha');
   }
 
   /* ---------------------------------------------------------- application */
@@ -180,9 +183,12 @@ function makeOnboarding({ store, auth, activity, mailer, taxonomy, onOrgCreated,
   r.post('/application', wrap(async (req, res) => {
     limit(`app:${ip(req)}`, 10, 60 * 60 * 1000, 'Too many new applications from this network. Try again later.');
     const b = req.body || {};
-    if (!captcha.spendHuman(b.human)) throw fail('Confirm you are not a robot first.', 'human');
-    needCaptcha(req);
+    // The details first: a form with a mistake in it must not use up the
+    // captcha or the robot check, which work only once.
     const company = await validateCompany(b.company || {});
+    if (!b.human) throw fail('Tick "I\'m not a robot" and complete the puzzle.', 'human');
+    needCaptcha(req);
+    if (!captcha.spendHuman(b.human)) throw fail('The robot check has expired. Tick "I\'m not a robot" again.', 'human-expired');
     const kind = b.kind === 'supplier' ? 'supplier' : 'buyer';
     const token = S.newToken();
     const app = await store.insert('applications', {
@@ -198,7 +204,6 @@ function makeOnboarding({ store, auth, activity, mailer, taxonomy, onOrgCreated,
     const step = String(req.params.step);
     if (!STEPS.includes(step) || step === 'confirm') throw httpError(404, 'No such step.');
     const app = await load(req);
-    needCaptcha(req);
     const b = req.body || {};
     if (step === 'company') app.company = await validateCompany(b.company || {}, app.id);
     if (step === 'applicant') app.applicant = await validateApplicant(b.applicant || {}, app);
@@ -208,6 +213,7 @@ function makeOnboarding({ store, auth, activity, mailer, taxonomy, onOrgCreated,
       const missing = kyb.requiredDocs(app).filter((k) => !app.files.some((f) => f.kind === k));
       if (missing.length) throw fail(`Upload: ${missing.map((k) => kyb.DOC_LABEL[k]).join(', ')}.`, 'documents');
     }
+    needCaptcha(req); // after the details are known to be right, so a mistake does not cost the captcha
     if (!app.done.includes(step)) app.done.push(step);
     const saved = await store.put('applications', app);
     res.json(view(saved));
@@ -454,7 +460,6 @@ function makeOnboarding({ store, auth, activity, mailer, taxonomy, onOrgCreated,
 
   r.post('/application/submit', wrap(async (req, res) => {
     const app = await load(req);
-    needCaptcha(req);
     const b = req.body || {};
     for (const s of STEPS.slice(0, 5)) if (!app.done.includes(s) && s !== 'team') throw fail(`Complete the ${s} step first.`, s);
     if (!(app.otp && app.otp.email && app.otp.email.verifiedAt)) throw fail('Confirm your work email with the code we sent.', 'email');
@@ -464,6 +469,7 @@ function makeOnboarding({ store, auth, activity, mailer, taxonomy, onOrgCreated,
     if (await store.getByKey('users', a.email)) throw fail('An account with this email already exists. Sign in instead.', 'email');
     // Final duplicate check, in case another application with this GSTIN went in meanwhile.
     await validateCompany(app.company, app.id);
+    needCaptcha(req);
 
     const now = new Date().toISOString();
     const pending = (await store.list('orgs', { limit: 5000 })).filter((o) => o.kyb && ['pending', 'in_review'].includes(o.kyb.status)).length;
