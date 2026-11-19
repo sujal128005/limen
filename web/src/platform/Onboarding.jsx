@@ -192,11 +192,36 @@ function useStepForm(initial) {
 
 function CompanyStep({ opts, app, kind, onSaved }) {
   const c = (app && app.company) || {};
-  const [f, , set] = useStepForm({
+  const [f, setF, set] = useStepForm({
     legalName: c.legalName || '', tradeName: c.tradeName || '', constitution: c.constitution || '', gstin: c.gstin || '', pan: c.pan || '',
     cin: c.cin || '', udyam: c.udyam || '', yearIncorporated: c.yearIncorporated || '', industry: c.industry || '', website: c.website || '',
     address: c.address || '', city: c.city || '', state: c.state || '', pin: c.pin || '', turnover: c.turnover || '', employees: c.employees || '',
+    country: 'India', district: c.district || '',
   });
+  /* Places: districts for the state, towns for the district, or all of it from a PIN code. */
+  const [districts, setDistricts] = useState([]);
+  const [towns, setTowns] = useState([]);
+  const [pinInfo, setPinInfo] = useState(null);
+  useEffect(() => {
+    if (!f.state) { setDistricts([]); return; }
+    api.get(`/api/onboarding/geo/districts?state=${encodeURIComponent(f.state)}`).then(setDistricts).catch(() => setDistricts([]));
+  }, [f.state]);
+  useEffect(() => {
+    if (!f.state || !f.district) { setTowns([]); return; }
+    api.get(`/api/onboarding/geo/towns?state=${encodeURIComponent(f.state)}&district=${encodeURIComponent(f.district)}`).then(setTowns).catch(() => setTowns([]));
+  }, [f.state, f.district]);
+  async function onPin(e) {
+    const pin = e.target.value.replace(/\D/g, '').slice(0, 6);
+    setF((x) => ({ ...x, pin }));
+    setPinInfo(null);
+    if (pin.length !== 6) return;
+    try {
+      const w = await api.get(`/api/onboarding/geo/pin/${pin}`);
+      setPinInfo(w);
+      setF((x) => ({ ...x, pin, state: w.stateCode || x.state, district: w.district, city: w.places.includes(x.city) ? x.city : (w.places.length === 1 ? w.places[0] : x.city) }));
+    } catch (_) { setPinInfo({ notFound: true }); }
+  }
+  const cityOptions = [...new Set([...((pinInfo && pinInfo.places) || []), ...towns])];
   const [human, setHuman] = useState(null);
   const [captcha, setCaptcha] = useState(null);
   const [nonce, setNonce] = useState(0);
@@ -213,7 +238,7 @@ function CompanyStep({ opts, app, kind, onSaved }) {
   async function submit(e) {
     e.preventDefault(); E.clear();
     const miss = emptyOf(f, [['legalName', 'Registered legal name'], ['constitution', 'Constitution'], ['yearIncorporated', 'Year of incorporation'], ['gstin', 'GSTIN'], ['pan', 'Company PAN'],
-      ...(con && con.needsCin ? [['cin', con.needsCin === 'llp' ? 'LLPIN' : 'CIN']] : []), ['address', 'Address'], ['city', 'City'], ['state', 'State'], ['pin', 'PIN code'],
+      ...(con && con.needsCin ? [['cin', con.needsCin === 'llp' ? 'LLPIN' : 'CIN']] : []), ['address', 'Address'], ['pin', 'PIN code'], ['state', 'State'], ['district', 'District'], ['city', 'City or town'],
       ['industry', 'Industry'], ['website', 'Company website'], ['turnover', 'Annual turnover'], ['employees', 'Employees']]);
     if (miss.length) return E.missing(miss);
     if (!app && !human) return E.set('human', 'Tick "I\'m not a robot" and slide the piece into place.', 'human');
@@ -242,9 +267,20 @@ function CompanyStep({ opts, app, kind, onSaved }) {
       <div className="ob-sec">Registered office</div>
       <Field label="Address" required error={E.fieldErr('address')}><Textarea rows={2} value={f.address} onChange={set('address')} maxLength={240} /></Field>
       <div className="pf-grid pf-g3">
-        <Field label="City" required error={E.fieldErr('city')}><Input value={f.city} onChange={set('city')} maxLength={60} /></Field>
-        <Field label="State" required error={E.fieldErr('state')}><Select value={f.state} onChange={set('state')} placeholder="Choose" options={opts.states.map((s) => ({ value: s.code, label: s.name }))} /></Field>
-        <Field label="PIN code" required><Input inputMode="numeric" value={f.pin} onChange={(e) => set('pin')({ target: { value: e.target.value.replace(/\D/g, '').slice(0, 6) } })} /></Field>
+        <Field label="Country" required><Select value="India" onChange={() => {}} options={opts.countries || ['India']} /></Field>
+        <Field label="PIN code" required error={E.fieldErr('pin')} hint={pinInfo && !pinInfo.notFound ? `${pinInfo.district}, ${pinInfo.state}` : pinInfo && pinInfo.notFound ? 'Not found. Choose the state, district and city below.' : 'Fills the state, district and city.'}>
+          <Input inputMode="numeric" value={f.pin} onChange={onPin} placeholder="6 digits" />
+        </Field>
+        <Field label="State" required error={E.fieldErr('state')}><Select value={f.state} onChange={(e) => setF((x) => ({ ...x, state: e.target.value, district: '', city: '' }))} placeholder="Choose" options={opts.states.map((s) => ({ value: s.code, label: s.name }))} /></Field>
+      </div>
+      <div className="pf-grid pf-g2">
+        <Field label="District" required error={E.fieldErr('district')}>
+          <Select value={f.district} onChange={(e) => setF((x) => ({ ...x, district: e.target.value, city: '' }))} placeholder={f.state ? 'Choose' : 'Choose the state first'} options={f.district && !districts.includes(f.district) ? [f.district, ...districts] : districts} disabled={!f.state} />
+        </Field>
+        <Field label="City or town" required error={E.fieldErr('city')} hint={cityOptions.length ? `${cityOptions.length} places in this district. Type to search, or type your own.` : 'Choose the district first, or type it.'}>
+          <Input value={f.city} onChange={set('city')} maxLength={60} list="ob-towns" autoComplete="off" placeholder={f.district ? 'Start typing' : ''} />
+          <datalist id="ob-towns">{cityOptions.map((t) => <option key={t} value={t} />)}</datalist>
+        </Field>
       </div>
       <div className="ob-sec">About the company</div>
       <div className="pf-grid pf-g2">

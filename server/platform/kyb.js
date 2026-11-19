@@ -132,7 +132,8 @@ async function review(app, ctx = {}) {
   // ---- address
   if (gOk && co.pin) {
     const st = String(co.gstin).slice(0, 2);
-    const states = statesForPin(co.pin);
+    const exact = require('../geo').pin(co.pin);
+    const states = exact && exact.stateCode ? [exact.stateCode] : statesForPin(co.pin);
     add('address-state', 'Registered address is in the GSTIN\'s state', !states.length || states.includes(st) ? 'pass' : 'warn',
       !states.length ? `PIN ${co.pin}.` : states.includes(st) ? `PIN ${co.pin} is in ${verification.GST_STATES[st] || st}.` : `PIN ${co.pin} is not in ${verification.GST_STATES[st] || st}, the GSTIN's state.`);
   }

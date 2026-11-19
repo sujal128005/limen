@@ -88,7 +88,7 @@ async function run() {
   const company = {
     legalName: 'Sahyadri Test Packaging Private Limited', constitution: 'private_limited', gstin, pan,
     cin: 'U25209MH2016PTC281234', yearIncorporated: 2016, industry: 'Packaging', website: 'sahyadritest.in',
-    address: 'Gat 112, Chakan Industrial Area', city: 'Pune', state: '27', pin: '410501', turnover: '₹5 to 25 crore', employees: '51 to 200',
+    address: 'Gat 112, Chakan Industrial Area', city: 'Chakan', district: 'Pune', state: '27', pin: '410501', turnover: '₹5 to 25 crore', employees: '51 to 200',
   };
   const email = `owner${Date.now()}@sahyadritest.in`;
   const a = client();
