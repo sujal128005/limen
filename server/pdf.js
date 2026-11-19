@@ -25,8 +25,9 @@ const MUTED = '#5A6570';
 const FAINT = '#98A2AC';
 const RULE = '#D8D5CE';
 const PINE = '#15803D';   // success: passed checks, savings
-const BLUE = '#1D4ED8';   // the brand's action blue
-const BRAND = '#F5A524';  // the amber threshold in the mark
+const BLUE = '#174A40';   // the brand's emerald, used for action and authority
+const EMERALD = '#174A40'; // the arch in the mark
+const BRAND = '#E2B862';  // the gold threshold in the mark
 const CRIMSON = '#A32338';
 const AMBER = '#8A5A00';
 
@@ -48,24 +49,14 @@ function brandMark(doc, x, y, size = 18) {
   const X = (n) => x + n * u;
   const Y = (n) => y + n * u;
   doc.save();
-  doc.fillColor(INK);
-  // The opening: the agent's work.
-  doc.moveTo(X(6), Y(33))
-    .lineTo(X(6), Y(13))
-    .bezierCurveTo(X(6), Y(10.8), X(7.8), Y(9), X(10), Y(9))
-    .lineTo(X(38), Y(9))
-    .bezierCurveTo(X(40.2), Y(9), X(42), Y(10.8), X(42), Y(13))
-    .lineTo(X(42), Y(33))
-    .lineTo(X(33), Y(33))
-    .lineTo(X(33), Y(20))
-    .bezierCurveTo(X(33), Y(18.3), X(31.7), Y(17), X(30), Y(17))
-    .lineTo(X(18), Y(17))
-    .bezierCurveTo(X(16.3), Y(17), X(15), Y(18.3), X(15), Y(20))
-    .lineTo(X(15), Y(33))
-    .closePath()
-    .fill();
-  // The threshold: the line it does not cross on its own.
-  doc.fillColor(BRAND).roundedRect(X(4), Y(36), 40 * u, 7 * u, 3.5 * u).fill();
+  // The arch: a doorway, emerald, with a shorter right leg.
+  doc.lineWidth(5.2 * u).lineJoin('round').strokeColor(EMERALD)
+    .moveTo(X(6.8), Y(29.6)).lineTo(X(6.8), Y(20.8))
+    .quadraticCurveTo(X(6.8), Y(12), X(15.6), Y(12)).lineTo(X(32.4), Y(12))
+    .quadraticCurveTo(X(41.2), Y(12), X(41.2), Y(20.8)).lineTo(X(41.2), Y(25.2))
+    .stroke();
+  // The threshold: a gold step with a slanted end.
+  doc.fillColor(BRAND).moveTo(X(4.2), Y(32.8)).lineTo(X(23.6), Y(32.8)).lineTo(X(21.2), Y(38)).lineTo(X(4.2), Y(38)).closePath().fill();
   doc.restore();
 }
 
