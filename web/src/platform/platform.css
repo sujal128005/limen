@@ -654,3 +654,4 @@ a.pf-kpi:hover { border-color: var(--pine-line); }
 .ob-error svg { color: var(--crimson); margin-top: 2px; }
 .ob-error b { display: block; font-size: 14.5px; color: var(--crimson); }
 .ob-error span { font-size: 14px; line-height: 1.5; }
+.ob-link.plain { color: var(--pine); padding: 0; text-decoration: underline; font-size: inherit; }
