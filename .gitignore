@@ -41,3 +41,11 @@ Thumbs.db
 
 # Windows file-lock leftovers
 **/.fuse_hidden*
+
+# AI assistant and agent files. Not part of the product.
+CLAUDE.md
+CLAUDE.local.md
+AGENTS.md
+GEMINI.md
+.claude/
+.cursor/

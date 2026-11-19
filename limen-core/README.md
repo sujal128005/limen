@@ -41,7 +41,7 @@ limen-core/
 ├── scripts/              make_dataset.py, benchmark_baselines.py, check_llm.py (live model check)
 ├── setup.sh / setup.bat  one-time setup: virtual environment + test libraries + test run
 ├── tests/                108 tests incl. property, isolation and contract-rule tests
-└── docs/                 DESIGN.md, LLM_TESTING.md, HANDOFF.md
+└── docs/                 DESIGN.md, LLM_TESTING.md
 ```
 
 ## Setup
