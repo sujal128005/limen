@@ -82,6 +82,8 @@ function publicOrg(o) {
     country: o.country || null, city: o.city || null, state: o.state || null,
     supplierId: o.supplierId || null, status: o.status || 'active',
     verification: o.verification ? { status: o.verification.status } : null,
+    // Registration review (onboarding.js); absent for companies that predate it.
+    kyb: o.kyb ? { status: o.kyb.status, reference: o.kyb.reference || null, dueBy: o.kyb.dueBy || null, submittedAt: o.kyb.submittedAt || null } : null,
     createdAt: o.createdAt,
   };
 }
@@ -266,6 +268,9 @@ function makeAuth({ store, mailer, audit, identity, onOrgCreated, ensureSupplier
    * a second form is where sign-ups are lost.
    */
   r.post('/signup', wrap(async (req, res) => {
+    // Companies register through the verified application (onboarding.js). This
+    // one-step route skips verification, so it exists only for development.
+    if (isProd() && process.env.LIMEN_QUICK_SIGNUP !== 'true') throw httpError(410, 'Register your company through the application form.');
     const b = req.body || {};
     const email = cleanEmail(b.email);
     const name = cleanText(b.name, 80);

@@ -4,8 +4,9 @@ import './styles.css';
 import './platform/platform.css';
 import { api, usePath, navigate, match, AccountContext } from './platform/core';
 import { ToastHost, Spinner } from './platform/ui';
-import { Login, Signup, Forgot, Reset, VerifyEmail, Invite, landingFor } from './platform/Auth';
+import { Login, Forgot, Reset, VerifyEmail, Invite, landingFor } from './platform/Auth';
 import { Privacy, Terms, NotFound } from './Legal';
+import { Onboarding, VerificationStatus, ReviewDesk } from './platform/Onboarding';
 import { screenMode, RESPONSIVE_PATHS } from './screen';
 import { cookieNotice } from './consent';
 import { Shell } from './platform/Shell';
@@ -25,7 +26,7 @@ import { CompanyProfile, Team, AccountSecurity, AuditLog } from './platform/Sett
  * so the supplier portal never pays for its weight.
  */
 
-const PUBLIC = { '/login': Login, '/signup': Signup, '/forgot-password': Forgot, '/reset-password': Reset, '/verify-email': VerifyEmail, '/invite': Invite, '/privacy': Privacy, '/terms': Terms };
+const PUBLIC = { '/login': Login, '/forgot-password': Forgot, '/reset-password': Reset, '/verify-email': VerifyEmail, '/invite': Invite, '/privacy': Privacy, '/terms': Terms, '/signup': Onboarding };
 
 const read = (k) => { try { return localStorage.getItem(k); } catch (_) { return null; } };
 const write = (k, v) => { try { localStorage.setItem(k, v); } catch (_) { /* private mode */ } };
@@ -92,7 +93,8 @@ function Platform({ me, path }) {
   return <div className="pf-empty"><b>Page not found</b><a href={landingFor(me)}>Go home</a></div>;
 }
 
-const KNOWN = (path) => path === '/' || path === '/app' || path === '/account' || !!PUBLIC[path]
+const SIGNED_IN_PAGES = { '/onboarding/status': VerificationStatus, '/admin/verification': ReviewDesk };
+const KNOWN = (path) => path === '/' || path === '/app' || path === '/account' || !!PUBLIC[path] || !!SIGNED_IN_PAGES[path]
   || path === '/supplier' || path.startsWith('/supplier/') || path === '/settings' || path.startsWith('/settings/');
 
 function Root() {
@@ -135,6 +137,15 @@ function Root() {
 
   if (path === '/app') { window.location.replace(landingFor(me)); return null; }
   if (!KNOWN(path)) return <NotFound />;
+  if (SIGNED_IN_PAGES[path]) {
+    if (!me.signedIn) { navigate(`/login?next=${encodeURIComponent(path)}`, { replace: true }); return null; }
+    const Page = SIGNED_IN_PAGES[path];
+    return <AccountContext.Provider value={me}><ToastHost><Page /></ToastHost></AccountContext.Provider>;
+  }
+  // A company still being verified sees its verification first.
+  if (me.signedIn && me.org && me.org.kyb && me.org.kyb.status !== 'verified' && (path === '/' && !/[?&]demo=/.test(window.location.search))) {
+    navigate('/onboarding/status', { replace: true }); return null;
+  }
 
   if (path.startsWith('/supplier') || path.startsWith('/settings') || path === '/account') {
     if (!me.signedIn) { navigate(`/login?next=${encodeURIComponent(path)}`, { replace: true }); return null; }

@@ -14,6 +14,7 @@ import { Button, Field, Input, Icon, Mark, ErrorBox, Select } from './ui';
 export function landingFor(me) {
   if (!me || !me.signedIn) return '/login';
   if (!me.org) return '/account';
+  if (me.org.kyb && me.org.kyb.status !== 'verified') return '/onboarding/status';
   return me.org.kind === 'supplier' ? '/supplier' : '/';
 }
 /*

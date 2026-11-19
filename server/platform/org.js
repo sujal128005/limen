@@ -67,6 +67,16 @@ function makeOrgRoutes({ store, auth, activity, mailer, taxonomy, onOrgChanged }
     const b = req.body || {};
     const org = a.org;
     const before = orgView(org);
+    // A company that registered through verification keeps the identity it was
+    // verified with. Changing it is a new review, not a settings edit.
+    if (org.kyb) {
+      const locked = ['legalName', 'registeredId', 'state'].filter((k) => b[k] !== undefined && String(b[k] || '').trim().toUpperCase() !== String(org[k] || '').trim().toUpperCase());
+      if (locked.length) {
+        const e = new Error('The legal name, GSTIN and state were verified at registration. Contact Limen to change them.');
+        e.status = 409;
+        throw e;
+      }
+    }
     for (const [k, max] of [['name', 120], ['legalName', 160], ['country', 60], ['state', 60], ['city', 60], ['address', 300], ['website', 200], ['phone', 40], ['about', 1200], ['industry', 80]]) {
       if (b[k] !== undefined) org[k] = clean(b[k], max);
     }

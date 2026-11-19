@@ -7,5 +7,7 @@ Disallow: /account
 Disallow: /reset-password
 Disallow: /verify-email
 Disallow: /invite
+Disallow: /onboarding
+Disallow: /admin
 
 Sitemap: https://limen-peqe.onrender.com/sitemap.xml
