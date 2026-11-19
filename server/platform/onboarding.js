@@ -33,6 +33,7 @@ const express = require('express');
 const S = require('./secure');
 const roles = require('./roles');
 const kyb = require('./kyb');
+const geo = require('../geo');
 const verification = require('../verification');
 const { makeCaptcha } = require('./captcha');
 const { httpError } = require('./auth');
@@ -164,7 +165,8 @@ function makeOnboarding({ store, auth, activity, mailer, taxonomy, onOrgCreated,
   r.get('/options', wrap(async (req, res) => {
     res.json({
       constitutions: Object.entries(kyb.CONSTITUTIONS).map(([id, c]) => ({ id, label: c.label, needsCin: c.needsCin })),
-      states: Object.entries(verification.GST_STATES).map(([code, name]) => ({ code, name })),
+      states: geo.states().filter((s) => s.code).map((s) => ({ code: s.code, name: s.name })),
+      countries: ['India'],
       turnover: TURNOVER, employees: EMPLOYEES, spend: SPEND, industries: INDUSTRIES,
       businessTypes: Object.entries(BUSINESS_TYPES).map(([id, label]) => ({ id, label })),
       materials: (taxonomy && taxonomy().materials) || [],
@@ -172,6 +174,16 @@ function makeOnboarding({ store, auth, activity, mailer, taxonomy, onOrgCreated,
       supplierRoles: SUPPLIER_TEAM_ROLES.map((id) => ({ id, label: roles.rolesFor('supplier')[id].label })),
       buyerDesks: BUYER_TEAM_DESKS.map((id) => ({ id, label: roles.BUYER_DESKS[id].label })),
     });
+  }));
+
+  /* Places: states, then districts, then towns, or everything from a PIN code. */
+  r.get('/geo/districts', wrap(async (req, res) => { res.json(geo.districts(clean(req.query.state, 2))); }));
+  r.get('/geo/towns', wrap(async (req, res) => { res.json(geo.towns(clean(req.query.state, 2), clean(req.query.district, 80))); }));
+  r.get('/geo/pin/:pin', wrap(async (req, res) => {
+    limit(`geo:${ip(req)}`, 120, 10 * 60 * 1000);
+    const hit = /^[1-9]\d{5}$/.test(req.params.pin) ? geo.pin(req.params.pin) : null;
+    if (!hit) throw httpError(404, 'We could not find this PIN code. Check it, or choose the state, district and city yourself.');
+    res.json(hit);
   }));
 
   r.get('/application', wrap(async (req, res) => {
@@ -227,6 +239,7 @@ function makeOnboarding({ store, auth, activity, mailer, taxonomy, onOrgCreated,
       gstin: upper(c.gstin, 15), pan: upper(c.pan, 10), cin: upper(c.cin, 21), udyam: upper(c.udyam, 19),
       yearIncorporated: Number(c.yearIncorporated) || null, industry: clean(c.industry, 60), website: clean(c.website, 120),
       address: clean(c.address, 240), city: clean(c.city, 60), state: clean(c.state, 2), pin: clean(c.pin, 6),
+      country: 'India', district: clean(c.district, 80),
       turnover: clean(c.turnover, 40), employees: clean(c.employees, 40),
     };
     if (out.legalName.length < 3) throw fail('Enter the company\'s registered legal name.', 'legalName');
@@ -250,6 +263,10 @@ function makeOnboarding({ store, auth, activity, mailer, taxonomy, onOrgCreated,
     if (!verification.GST_STATES[out.state]) throw fail('Choose the state.', 'state');
     if (out.state !== out.gstin.slice(0, 2)) throw fail('The GSTIN belongs to a different state from the registered address.', 'state');
     if (!/^[1-9]\d{5}$/.test(out.pin)) throw fail('Enter a 6-digit PIN code.', 'pin');
+    if (c.country && c.country !== 'India') throw fail('Limen registers companies in India.', 'country');
+    if (out.district.length < 2) throw fail('Choose the district.', 'district');
+    const where = geo.pin(out.pin);
+    if (where && where.stateCode && where.stateCode !== out.state) throw fail(`PIN ${out.pin} is in ${where.state}, not the state chosen.`, 'pin');
     if (!TURNOVER.includes(out.turnover)) throw fail('Choose the annual turnover range.', 'turnover');
     if (!EMPLOYEES.includes(out.employees)) throw fail('Choose the number of employees.', 'employees');
     // One GSTIN, one company: an existing company is not registered twice.
