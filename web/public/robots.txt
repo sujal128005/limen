@@ -10,4 +10,4 @@ Disallow: /invite
 Disallow: /onboarding
 Disallow: /admin
 
-Sitemap: https://limen-peqe.onrender.com/sitemap.xml
+Sitemap: https://limen.nexara9.me/sitemap.xml

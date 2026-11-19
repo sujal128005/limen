@@ -38,7 +38,7 @@ Limen sources physical goods, screens suppliers, negotiates against floor prices
 
 That sentence is the whole product. Everything below is either a demonstration of it or an honest note about where it stops.
 
-**Limen Live demo:** https://limen-peqe.onrender.com
+**Limen Live demo:** https://limen.nexara9.me
 
 **Limen Technical Document:** https://drive.google.com/file/d/1H9PaUsXk27513PG4hHXv6unZhksCMLL6/view?usp=sharing (also available in /Docs)
 
