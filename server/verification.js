@@ -115,7 +115,7 @@ function checkGstin(raw) {
 
   if (GST_STATES[state] || GST_STATES[String(Number(state))]) {
     add('gstin.state', 'State code', 'pass',
-      `${state} — ${GST_STATES[state] || GST_STATES[String(Number(state))]}.`);
+      `${state}: ${GST_STATES[state] || GST_STATES[String(Number(state))]}.`);
   } else {
     add('gstin.state', 'State code', 'fail', `${state} is not a GST state code.`);
   }
@@ -124,12 +124,12 @@ function checkGstin(raw) {
   const panOk = panResult.checks.every((c) => c.status !== 'fail');
   add('gstin.pan', 'Embedded PAN', panOk ? 'pass' : 'fail',
     panOk
-      ? `${pan} — structurally valid${panResult.entity ? `, registered as ${panResult.entity.toLowerCase()}` : ''}.`
+      ? `${pan}: structurally valid${panResult.entity ? `, registered as ${panResult.entity.toLowerCase()}` : ''}.`
       : `${pan} is not a valid PAN, so this GSTIN cannot be genuine.`);
 
   if (/^[1-9A-Z]$/.test(entityNo)) {
     add('gstin.entity', 'Registration number within the state', 'pass',
-      `${entityNo} — the ${entityNo === '1' ? 'first' : `number ${entityNo}`} registration for this PAN in ${GST_STATES[state] || `state ${state}`}.`);
+      `${entityNo}: the ${entityNo === '1' ? 'first' : `number ${entityNo}`} registration for this PAN in ${GST_STATES[state] || `state ${state}`}.`);
   } else {
     add('gstin.entity', 'Registration number within the state', 'fail', `${entityNo} is not valid here.`);
   }
@@ -151,7 +151,7 @@ function checkGstin(raw) {
       `"${given}" is correct for the preceding fourteen characters. A single mistyped character would not survive this.`);
   } else {
     add('gstin.checkdigit', 'Check digit', 'fail',
-      `"${given}" is wrong — it should be "${expected}". This number was never issued to anyone.`);
+      `"${given}" is wrong: it should be "${expected}". This number was never issued to anyone.`);
   }
 
   /*
@@ -181,7 +181,7 @@ function checkPan(raw) {
   }
   const entity = PAN_ENTITY[v[3]] || null;
   if (entity) {
-    add('pan.entity', 'Holder type', 'pass', `"${v[3]}" — ${entity}.`);
+    add('pan.entity', 'Holder type', 'pass', `"${v[3]}": ${entity}.`);
   } else {
     add('pan.entity', 'Holder type', 'fail', `"${v[3]}" is not a recognised PAN holder type.`);
   }
@@ -207,7 +207,7 @@ function checkCin(raw) {
   }
 
   add('cin.listing', 'Listing status', 'pass',
-    v[0] === 'L' ? 'L — listed on a stock exchange.' : 'U — unlisted.');
+    v[0] === 'L' ? 'L: listed on a stock exchange.' : 'U: unlisted.');
   add('cin.industry', 'Industry code', 'pass', `${v.slice(1, 6)}.`);
   add('cin.state', 'Registrar state', 'pass', `${v.slice(6, 8)}.`);
 
@@ -215,14 +215,14 @@ function checkCin(raw) {
   const thisYear = new Date().getFullYear();
   if (year >= 1850 && year <= thisYear) {
     add('cin.year', 'Year of incorporation', 'pass',
-      `${year}${thisYear - year < 2 ? ' — incorporated within the last two years, which is worth a buyer knowing.' : '.'}`);
+      `${year}${thisYear - year < 2 ? ': incorporated within the last two years, which is worth a buyer knowing.' : '.'}`);
   } else {
     add('cin.year', 'Year of incorporation', 'fail',
       `${year} is not a possible incorporation year.`);
   }
 
   const own = v.slice(12, 15);
-  if (CIN_OWNERSHIP[own]) add('cin.ownership', 'Company type', 'pass', `${own} — ${CIN_OWNERSHIP[own]}.`);
+  if (CIN_OWNERSHIP[own]) add('cin.ownership', 'Company type', 'pass', `${own}: ${CIN_OWNERSHIP[own]}.`);
   else add('cin.ownership', 'Company type', 'fail', `${own} is not a recognised company type code.`);
 
   add('cin.registry', 'Registration status at the MCA', 'not-checked',

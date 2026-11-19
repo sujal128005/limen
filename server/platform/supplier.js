@@ -1,4 +1,5 @@
 'use strict';
+const orderdocs = require('../orderdocs');
 
 /*
  * The supplier portal API.
@@ -280,6 +281,38 @@ function makeSupplierRoutes({ store, auth, activity, catalogue, taxonomy, chainO
     const v = await viewFor(a, req.params.id);
     if (!v.order) throw httpError(404, 'This opportunity has not become an order.');
     res.json(strip(v));
+  }));
+
+  /*
+   * The order's paperwork. Built from the purchase itself, the same facts the
+   * buyer's copies come from, so both sides hold identical documents. Only an
+   * order this company won is reachable (viewFor), and only documents whose
+   * event has happened exist.
+   */
+  async function orderDocs(a, id) {
+    const v = await viewFor(a, id);
+    if (!v.order) throw httpError(404, 'This opportunity has not become an order.');
+    const session = await workspaceOps.load(v.workspaceId);
+    if (!session) throw httpError(404, 'No such order.');
+    const buyerOrg = v.buyer && v.buyer.orgId ? await store.get('orgs', v.buyer.orgId) : null;
+    const f = orderdocs.orderFacts(session, { workspaceId: v.workspaceId, buyerOrg, supplierOrg: a.org });
+    if (!f) throw httpError(404, 'No such order.');
+    return f;
+  }
+
+  r.get('/orders/:id/documents', wrap(async (req, res) => {
+    const a = supplierOrg(req);
+    res.json(orderdocs.available(await orderDocs(a, req.params.id)));
+  }));
+
+  r.get('/orders/:id/documents/:kind.pdf', wrap(async (req, res) => {
+    const a = supplierOrg(req);
+    const f = await orderDocs(a, req.params.id);
+    const buf = await orderdocs.renderOrderDocument(String(req.params.kind), f);
+    const d = orderdocs.available(f).find((x) => x.kind === req.params.kind);
+    res.setHeader('content-type', 'application/pdf');
+    res.setHeader('content-disposition', `attachment; filename="${d.number.replace(/\//g, '-')}.pdf"`);
+    res.send(buf);
   }));
 
   r.post('/orders/:id/acknowledge', wrap(async (req, res) => {

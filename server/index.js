@@ -48,6 +48,15 @@ const adversaryRouter = require('./routes/adversary');
 const { createPlatform } = require('./platform');
 const { seed: seedDemoAccounts } = require('./platform/seed');
 const { upgradeToRupees } = require('./upgrade');
+const orderdocs = require('./orderdocs');
+const { makeHistory } = require('./demohistory');
+let historyInstance = null;
+function demoHistory(port) {
+  if (!historyInstance) {
+    historyInstance = makeHistory({ port, store: workspace.getStore(), platformStore: platform.store, workspaceOps, verification: require('./verification') });
+  }
+  return historyInstance;
+}
 const security = require('./security');
 
 /*
@@ -507,6 +516,10 @@ app.post('/api/session/login', wrap(async (req, res) => {
     );
   }
   doorlock.succeed(key);
+  // A new demo company opens with the demo's past orders, read-only copies.
+  if (identity.usingDemoCodes() && historyInstance) {
+    try { await historyInstance.seedCompany(req.companyId); } catch (e) { console.warn('[demo history] %s', e.message); }
+  }
   /*
    * Minted against the company, so one sign-in covers every purchase that
    * company has open. See identity.js for why this is not the loosening it
@@ -3599,6 +3612,34 @@ app.post('/api/document/sign', wrap(async (req, res) => {
   });
 }));
 
+/*
+ * The order's paperwork, buyer's copies: purchase order, the supplier's
+ * acknowledgement, tax invoice and delivery challan, goods receipt note and
+ * payment advice. Built from the stored purchase only; see server/orderdocs.js.
+ */
+async function orderDocFacts(req, session) {
+  const w = session.recommendation && session.recommendation.winner;
+  const buyerOrg = String(req.companyId || '').startsWith('org_') ? await platform.store.get('orgs', req.companyId) : null;
+  const supplierOrg = w ? (await platform.store.list('orgs', { refId: w.supplierId, limit: 5 })).find((o) => o.kind === 'supplier' && o.status !== 'closed') || null : null;
+  return orderdocs.orderFacts(session, { workspaceId: session.id, buyerOrg, supplierOrg });
+}
+
+app.get('/api/documents', wrap(async (req, res) => {
+  const session = sessionFor(req);
+  res.json(orderdocs.available(await orderDocFacts(req, session)));
+}));
+
+app.get('/api/documents/:kind.pdf', wrap(async (req, res) => {
+  const session = sessionFor(req);
+  const f = await orderDocFacts(req, session);
+  if (!f) throw Object.assign(new Error('There is no approved order in this purchase yet.'), { status: 404 });
+  const buf = await orderdocs.renderOrderDocument(String(req.params.kind), f);
+  const d = orderdocs.available(f).find((x) => x.kind === req.params.kind);
+  res.setHeader('content-type', 'application/pdf');
+  res.setHeader('content-disposition', `attachment; filename="${d.number.replace(/\//g, '-')}.pdf"`);
+  res.send(buf);
+}));
+
 app.get('/api/document/agreement.pdf', wrap(async (req, res) => {
   const session = sessionFor(req);
   const { buyer, policy } = await buyerContext(session);
@@ -3816,6 +3857,11 @@ const chainOps = {
  * the supplier named as the actor.
  */
 const workspaceOps = {
+  /* Read-only: the supplier portal reads the purchase behind an order to issue its documents. */
+  async load(workspaceId) {
+    const row = await workspace.loadById(workspaceId);
+    return row ? row.state : null;
+  },
   async mutate(workspaceId, fn, { actorName, action }) {
     return workspace.withLock(workspaceId, async () => {
       const row = await workspace.loadById(workspaceId);
@@ -4009,6 +4055,10 @@ function serve() {
   const port = Number(process.env.PORT || 4000);
   return app.listen(port, () => {
     console.log(`\n  Limen running -> http://localhost:${port}\n`);
+    // Past orders for the demo, once per database, in the background.
+    if (identity.usingDemoCodes() && process.env.LIMEN_PUBLIC_DEMO !== 'false' && process.env.LIMEN_DEMO_HISTORY !== 'false') {
+      demoHistory(port).build().catch((e) => console.warn('  demo history not recorded:', e.message));
+    }
   });
 }
 

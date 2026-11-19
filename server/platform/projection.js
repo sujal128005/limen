@@ -165,6 +165,8 @@ function project(session, meta = {}) {
       } : null,
       order: null,
       updatedAt,
+      // When it happened, for past demo orders; the store stamps updatedAt on every write.
+      activityAt: meta.updatedAt || null,
     };
 
     if (won) {

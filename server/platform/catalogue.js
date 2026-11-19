@@ -40,7 +40,7 @@ function makeCatalogue({ store }) {
       if (i === AGENT_ACCOUNT || used.has(i)) continue;
       return i;
     }
-    const e = new Error('Every on-chain supplier account on this chain is taken. Raise LIMEN_CHAIN_ACCOUNTS and restart.');
+    const e = new Error('Supplier registration is temporarily full. Please try again later or contact Limen support.');
     e.status = 503;
     throw e;
   }

@@ -199,7 +199,7 @@ function HowItWorks() {
 }
 
 const unitOf = (v) => (v && v.request && v.request.unit) || 'kg';
-const qty = (n, unit) => (n == null ? '—' : `${Number(n).toLocaleString('en-IN')} ${unit || 'kg'}`);
+const qty = (n, unit) => (n == null ? '-' : `${Number(n).toLocaleString('en-IN')} ${unit || 'kg'}`);
 
 /* ------------------------------------------------------------------ home */
 
@@ -303,7 +303,7 @@ function RecentList({ rows }) {
             <tr key={v.id} className="click" onClick={() => navigate(v.order ? `/supplier/orders/${encodeURIComponent(v.id)}` : `/supplier/opportunities/${encodeURIComponent(v.id)}`)}>
               <td><div className="t-main">{title(v)}</div><div className="t-sub">{refOf(v)} · {v.buyer.name}{v.demo ? ' · demo' : ''}</div></td>
               <td>{v.order ? <StagePill s={v.order.stage} /> : <StatusPill s={v.status} />}</td>
-              <td className="r muted small">{ago(v.updatedAt)}</td>
+              <td className="r muted small">{ago(v.activityAt || v.updatedAt)}</td>
             </tr>
           ))}
         </tbody></table>
@@ -336,10 +336,10 @@ export function Opportunities() {
         columns={[
           { id: 'req', label: 'Request', cell: (v) => <><div className="t-main">{title(v)}</div><div className="t-sub">{refOf(v)}{v.demo ? ' · demo workspace' : ''}</div></>, sort: (v) => v.request.material },
           { id: 'sku', label: 'Your listing', cell: (v) => <span className="mono">{v.listing.sku}</span>, sort: (v) => v.listing.sku },
-          { id: 'to', label: 'Deliver to', cell: (v) => v.request.deliveryCity || '—', sort: (v) => v.request.deliveryCity || '' },
-          { id: 'deadline', label: 'Within', cell: (v) => (v.request.deadlineDays ? `${v.request.deadlineDays} days` : '—'), sort: (v) => v.request.deadlineDays || 0 },
+          { id: 'to', label: 'Deliver to', cell: (v) => v.request.deliveryCity || '-', sort: (v) => v.request.deliveryCity || '' },
+          { id: 'deadline', label: 'Within', cell: (v) => (v.request.deadlineDays ? `${v.request.deadlineDays} days` : '-'), sort: (v) => v.request.deadlineDays || 0 },
           { id: 'status', label: 'Status', cell: (v) => <StatusPill s={v.status} />, sort: (v) => v.status },
-          { id: 'when', label: 'Updated', right: true, cell: (v) => <span className="muted">{ago(v.updatedAt)}</span>, sort: (v) => v.updatedAt },
+          { id: 'when', label: 'Updated', right: true, cell: (v) => <span className="muted">{ago(v.activityAt || v.updatedAt)}</span>, sort: (v) => v.activityAt || v.updatedAt },
         ]}
       />
     </>
@@ -485,7 +485,7 @@ export function Orders() {
           { id: 'value', label: 'Value', right: true, cell: (v) => usd(v.order.terms.total), sort: (v) => v.order.terms.total },
           { id: 'next', label: 'Next', cell: (v) => { const n = nextFor(v); return <span className={`pf-next-mini ${n.tone}`}>{n.who}</span>; } },
           { id: 'stage', label: 'Stage', cell: (v) => <StagePill s={v.order.stage} />, sort: (v) => PATH.findIndex((p) => p.id === v.order.stage) },
-          { id: 'when', label: 'Updated', right: true, cell: (v) => <span className="muted">{ago(v.updatedAt)}</span>, sort: (v) => v.updatedAt },
+          { id: 'when', label: 'Updated', right: true, cell: (v) => <span className="muted">{ago(v.activityAt || v.updatedAt)}</span>, sort: (v) => v.activityAt || v.updatedAt },
         ]}
       />
     </>
@@ -505,6 +505,41 @@ function timeline(v) {
     { t: 'Paid to your bank', d: o.payment ? `${o.payment.status}${o.payment.utr ? ` · UTR ${o.payment.utr}` : ''}${o.payment.at ? ` · ${date(o.payment.at, true)}` : ''}` : 'Not yet', done: o.stage === 'paid' },
   ];
   return ev;
+}
+
+/* The order's paperwork: the same documents the buyer holds, from the same record. */
+const DOC_NEXT = {
+  'purchase-order': 'Your order acknowledgement appears when you confirm the order.',
+  'order-acknowledgement': 'The tax invoice and delivery challan are issued when you record the shipment.',
+  'delivery-challan': 'The goods receipt note follows when the buyer confirms delivery.',
+  'goods-receipt': 'The payment advice follows when the escrow pays you.',
+};
+function OrderDocuments({ id, stage }) {
+  const l = useLoad(`/api/sp/orders/${encodeURIComponent(id)}/documents?s=${stage}`);
+  if (l.loading && !l.data) return <Spinner />;
+  if (l.error) return <ErrorBox error={l.error} />;
+  const docs = l.data || [];
+  const last = docs.length ? docs[docs.length - 1].kind : null;
+  return (
+    <Card title="Order documents" sub="Generated from the order record. The buyer holds identical copies.">
+      {!docs.length ? (
+        <Empty icon="log" title="No documents yet">The purchase order is issued when the buyer approves this order.</Empty>
+      ) : (
+        <table className="pf-table"><thead><tr><th>Document</th><th>Number</th><th>Issued by</th><th>Date</th><th /></tr></thead><tbody>
+          {docs.map((d) => (
+            <tr key={d.kind}>
+              <td><b>{d.title}</b></td>
+              <td className="mono">{d.number}</td>
+              <td>{d.issuer === 'supplier' ? 'You' : 'Buyer'}</td>
+              <td>{date(d.at)}</td>
+              <td className="r"><a className="pf-btn sm" href={`/api/sp/orders/${encodeURIComponent(id)}/documents/${d.kind}.pdf`} download>Download PDF</a></td>
+            </tr>
+          ))}
+        </tbody></table>
+      )}
+      {last && DOC_NEXT[last] && !docs.some((d) => d.kind === 'payment-advice') && <p className="small muted" style={{ margin: '12px 0 0' }}>{DOC_NEXT[last]}</p>}
+    </Card>
+  );
 }
 
 /* The date the goods are due, from the approval and the agreed lead time. */
@@ -547,16 +582,16 @@ export function OrderDetail({ id }) {
         { k: 'Deliver to', v: v.request.deliveryCity || 'See buyer' },
         { k: 'Quantity', v: qty(t.quantityKg, u) },
         { k: 'Agreed price', v: `${usd(t.unitPrice)}/${u} + GST` },
-        { k: 'Due by', v: due ? date(due) : t.leadTimeDays ? `${t.leadTimeDays} days after approval` : '—' },
+        { k: 'Due by', v: due ? date(due) : t.leadTimeDays ? `${t.leadTimeDays} days after approval` : '-' },
       ]} />
-      <Tabs value={tab} onChange={setTab} tabs={[{ id: 'details', label: 'Order and money' }, { id: 'timeline', label: 'Timeline' }, { id: 'negotiation', label: 'How the price was reached' }, { id: 'chain', label: 'On chain' }]} />
+      <Tabs value={tab} onChange={setTab} tabs={[{ id: 'details', label: 'Order and money' }, { id: 'documents', label: 'Documents' }, { id: 'timeline', label: 'Timeline' }, { id: 'negotiation', label: 'How the price was reached' }, { id: 'chain', label: 'On chain' }]} />
       {tab === 'details' && (
         <div className="pf-grid pf-g2">
           <Card title="Money" sub={locked ? 'Locked in the escrow contract for you' : o.stage === 'paid' ? 'Paid' : 'Locked once the buyer approves'}>
             <table className="pf-money"><tbody>
-              <tr><td>Basic price<small>{qty(t.quantityKg, u)} at {usd(t.unitPrice)}</small></td><td>{t.basicTotal != null ? usd(t.basicTotal) : '—'}</td></tr>
+              <tr><td>Basic price<small>{qty(t.quantityKg, u)} at {usd(t.unitPrice)}</small></td><td>{t.basicTotal != null ? usd(t.basicTotal) : '-'}</td></tr>
               {t.freightTotal > 0 && <tr><td>Freight</td><td>{usd(t.freightTotal)}</td></tr>}
-              <tr><td>GST<small>you collect and file it</small></td><td>{t.gstTotal != null ? usd(t.gstTotal) : '—'}</td></tr>
+              <tr><td>GST<small>you collect and file it</small></td><td>{t.gstTotal != null ? usd(t.gstTotal) : '-'}</td></tr>
               <tr className="total"><td>Order value<small>{locked ? 'held in escrow until the buyer confirms delivery' : o.stage === 'paid' ? 'released to your bank' : 'locked when the buyer approves'}</small></td><td>{usd(t.total)}</td></tr>
             </tbody></table>
             <p className="small muted" style={{ marginBottom: 0 }}>
@@ -575,6 +610,7 @@ export function OrderDetail({ id }) {
           ]} /></Card>
         </div>
       )}
+      {tab === 'documents' && <OrderDocuments id={id} stage={o.stage} />}
       {tab === 'timeline' && <Card title="Timeline"><ul className="pf-tl">{timeline(v).map((e) => <li key={e.t} className={e.done ? '' : 'wait'}><div className="t">{e.t}</div><div className="d">{e.d}</div></li>)}</ul></Card>}
       {tab === 'negotiation' && <Card title="How this price was reached"><Transcript v={v} /></Card>}
       {tab === 'chain' && (
@@ -930,7 +966,7 @@ export function Payouts() {
           { id: 'ref', label: 'Order', cell: (v) => <><div className="t-main">{refOf(v)}</div><div className="t-sub">{v.buyer.name}</div></>, sort: (v) => refOf(v) },
           { id: 'value', label: 'Amount', right: true, cell: (v) => usd(v.order.terms.total), sort: (v) => v.order.terms.total },
           { id: 'stage', label: 'Stage', cell: (v) => <StagePill s={v.order.stage} /> },
-          { id: 'rail', label: 'Payout', cell: (v) => (v.order.payment ? <span className="small">{v.order.payment.currency} {num(v.order.payment.amount)} · {v.order.payment.rail}{v.order.payment.utr ? ` · UTR ${v.order.payment.utr}` : ''}</span> : <span className="muted">—</span>) },
+          { id: 'rail', label: 'Payout', cell: (v) => (v.order.payment ? <span className="small">{v.order.payment.currency} {num(v.order.payment.amount)} · {v.order.payment.rail}{v.order.payment.utr ? ` · UTR ${v.order.payment.utr}` : ''}</span> : <span className="muted">-</span>) },
         ]} />
     </>
   );
@@ -958,7 +994,7 @@ export function PayoutAccount() {
         <Card title="Current account">
           {l.loading ? <Spinner /> : acc ? (
             <DL rows={[['Account holder', acc.holder], ['Bank', acc.bankName], ['IFSC', <span className="mono">{acc.ifsc}</span>], ['Account', <span className="mono">•••• {acc.last4}</span>],
-              ['Payout rail', acc.registeredWithRail ? `Registered (${acc.fundAccountId})` : acc.railNote || 'Not registered'], ['Last changed', `${acc.changedBy || '—'} · ${date(acc.changedAt, true)}`]]} />
+              ['Payout rail', acc.registeredWithRail ? `Registered (${acc.fundAccountId})` : acc.railNote || 'Not registered'], ['Last changed', `${acc.changedBy || '-'} · ${date(acc.changedAt, true)}`]]} />
           ) : <Empty icon="wallet" title="No payout account">You cannot be paid until one is added.</Empty>}
           {may && !editing && <div className="pf-row end" style={{ marginTop: 12 }}><Button onClick={() => setEditing(true)}>{acc ? 'Change account' : 'Add account'}</Button></div>}
         </Card>
@@ -989,7 +1025,7 @@ export function Analytics() {
       <PageHeader icon="chart" title="Analytics">How your listings perform against buyers' agents: where you lose, what you win, and how much of your list price you give up to win it.</PageHeader>
       <div className="pf-kpis">
         <Kpi label="Win rate" value={pct(a.winRate)} hint="Won ÷ negotiated" />
-        <Kpi label="Avg discount" value={a.avgDiscountPct != null ? `${a.avgDiscountPct}%` : '—'} hint="Below list, on won orders" />
+        <Kpi label="Avg discount" value={a.avgDiscountPct != null ? `${a.avgDiscountPct}%` : '-'} hint="Below list, on won orders" />
         <Kpi label="Won value" value={usd(a.wonValue, { cents: false })} />
         <Kpi label="Paid" value={usd(a.paidValue, { cents: false })} tone="good" />
       </div>

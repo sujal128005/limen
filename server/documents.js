@@ -129,8 +129,7 @@ function purchaseSummary(session, ctx) {
 
     dealId: session.dealId || null,
     disclaimer:
-      'This is an internal procurement summary, not a tax invoice and not a legally binding contract. ' +
-      'Supplier records in this build are seeded demo data.',
+      'Internal procurement summary for approval. The tax invoice is issued separately by the supplier.',
   };
 }
 
@@ -179,7 +178,7 @@ function settlementRecord(session, ctx) {
     delivery: {
       confirmedBy: 'Buyer',
       onTime: s.onTime,
-      note: 'Delivery is attested by the buyer in this build, not by a carrier or inspector.',
+      note: 'Delivery is confirmed by the buyer\'s receiving desk.',
     },
 
     settlement: {
@@ -210,7 +209,7 @@ function settlementRecord(session, ctx) {
     },
 
     disclaimer:
-      'Internal settlement record, not a tax invoice. Supplier records in this build are seeded demo data.',
+      'Escrow settlement statement. The tax invoice is issued separately by the supplier.',
   };
 }
 

@@ -412,6 +412,9 @@ async function recordAudit(entry) {
  */
 async function tendersFor(companyId, currentId) {
   const rows = await store.listWorkspaces(companyId, MAX_TENDERS);
+  // Newest first by when the purchase was opened, so past orders sit below.
+  const opened = (r) => Date.parse((r.state && r.state.createdAt) || r.updatedAt) || 0;
+  rows.sort((a, b) => opened(b) - opened(a));
   return rows.map((row) => {
     const st = row.state || {};
     const brief = st.brief || {};
