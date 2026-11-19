@@ -218,10 +218,15 @@ function CompanyStep({ opts, app, kind, onSaved }) {
     try {
       const w = await api.get(`/api/onboarding/geo/pin/${pin}`);
       setPinInfo(w);
-      setF((x) => ({ ...x, pin, state: w.stateCode || x.state, district: w.district, city: w.places.includes(x.city) ? x.city : (w.places.length === 1 ? w.places[0] : x.city) }));
+      setCustomCity(false);
+      setF((x) => ({ ...x, pin, state: w.stateCode || x.state, district: w.district, city: w.places.includes(x.city) ? x.city : (w.places[0] || x.city) }));
     } catch (_) { setPinInfo({ notFound: true }); }
   }
-  const cityOptions = [...new Set([...((pinInfo && pinInfo.places) || []), ...towns])];
+  const pinPlaces = (pinInfo && pinInfo.places) || [];
+  const cityOptions = [...new Set([...pinPlaces, ...towns])];
+  // A city typed by hand, or saved earlier and not in the lists, is edited in a text box.
+  const [customCity, setCustomCity] = useState(false);
+  const typingCity = customCity || (!!f.city && cityOptions.length > 0 && !cityOptions.includes(f.city)) || (!cityOptions.length && !!f.district);
   const [human, setHuman] = useState(null);
   const [captcha, setCaptcha] = useState(null);
   const [nonce, setNonce] = useState(0);
@@ -275,11 +280,21 @@ function CompanyStep({ opts, app, kind, onSaved }) {
       </div>
       <div className="pf-grid pf-g2">
         <Field label="District" required error={E.fieldErr('district')}>
-          <Select value={f.district} onChange={(e) => setF((x) => ({ ...x, district: e.target.value, city: '' }))} placeholder={f.state ? 'Choose' : 'Choose the state first'} options={f.district && !districts.includes(f.district) ? [f.district, ...districts] : districts} disabled={!f.state} />
+          <Select value={f.district} onChange={(e) => { setCustomCity(false); setF((x) => ({ ...x, district: e.target.value, city: '' })); }} placeholder={f.state ? 'Choose' : 'Choose the state first'} options={f.district && !districts.includes(f.district) ? [f.district, ...districts] : districts} disabled={!f.state} />
         </Field>
-        <Field label="City or town" required error={E.fieldErr('city')} hint={cityOptions.length ? `${cityOptions.length} places in this district. Type to search, or type your own.` : 'Choose the district first, or type it.'}>
-          <Input value={f.city} onChange={set('city')} maxLength={60} list="ob-towns" autoComplete="off" placeholder={f.district ? 'Start typing' : ''} />
-          <datalist id="ob-towns">{cityOptions.map((t) => <option key={t} value={t} />)}</datalist>
+        <Field label="City or town" required error={E.fieldErr('city')}
+          hint={typingCity ? (cityOptions.length ? <>Type the city. <button type="button" className="ob-link plain" onClick={() => { setCustomCity(false); setF((x) => ({ ...x, city: cityOptions[0] })); }}>Choose from the list instead</button></> : 'Type the city.') : pinPlaces.length ? `${pinPlaces.length} place${pinPlaces.length === 1 ? '' : 's'} under PIN ${f.pin}, then the rest of the district.` : cityOptions.length ? `${cityOptions.length} places in this district.` : 'Choose the district first.'}>
+          {typingCity ? (
+            <Input value={f.city} onChange={set('city')} maxLength={60} placeholder="City or town" autoFocus={customCity} />
+          ) : (
+            <select className="pf-select" value={f.city} disabled={!cityOptions.length}
+              onChange={(e) => { if (e.target.value === '__other') { setCustomCity(true); setF((x) => ({ ...x, city: '' })); } else setF((x) => ({ ...x, city: e.target.value })); }}>
+              <option value="">{f.district ? 'Choose' : 'Choose the district first'}</option>
+              {pinPlaces.length > 0 && <optgroup label={`PIN ${f.pin}`}>{pinPlaces.map((t) => <option key={`p-${t}`} value={t}>{t}</option>)}</optgroup>}
+              {towns.filter((t) => !pinPlaces.includes(t)).length > 0 && <optgroup label={`Towns in ${f.district}`}>{towns.filter((t) => !pinPlaces.includes(t)).map((t) => <option key={t} value={t}>{t}</option>)}</optgroup>}
+              <option value="__other">Other (type the city)</option>
+            </select>
+          )}
         </Field>
       </div>
       <div className="ob-sec">About the company</div>
